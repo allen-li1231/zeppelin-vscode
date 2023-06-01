@@ -11,7 +11,7 @@ export class ZeppelinKernel {
     readonly id: string = 'zeppelin';
     readonly notebookType: string = 'zeppelin-notebook';
     readonly label: string = 'Zeppelin Notebook';
-    readonly supportedLanguages = ['python', 'scala', 'markdown'];
+    readonly supportedLanguages = ['python', 'scala', 'markdown', 'r', 'sql'];
 
     private readonly _controller: vscode.NotebookController;
 	private _executionOrder = 0;
@@ -25,7 +25,7 @@ export class ZeppelinKernel {
                                                                     this.notebookType, 
                                                                     this.label);
 
-		this._controller.supportedLanguages = ['python', 'scala', 'markdown'];
+		this._controller.supportedLanguages = ['python', 'scala', 'markdown', 'r', 'sql'];
 		this._controller.supportsExecutionOrder = true;
 		this._controller.description = 'Zeppelin notebook inspired by Zeppelin REST API.';
 		this._controller.executeHandler = this._executeAll.bind(this);

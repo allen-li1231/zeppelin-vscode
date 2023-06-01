@@ -1,78 +1,176 @@
 import * as vscode from 'vscode';
+import { logDebug, mapLanguageKind } from '../common/common';
+import {
+	NoteData,
+	NoteInfo,
+	AngularObjects,
+	ParagraphData, 
+	ParagraphResult, 
+	ParagraphResultMsg
+} from '../common/zeppelinNote';
+import { Dictionary, List } from 'lodash';
+
+
+// extend vscode.NotebookData to maintain Zeppelin variables
+class ZeppelinNotebookData extends vscode.NotebookData {
+	id: string;
+	name: string;
+	info?: NoteInfo;
+	noteForms?: Dictionary<any>;
+	noteParams?: Dictionary<any>;
+	angularObjects?: AngularObjects;
+	config?: Dictionary<any>;
+
+	constructor(
+		id: string,
+		name: string,
+		cells: vscode.NotebookCellData[],
+		info?: NoteInfo,
+		noteForms?: Dictionary<any>,
+		noteParams?: Dictionary<any>,
+		angularObjects?: AngularObjects) {
+			super(cells);
+			this.id = id;
+			this.name = name;
+			this.info = info;
+			this.noteForms = noteForms;
+			this.noteParams = noteParams;
+			this.angularObjects = angularObjects;
+		}
+}
 
 
 export class ZeppelinSerializer implements vscode.NotebookSerializer {
+
 	async deserializeNotebook(
 		content: Uint8Array,
 		_token: vscode.CancellationToken
-	): Promise<vscode.NotebookData> {
-		var contents = new TextDecoder().decode(content);
+	): Promise<ZeppelinNotebookData> {
 
-		let raw: RawNotebookCell[];
-		try {
-			raw = <RawNotebookCell[]>JSON.parse(contents);
-		} catch {
-			raw = [];
+		function parseParagraphToCellData(
+			paragraph: ParagraphData
+		): vscode.NotebookCellData {
+			let lang: string = paragraph.config.editorSetting.language;
+			let kind: number = mapLanguageKind.get(lang) ?? 1;
+			// default cell kind is markup language
+			return new vscode.NotebookCellData(kind, paragraph.text, lang);
 		}
 
-		const cells = raw.map(
-			item => new vscode.NotebookCellData(item.kind, item.value, item.language)
-		);
+		var contents = new TextDecoder().decode(content);
 
-		return new vscode.NotebookData(cells);
+		let raw: NoteData;
+		try {
+			raw = <NoteData>JSON.parse(contents);
+		} catch(err) {
+			logDebug("error serializing to JSON", err);
+			throw err;
+		}
+
+		const cells = raw.paragraphs.map(parseParagraphToCellData);
+		return new ZeppelinNotebookData(
+			// required
+			raw.id, raw.name, cells,
+			// optional
+			raw.info, raw.noteForms, raw.noteParams, raw.angularObjects);
 	}
 
 	async serializeNotebook(
-		data: vscode.NotebookData,
+		data: ZeppelinNotebookData,
 		_token: vscode.CancellationToken
 	): Promise<Uint8Array> {
-		let contents: RawNotebookCell[] = [];
-        // function to take output renderer data to a format to save to the file
-		function asRawOutput(cell: vscode.NotebookCellData): RawCellOutput[] {
-			let result: RawCellOutput[] = [];
-			for (let output of cell.outputs ?? []) {
-				for (let item of output.items) {
-                    let outputContents = '';
-                    try {
-                        outputContents = new TextDecoder().decode(item.data);
-                    } catch {
-                        
-                    }
+	// function to take output renderer data to a format to save to the file
+		
+		function asRawParagraphResult(
+			cellOutputs: vscode.NotebookCellOutput[]
+		): ParagraphResult {
 
-                    try {
-                        let outputData = JSON.parse(outputContents);
-                        result.push({ mime: item.mime, value: outputData });
-                    } catch {
-                        result.push({ mime: item.mime, value: outputContents });
-                    }
+			let results: ParagraphResultMsg[] = [];
+			let code = 'READY';
+			let msgType = 'TEXT';
+			for (let cellOutput of cellOutputs){
+				for (let output of cellOutput.items ?? []) {
+					let outputContents = '';
+					try {
+						outputContents = new TextDecoder().decode(output.data);
+					} catch(err) {
+						// pass
+						logDebug("error in decoding output data", err);
+						throw err;
+					}
+		
+					try {
+						let outputData = JSON.parse(outputContents);
+						switch (outputData.mime)  {
+							case 'text/plain': 
+								code = 'SUCCESS';
+								msgType = 'TEXT';
+							case 'text/plain': 
+								code = 'SUCCESS';
+								msgType = 'TEXT';
+							case 'text/html': 
+								code = 'SUCCESS';
+								msgType = 'HTML';
+							case 'application/vnd.code.notebook.stdout': 
+								code = 'SUCCESS';
+								msgType = 'TEXT';
+							case 'application/vnd.code.notebook.error': 
+								code = 'ERROR';
+								msgType = 'TEXT';
+							default:
+								code = 'SUCCESS';
+								msgType = 'TEXT';
+						}
+						results.push({
+							data: outputData.data,
+							type: msgType
+						});
+					} catch(err) {
+						logDebug("error in parsing output countents to JSON", err);
+						throw err;
+					}
 				}
 			}
-			return result;
-		}
-		for (const cell of data.cells) {
-			contents.push({
-				kind: cell.kind,
-				language: cell.languageId,
-				value: cell.value,
-				outputs: asRawOutput(cell)
-			});
+			return { code: code, msg: results };
 		}
 
-		return new TextEncoder().encode(JSON.stringify(contents));
+		function asRawParagraph(
+			cell: vscode.NotebookCellData
+		): ParagraphData {
+			let paragraph: ParagraphData = {
+				config: {
+					enabled: true,
+					editorMode: "ace/mode/" + cell.languageId,
+					editorSetting: {
+						completionKey: "TAB",
+						completionSupport: true,
+						editOnDblClick: false,
+						language: cell.languageId
+					}
+				},
+				status: 'READY',
+				text: cell.value
+			};
+
+			if (cell.outputs) {
+				paragraph.results = asRawParagraphResult(cell.outputs);
+			}
+			return paragraph;
+		}
+
+		// transform vscode notebook cells into Zeppelin paragraphs
+		let paragraphs = data.cells.map(asRawParagraph);
+		// build Zeppelin note data
+		let noteData: NoteData = {
+			id: data.id,
+			name: data.name,
+			paragraphs: paragraphs,
+			info: data.info,
+			noteForms: data.noteForms,
+			noteParams: data.noteParams,
+			angularObjects: data.angularObjects
+		}
+		return new TextEncoder().encode(JSON.stringify(noteData));
 	}
-}
-
-interface RawNotebookCell {
-	language: string;
-	value: string;
-	kind: vscode.NotebookCellKind;
-    editable?: boolean;
-    outputs: RawCellOutput[];
-}
-
-interface RawCellOutput {
-	mime: string;
-	value: any;
 }
 
 // NEEDED Declaration to silence errors
