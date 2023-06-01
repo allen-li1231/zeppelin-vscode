@@ -32,6 +32,8 @@
   "activationEvents": [
     "onLanguage:python",
     "onLanguage:scala",
+    "onLanguage:sql",
+    "onLanguage:r",
     "onLanguage:markdown",
     "onNotebook:zeppelin-notebook"
   ],
@@ -43,7 +45,7 @@
         "displayName": "Zeppelin Notebook",
         "selector": [
           {
-            "filenamePattern": "*.zpl"
+            "filenamePattern": "*.{zpl,json}"
           }
         ]
       }
