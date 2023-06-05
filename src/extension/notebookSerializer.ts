@@ -7,7 +7,7 @@ import {
 	ParagraphData, 
 	ParagraphResult, 
 	ParagraphResultMsg
-} from '../common/zeppelinNote';
+} from '../common/dataStructure';
 import { Dictionary, List } from 'lodash';
 
 
@@ -57,12 +57,17 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 		}
 
 		var contents = new TextDecoder().decode(content);
+		let reEmpty = new RegExp('^[\s\n\t\r]*$');
+		if (reEmpty.test(contents)) {
+			logDebug(contents);
+			// TODO: create a new note on remote
+		}
 
-		let raw: NoteData;
+		let raw: NoteData | undefined;
 		try {
 			raw = <NoteData>JSON.parse(contents);
 		} catch(err) {
-			logDebug("error serializing to JSON", err);
+			logDebug("error serializing note to JSON", err);
 			throw err;
 		}
 
