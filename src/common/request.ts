@@ -2,7 +2,7 @@
 import { pickBy, identity, isEmpty } from 'lodash';
 import { logDebug, formatURL, NAME } from './common';
 import * as vscode from 'vscode';
-import { Method, RequestHeaderField } from './httpConstants';
+
 
 // full documentation available here: https://github.com/axios/axios#request-config
 // using default values for undefined
@@ -10,14 +10,14 @@ export interface Request {
     url?: string | undefined,
     method: string, 
     baseURL: string,
-    headers?: any | undefined,
+    headers?: any | { 'Content-Type': 'application/json' },
     params?: any | undefined,
     data?: string | any | undefined,
     timeout?: number | undefined,
-    withCredentials?: boolean | false, 
+    withCredentials?: boolean | true, 
     auth?: any | undefined,
-    responseType?: string | undefined, 
-    responseEncoding?: string | undefined, 
+    responseType?: string | 'json', 
+    responseEncoding?: string | 'utf8', 
     xsrfCookieName?: string | undefined, 
     xsrfHeaderName?: string | undefined,
     maxContentLength?: number | undefined,
@@ -78,23 +78,5 @@ export class RequestParser {
 
     getVariableName(): string | undefined {
         return this.variableName;
-    }
-
-    wasReplacedBySecret(text: string): boolean {
-        if(typeof text === 'string') {
-            for(let replaced of this.valuesReplacedBySecrets) {
-                if(text.includes(replaced)) {
-                    return true;
-                }
-            }
-        } else if(typeof text === 'number') {
-            for(let replaced of this.valuesReplacedBySecrets) {
-                if(`${text}`.includes(replaced)) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
     }
 }

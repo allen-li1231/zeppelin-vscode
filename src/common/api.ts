@@ -32,6 +32,7 @@ class BasicService {
       // create request session based on config
       this.session.interceptors.response.use(
         (response) => {
+            logDebug(typeof response, response);
             return response;
         },
         (error) => {
