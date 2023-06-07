@@ -179,6 +179,7 @@ export async function doLogin(
 	): Promise<boolean> {
 
 	let username = await context.secrets.get('zeppelinUsername');
+	let res;
 	// prompt user to provide Zeppelin credential
 	if (!username) {
 		let hasCredential = await showQuickPickLogin(context);
@@ -188,25 +189,24 @@ export async function doLogin(
 
 		username = await context.secrets.get('zeppelinUsername');
 		let password = await context.secrets.get('zeppelinPassword') ?? '';
-		let res = await service.login(username ?? '', password ?? '');
+		res = await service.login(username ?? '', password ?? '');
 		logDebug(`login response for ${username} using credential provided`, res);
 	}
 	else {
 		// try to login using cached credential
 		let password = await context.secrets.get('zeppelinPassword') ?? '';
-		let res = await service.login(username ?? '', password ?? '');
+		res = await service.login(username ?? '', password ?? '');
 		logDebug(`login response for ${username} using cached credential`, res);
-
-		if (res instanceof AxiosError) {
-			if (res.code === 'ECONNREFUSED') {
-				window.showErrorMessage("failed to login to Zeppelin server, please check network availability.");
-			}
-			else {
-				window.showErrorMessage("failed to login to Zeppelin server, please check remote server availability, username and password.");
-			}
-			return false;
-		}
 	}
 
+	if (res instanceof AxiosError) {
+		if (res.code === 'ECONNREFUSED') {
+			window.showErrorMessage("failed to login to Zeppelin server, please check network availability.");
+		}
+		else {
+			window.showErrorMessage("failed to login to Zeppelin server, please check remote server availability, username and password.");
+		}
+		return false;
+	}
 	return true;
 }

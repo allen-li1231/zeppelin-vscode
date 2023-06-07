@@ -2,8 +2,8 @@ import * as vscode from 'vscode';
 import { logDebug, mapLanguageKind } from '../common/common';
 import {
 	NoteData,
-	ParagraphData, 
-	ParagraphResult, 
+	ParagraphData,
+	ParagraphResult,
 	ParagraphResultMsg
 } from '../common/dataStructure';
 
