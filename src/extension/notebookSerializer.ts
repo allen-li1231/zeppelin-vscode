@@ -2,42 +2,10 @@ import * as vscode from 'vscode';
 import { logDebug, mapLanguageKind } from '../common/common';
 import {
 	NoteData,
-	NoteInfo,
-	AngularObjects,
 	ParagraphData, 
 	ParagraphResult, 
 	ParagraphResultMsg
 } from '../common/dataStructure';
-import { Dictionary, List } from 'lodash';
-
-
-// extend vscode.NotebookData to maintain Zeppelin variables
-class ZeppelinNotebookData extends vscode.NotebookData {
-	id: string;
-	name: string;
-	info?: NoteInfo;
-	noteForms?: Dictionary<any>;
-	noteParams?: Dictionary<any>;
-	angularObjects?: AngularObjects;
-	config?: Dictionary<any>;
-
-	constructor(
-		id: string,
-		name: string,
-		cells: vscode.NotebookCellData[],
-		info?: NoteInfo,
-		noteForms?: Dictionary<any>,
-		noteParams?: Dictionary<any>,
-		angularObjects?: AngularObjects) {
-			super(cells);
-			this.id = id;
-			this.name = name;
-			this.info = info;
-			this.noteForms = noteForms;
-			this.noteParams = noteParams;
-			this.angularObjects = angularObjects;
-		}
-}
 
 
 export class ZeppelinSerializer implements vscode.NotebookSerializer {
@@ -45,15 +13,19 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 	async deserializeNotebook(
 		content: Uint8Array,
 		_token: vscode.CancellationToken
-	): Promise<ZeppelinNotebookData> {
+	): Promise<vscode.NotebookData> {
 
 		function parseParagraphToCellData(
 			paragraph: ParagraphData
 		): vscode.NotebookCellData {
 			let lang: string = paragraph.config.editorSetting.language;
-			let kind: number = mapLanguageKind.get(lang) ?? 1;
 			// default cell kind is markup language
-			return new vscode.NotebookCellData(kind, paragraph.text, lang);
+			let kind: number = mapLanguageKind.get(lang) ?? 1;
+
+			let cell = new vscode.NotebookCellData(kind, paragraph.text, lang);
+			cell.metadata = paragraph;
+
+			return cell;
 		}
 
 		var contents = new TextDecoder().decode(content);
@@ -72,15 +44,15 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 		}
 
 		const cells = raw.paragraphs.map(parseParagraphToCellData);
-		return new ZeppelinNotebookData(
-			// required
-			raw.id, raw.name, cells,
-			// optional
-			raw.info, raw.noteForms, raw.noteParams, raw.angularObjects);
+
+		let note = new vscode.NotebookData(cells);
+		note.metadata = raw;
+
+		return note;
 	}
 
 	async serializeNotebook(
-		data: ZeppelinNotebookData,
+		data: vscode.NotebookData,
 		_token: vscode.CancellationToken
 	): Promise<Uint8Array> {
 	// function to take output renderer data to a format to save to the file
@@ -166,14 +138,14 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 		let paragraphs = data.cells.map(asRawParagraph);
 		// build Zeppelin note data
 		let noteData: NoteData = {
-			id: data.id,
-			name: data.name,
+			id: data.metadata?.id,
+			name: data.metadata?.name,
 			paragraphs: paragraphs,
-			info: data.info,
-			noteForms: data.noteForms,
-			noteParams: data.noteParams,
-			angularObjects: data.angularObjects
-		}
+			info: data.metadata?.info,
+			noteForms: data.metadata?.noteForms,
+			noteParams: data.metadata?.noteParams,
+			angularObjects: data.metadata?.angularObjects
+		};
 		return new TextEncoder().encode(JSON.stringify(noteData));
 	}
 }
