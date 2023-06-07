@@ -1,7 +1,6 @@
 // import { DEBUG_MODE, NAME, MIME_TYPE } from '../common/common';
 import * as vscode from 'vscode';
 import { NotebookService } from '../common/api';
-const axios = require('axios').default;
 
 
 export class ZeppelinKernel {
@@ -14,13 +13,13 @@ export class ZeppelinKernel {
     private _service?: NotebookService;
     private readonly _controller: vscode.NotebookController;
 	private _executionOrder = 0;
-    private _isActive = true;
+    private _isActive = false;
 
-	constructor(context: vscode.ExtensionContext, isInteractive?: boolean, service?: NotebookService) {
-        if (isInteractive) {
-            this.id = 'zeppelin-notebook-interactive-kernel';
-            this.notebookType = 'interactive';
-        }
+	constructor(context: vscode.ExtensionContext, service?: NotebookService) {
+        // if (isInteractive) {
+        //     this.id = 'zeppelin-notebook-interactive-kernel';
+        //     this.notebookType = 'interactive';
+        // }
         this._context = context;
         this._service = service;
         this._controller = vscode.notebooks.createNotebookController(this.id, 
@@ -31,18 +30,22 @@ export class ZeppelinKernel {
 		this._controller.supportsExecutionOrder = true;
 		this._controller.description = 'Zeppelin notebook inspired by Zeppelin REST API.';
 		this._controller.executeHandler = this._executeAll.bind(this);
+
+        this.activate();
 	}
 
 	dispose(): void {
 		this._controller.dispose();
 	}
 
-    active(){
-        this._isActive = true;
+    activate() {
+        this._isActive = !!this._service && !!this._service.baseURL;
+        return this._isActive;
     }
 
-    deactive(){
+    deactivate() {
         this._isActive = false;
+        return !this._isActive;
     }
 
     setService(service: NotebookService) {
@@ -65,7 +68,13 @@ export class ZeppelinKernel {
 		execution.start(Date.now());
 
         if (this._isActive) {
-            // TODO: run cell
+            let cancelTokenSource = this._service?.cancelTokenSource;
+            execution.token.onCancellationRequested(_ => cancelTokenSource?.cancel());
+
+            execution.replaceOutput([new vscode.NotebookCellOutput([
+                // vscode.NotebookCellOutputItem.json(response.renderer(), MIME_TYPE),
+                vscode.NotebookCellOutputItem.text('<hr/>Spark Application Id: application_1670932676563_1718255<br/>Spark WebUI: <a href=\"http://namenode01.lakala.com:8088/proxy/application_1670932676563_1718255/\">http://namenode01.lakala.com:8088/proxy/application_1670932676563_1718255/</a>', 'text/html')
+            ])]);
         }
 
         execution.end(true, Date.now());

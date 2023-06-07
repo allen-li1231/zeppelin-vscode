@@ -1,33 +1,44 @@
-import * as vscode from 'vscode';
+import { window } from 'vscode';
 import { logDebug, formatURL } from './common';
 import { NoteData, ParagraphData, ParagraphConfig } from './dataStructure';
 import axios, {
     AxiosInstance,
     AxiosRequestConfig,
-    AxiosProxyConfig
+    AxiosProxyConfig,
+    CancelTokenSource
 } from 'axios';
 
 
 class BasicService {
+    public baseURL: string;
     public session: AxiosInstance;
+    public cancelTokenSource: CancelTokenSource;
 
     constructor(
         baseURL: string,
         proxy: AxiosProxyConfig | undefined = undefined
     ) {
+        this.baseURL = formatURL(baseURL);
+
+        const cancelTokenAxios = axios.CancelToken.source();
+
         const config: AxiosRequestConfig = {
-        baseURL: formatURL(baseURL),
-        timeout: 1000,
+        baseURL: this.baseURL,
+        timeout: 10000,
         // eslint-disable-next-line @typescript-eslint/naming-convention
         headers: { 'Content-Type': 'application/json' },
         withCredentials: true,
+        cancelToken: cancelTokenAxios.token,
         responseType: 'json',
         responseEncoding: 'utf8'
       };
+
       if (proxy) {
         config.proxy = proxy;
       }
+
       this.session = axios.create(config);
+      this.cancelTokenSource = cancelTokenAxios;
   
       // create request session based on config
       this.session.interceptors.response.use(
@@ -36,10 +47,10 @@ class BasicService {
             return response;
         },
         (error) => {
-            if (error && error.response.status >= 401) {
-                logDebug(error);
-            }
-            return Promise.reject(error);
+			window.showErrorMessage(`code ${error.errno}: ${error.message}`);
+            logDebug(error);
+            // instead of rejecting for error, pass to outer scope
+            return error;
         }
       );
     }
@@ -77,7 +88,7 @@ export class NotebookService extends BasicService{
 
     deleteNote(noteId: string) {
         return this.session.delete(
-            '/api/notebook/' + noteId
+            `/api/notebook/${noteId}`
         );
     }
 
@@ -90,21 +101,21 @@ export class NotebookService extends BasicService{
 
     cloneNote(noteId: string, newNoteName: string) {
         return this.session.post(
-            '/api/notebook/' + noteId,
+            `/api/notebook/${noteId}`,
             { name: newNoteName }
         );
     }
 
     exportNote(noteId: string, newNoteName: string) {
         return this.session.post(
-            '/api/notebook/' + noteId,
+            `/api/notebook/${noteId}`,
             { name: newNoteName }
         );
     }
 
     getAllStatus(noteId: string) {
         return this.session.get(
-            '/api/notebook/job/' + noteId
+            `/api/notebook/job/${noteId}`
         );
     }
 
@@ -116,43 +127,43 @@ export class NotebookService extends BasicService{
 
     runAll(noteId: string) {
         return this.session.post(
-            '/api/notebook/job/' + noteId
+            `/api/notebook/job/${noteId}`
         );
     }
 
     stopAll(noteId: string) {
         return this.session.delete(
-            '/api/notebook/job/' + noteId
+            `/api/notebook/job/${noteId}`
         );
     }
 
     clearAllResult(noteId: string) {
         return this.session.put(
-            '/api/notebook/' + noteId + '/clear'
+            `/api/notebook/${noteId}/clear`
         );
     }
 
     addCron(noteId: string, cron: string, releaseResource: boolean = false) {
         return this.session.post(
-            '/api/notebook/cron/' + noteId,
+            `/api/notebook/cron/${noteId}`,
             { cron: cron, releaseResource: releaseResource}
         );
     }
     removeCron(noteId: string) {
         return this.session.delete(
-            '/api/notebook/cron/' + noteId
+            `/api/notebook/cron/${noteId}`
         );
     }
 
     getCron(noteId: string) {
         return this.session.get(
-            '/api/notebook/cron/' + noteId
+            `/api/notebook/cron/${noteId}`
         );
     }
 
     getPermission(noteId: string) {
         return this.session.get(
-            '/api/notebook/' + noteId + '/permissions'
+            `/api/notebook/${noteId}/permissions`
         );
     }
 
@@ -164,7 +175,7 @@ export class NotebookService extends BasicService{
         writers: string[]
     ) {
         return this.session.post(
-            '/api/notebook/cron/' + noteId,
+            `/api/notebook/cron/${noteId}`,
             {
                 readers: readers,
                 owners: owners,
@@ -189,20 +200,20 @@ export class NotebookService extends BasicService{
                 data.config = config;
             }
             return this.session.post(
-                '/api/notebook/' + noteId + '/paragraph',
+                `/api/notebook/${noteId}/paragraph`,
                 data
             );
     }
 
     getParagraphInfo(noteId: string, paragraphId: string) {
         return this.session.get(
-            '/api/notebook/' + noteId + '/' + paragraphId
+            `/api/notebook/${noteId}/${paragraphId}`
         );
     }
 
     getParagraphStatus(noteId: string, paragraphId: string) {
         return this.session.get(
-            '/api/notebook/job/' + noteId + '/' + paragraphId
+            `/api/notebook/job/${noteId}/${paragraphId}`
         );
     }
 
@@ -221,37 +232,37 @@ export class NotebookService extends BasicService{
         }
 
         return this.session.put(
-            '/api/notebook/' + noteId + '/paragraph/' + paragraphId,
+            `/api/notebook/${noteId}/paragraph/${paragraphId}`,
             data
         );
     }
 
     updateParagraphConfig(noteId: string, paragraphId: string, config: ParagraphConfig) {
         return this.session.put(
-            '/api/notebook/' + noteId + '/paragraph/' + paragraphId + '/config',
+            `/api/notebook/${noteId}/paragraph/${paragraphId}/config`,
             config
         );
     }
 
     moveParagraphToIndex(noteId: string, paragraphId: string, index: number) {
         return this.session.post(
-            '/api/notebook/' + noteId + '/paragraph' + paragraphId + '/move/' + index.toString()
+            `/api/notebook/${noteId}/paragraph/${paragraphId}/move/` + index.toString()
         );
     }
 
     deleteParagraph(noteId: string, paragraphId: string) {
         return this.session.delete(
-            '/api/notebook/' + noteId + '/paragraph' + paragraphId
+            `/api/notebook/${noteId}/paragraph/${paragraphId}`
         );
     }
 
     runParagraph(noteId: string, paragraphId: string, sync: boolean = true, option?: any) {
         let url;
         if (sync) {
-            url = '/api/notebook/run/' + noteId + '/' + paragraphId;
+            url = `/api/notebook/run/${noteId}/${paragraphId}`;
         }
         else {
-            url = '/api/notebook/job/' + noteId + '/' + paragraphId;
+            url = `/api/notebook/job/${noteId}/${paragraphId}`;
         }
         
         if (option){
@@ -267,7 +278,7 @@ export class NotebookService extends BasicService{
 
     stopParagraph(noteId: string, paragraphId: string) {
         return this.session.delete(
-            '/api/notebook/job' + noteId + '/' + paragraphId
+            `/api/notebook/job/${noteId}/${paragraphId}`
         );
     }
 }
