@@ -54,6 +54,10 @@
       {
         "command": "zeppelin-vscode.setZeppelinServerURL",
         "title": "Zeppelin: Set Zeppelin Server URL"
+      },
+      {
+        "command": "zeppelin-vscode.setZeppelinCredential",
+        "title": "Zeppelin: Set Zeppelin Credential (username and password)"
       }
     ]
   },

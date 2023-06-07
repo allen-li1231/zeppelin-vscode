@@ -2,7 +2,7 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import { NotebookService } from '../common/api';
-import { showQuickPickURL, doLogin } from '../common/common';
+import { showQuickPickURL, showQuickPickLogin, doLogin } from '../common/common';
 import { ZeppelinSerializer } from './notebookSerializer';
 import { ZeppelinKernel } from './notebookKernel';
 
@@ -16,6 +16,13 @@ export async function activate(context: vscode.ExtensionContext) {
 	let disposable = vscode.commands.registerCommand(
 		'zeppelin-vscode.setZeppelinServerURL',
 		_ => ( showQuickPickURL(context) )
+	);
+
+	context.subscriptions.push(disposable);
+
+	disposable = vscode.commands.registerCommand(
+		'zeppelin-vscode.setZeppelinCredential',
+		_ => ( showQuickPickLogin(context) )
 	);
 
 	context.subscriptions.push(disposable);
