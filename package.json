@@ -53,7 +53,7 @@
     "commands": [
       {
         "command": "zeppelin-vscode.setZeppelinServerURL",
-        "title": "Hello World"
+        "title": "Zeppelin: Set Zeppelin Server URL"
       }
     ]
   },
