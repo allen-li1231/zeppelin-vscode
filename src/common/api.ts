@@ -2,6 +2,7 @@ import { window } from 'vscode';
 import { logDebug, formatURL } from './common';
 import { NoteData, ParagraphData, ParagraphConfig } from './dataStructure';
 import axios, {
+    AxiosError,
     AxiosInstance,
     AxiosRequestConfig,
     AxiosProxyConfig,
@@ -26,7 +27,7 @@ class BasicService {
         baseURL: this.baseURL,
         timeout: 10000,
         // eslint-disable-next-line @typescript-eslint/naming-convention
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         withCredentials: true,
         cancelToken: cancelTokenAxios.token,
         responseType: 'json',
@@ -43,23 +44,47 @@ class BasicService {
       // create request session based on config
       this.session.interceptors.response.use(
         (response) => {
-            logDebug(typeof response, response);
+            logDebug(response);
             return response;
         },
         (error) => {
-			window.showErrorMessage(`code ${error.errno}: ${error.message}`);
             logDebug(error);
-            // instead of rejecting for error, pass to outer scope
+            // instead of rejecting error, pass it to outer scope
             return error;
         }
       );
     }
 
-    login(username: string, password: string) {
-        return this.session.post(
+    login(username: string, password: string): boolean {
+        let res = this.session.post(
             '/api/login',
             { userName: username, password: password }
         );
+
+        if (res instanceof AxiosError) {
+            if (!res.response) {
+                // local network issue
+                window.showErrorMessage(`${res.code}: ${res.message}`);
+            }
+            else if (res.response.status === 403) {
+                window.showErrorMessage('Wrong username or password');
+            }
+            // test if server has configured shiro for multi-users,
+            // server will respond 'UnavailableSecurityManagerException' if not.
+            else if (res.response.data.exception === 'UnavailableSecurityManagerException') {
+                window.showInformationMessage(`Zeppelin login API:
+                the remote server has no credential authorization manager configured.
+                Please contact server administrator if this is unexpected`);
+                return true;
+            }
+            else {
+                // server-side error or client-side error
+                window.showErrorMessage(`${res.response.data.exception}: ${res.response.data.message}`);
+            }
+            return false;
+        }
+
+        return true;
     }
 }
 
