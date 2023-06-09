@@ -16,14 +16,17 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 	): Promise<vscode.NotebookData> {
 
 		function parseParagraphToCellData(
-			paragraph: ParagraphData
+			paragraph: ParagraphData,
+			noteId?: string
 		): vscode.NotebookCellData {
 			let lang: string = paragraph.config.editorSetting.language;
 			// default cell kind is markup language
 			let kind: number = mapLanguageKind.get(lang) ?? 1;
+			let text = paragraph.text;
 
-			let cell = new vscode.NotebookCellData(kind, paragraph.text, lang);
-			cell.metadata = paragraph;
+			let cell = new vscode.NotebookCellData(kind, text, lang);
+			// insert notebook id into metadata so we can get sufficient information to call api
+			cell.metadata = <ParagraphWithNoteIdData> { noteId, ...paragraph };
 
 			return cell;
 		}
@@ -43,7 +46,7 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 			throw err;
 		}
 
-		const cells = raw.paragraphs.map(parseParagraphToCellData);
+		const cells = raw.paragraphs.map((p) => parseParagraphToCellData(p, raw?.id));
 
 		let note = new vscode.NotebookData(cells);
 		note.metadata = raw;
@@ -113,20 +116,10 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 		function asRawParagraph(
 			cell: vscode.NotebookCellData
 		): ParagraphData {
-			let paragraph: ParagraphData = {
-				config: {
-					enabled: true,
-					editorMode: "ace/mode/" + cell.languageId,
-					editorSetting: {
-						completionKey: "TAB",
-						completionSupport: true,
-						editOnDblClick: false,
-						language: cell.languageId
-					}
-				},
-				status: 'READY',
-				text: cell.value
-			};
+			let { noteId, ...paragraph } = <ParagraphWithNoteIdData> cell.metadata;
+
+			paragraph.text = cell.value;
+			paragraph.config.editorSetting.language = cell.languageId;
 
 			if (cell.outputs) {
 				paragraph.results = asRawParagraphResult(cell.outputs);
@@ -157,4 +150,8 @@ declare class TextDecoder {
 
 declare class TextEncoder {
 	encode(data: string): Uint8Array;
+}
+
+export interface ParagraphWithNoteIdData extends ParagraphData {
+    noteId: string
 }

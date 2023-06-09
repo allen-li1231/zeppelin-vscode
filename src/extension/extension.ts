@@ -2,7 +2,7 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import { NotebookService } from '../common/api';
-import { showQuickPickURL, showQuickPickLogin, doLogin } from '../common/common';
+import { showQuickPickURL, showQuickPickLogin, doLogin } from '../common/interaction';
 import { ZeppelinSerializer } from './notebookSerializer';
 import { ZeppelinKernel } from './notebookKernel';
 
