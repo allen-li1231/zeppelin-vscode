@@ -1,6 +1,10 @@
 import { window } from 'vscode';
 import { logDebug, formatURL } from './common';
-import { NoteData, ParagraphData, ParagraphConfig } from './dataStructure';
+import { NoteData,
+    ParagraphData,
+    ParagraphConfig,
+    ParagraphResult
+} from './dataStructure';
 import axios, {
     AxiosError,
     AxiosInstance,
@@ -55,8 +59,8 @@ class BasicService {
       );
     }
 
-    login(username: string, password: string): boolean {
-        let res = this.session.post(
+    async login(username: string, password: string) {
+        let res = await this.session.post(
             '/api/login',
             { userName: username, password: password }
         );
@@ -74,7 +78,7 @@ class BasicService {
             else if (res.response.data.exception === 'UnavailableSecurityManagerException') {
                 window.showInformationMessage(`Zeppelin login API:
                 the remote server has no credential authorization manager configured.
-                Please contact server administrator if this is unexpected`);
+                Please contact server administrator if this is unexpected.`);
                 return true;
             }
             else {
@@ -281,7 +285,7 @@ export class NotebookService extends BasicService{
         );
     }
 
-    runParagraph(noteId: string, paragraphId: string, sync: boolean = true, option?: any) {
+    async runParagraph(noteId: string, paragraphId: string, sync: boolean = true, option?: any) {
         let url;
         if (sync) {
             url = `/api/notebook/run/${noteId}/${paragraphId}`;
@@ -289,16 +293,19 @@ export class NotebookService extends BasicService{
         else {
             url = `/api/notebook/job/${noteId}/${paragraphId}`;
         }
-        
+
+        let res;
         if (option){
-            return this.session.post(
+            res = await this.session.post(
                 url,
                 option
             );
         }
         else {
-            return this.session.post(url);
+            res = await this.session.post(url);
         }
+
+        return <ParagraphResult> res.data.body;
     }
 
     stopParagraph(noteId: string, paragraphId: string) {

@@ -1,6 +1,8 @@
 // import { DEBUG_MODE, NAME, MIME_TYPE } from '../common/common';
 import * as vscode from 'vscode';
 import { NotebookService } from '../common/api';
+import { logDebug } from '../common/common';
+import { ParagraphResult, ParagraphResultMsg} from '../common/dataStructure';
 
 
 export class ZeppelinKernel {
@@ -28,7 +30,7 @@ export class ZeppelinKernel {
 
 		this._controller.supportedLanguages = ['python', 'scala', 'markdown', 'r', 'sql'];
 		this._controller.supportsExecutionOrder = true;
-		this._controller.description = 'Zeppelin notebook inspired by Zeppelin REST API.';
+		this._controller.description = 'Zeppelin notebook kernel';
 		this._controller.executeHandler = this._executeAll.bind(this);
 
         this.activate();
@@ -68,13 +70,23 @@ export class ZeppelinKernel {
 		execution.start(Date.now());
 
         if (this._isActive) {
-            let cancelTokenSource = this._service?.cancelTokenSource;
-            execution.token.onCancellationRequested(_ => cancelTokenSource?.cancel());
+            try {
+                let cancelTokenSource = this._service?.cancelTokenSource;
+                execution.token.onCancellationRequested(_ => cancelTokenSource?.cancel());
+                let res = await this._service?.runParagraph(cell.metadata.noteId, cell.metadata.id);
+                let cellOutput = res?.msg.map(this._parseMsgToOutput) ?? [];
+    
+                execution.replaceOutput(new vscode.NotebookCellOutput(cellOutput));
 
-            execution.replaceOutput([new vscode.NotebookCellOutput([
-                // vscode.NotebookCellOutputItem.json(response.renderer(), MIME_TYPE),
-                vscode.NotebookCellOutputItem.text('<hr/>Spark Application Id: application_1670932676563_1718255<br/>Spark WebUI: <a href=\"http://namenode01.lakala.com:8088/proxy/application_1670932676563_1718255/\">http://namenode01.lakala.com:8088/proxy/application_1670932676563_1718255/</a>', 'text/html')
-            ])]);
+            } catch (err) {
+                execution.replaceOutput(
+                    new vscode.NotebookCellOutput([
+                        vscode.NotebookCellOutputItem.error({ 
+                            name: err instanceof Error && err.name || 'error', 
+                            message: err instanceof Error && err.message || JSON.stringify(err, undefined, 4)})
+                    ])
+                );
+            }
         }
 
         execution.end(true, Date.now());
@@ -140,5 +152,19 @@ export class ZeppelinKernel {
         //     logger(exception, req, parser);
         // }
         
+    }
+    
+    private _parseMsgToOutput(msg: ParagraphResultMsg) {
+        let outputItem: vscode.NotebookCellOutputItem;
+
+        switch (msg.type) {
+            case 'HTML':
+                outputItem = vscode.NotebookCellOutputItem.text(msg.data, 'text/html');
+            default:
+                outputItem = vscode.NotebookCellOutputItem.text(msg.data, 'text/plain');
+        }
+    
+
+        return outputItem;
     }
 }

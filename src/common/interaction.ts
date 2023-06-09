@@ -3,6 +3,8 @@ import { ExtensionContext, window } from 'vscode';
 import { NotebookService } from './api';
 
 
+// function that calls quick-input box
+// for users to provide Zeppelin server URL and display name
 export async function showInputURL() {
 	// get url from input box
 	const url = await window.showInputBox({
@@ -29,7 +31,7 @@ export async function showInputURL() {
 	}
 	logDebug(`received server name: ${label}`);
 
-	// create dict and save result
+	// create dict and return as result
 	const result = {
 		label: label || url,
 		url,
@@ -39,6 +41,9 @@ export async function showInputURL() {
 	return result;
 }
 
+
+// function that gives user a set of options to choose Zeppelin URLs,
+// URLs and the respective display names will be shared across workspaces.
 export async function showQuickPickURL(context: ExtensionContext) {
 	let urlHistory: { [key: string]: string }[] = context.globalState.get('urlHistory') ?? [];
 	let pickUrlItems = urlHistory.map(pair => ({ 
@@ -50,14 +55,19 @@ export async function showQuickPickURL(context: ExtensionContext) {
 	const quickPick = window.createQuickPick();
 	quickPick.placeholder = 'Pick How To Connect to Zeppelin';
 	quickPick.items = [
+
+		// option 1: None, ZeppelinKernel will become silent and notes won't run code in cell.
 		{
 			label: `$(close)None`,
 			detail: 'Do not connect to any remote Zeppelin server'
 		},
+		// option 2: Existing, this will prompt user to provide server URL and display name.
+		// if the URL provided exists in URL history 	
 		{
 			label: `$(server-environment)Existing`,
 			detail: 'Specify the URL of an existing server'
 		},
+		// option 3: choose from URL history.
 		...pickUrlItems
 	];
 	quickPick.onDidChangeSelection(async selection => {
@@ -111,17 +121,21 @@ export async function showQuickPickURL(context: ExtensionContext) {
 		}
 		quickPick.hide();
 
+		// save current URL to workspace.
 		context.workspaceState.update('currentZeppelinServerURL', pickedURL);
+		// save URL history across workspaces.
 		context.globalState.update('urlHistory', urlHistory);
 		context.globalState.setKeysForSync(['urlHistory']);
 	});
 
 	quickPick.onDidHide(() => quickPick.dispose());
+
 	logDebug("showing quick-pick URLs");
 	quickPick.show();
 }
 
 
+// function that prompts user to provide Zeppelin credentials
 export async function showQuickPickLogin(context: ExtensionContext) {
 	const username = await window.showInputBox({
 		title: '(1/2) Specify User Name to connect to Zeppelin server'
@@ -144,6 +158,9 @@ export async function showQuickPickLogin(context: ExtensionContext) {
 	return true;
 }
 
+
+// function that checks Zeppelin credential.
+// if credential exists, will call login API subsequently.
 export async function doLogin(
 	context: ExtensionContext,
 	service: NotebookService
