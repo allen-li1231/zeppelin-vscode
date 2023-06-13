@@ -2,6 +2,7 @@
 import * as vscode from 'vscode';
 import { NotebookService } from '../common/api';
 import { logDebug } from '../common/common';
+import { showQuickPickURL, doLogin } from '../common/interaction';
 import { ParagraphResult, ParagraphResultMsg} from '../common/dataStructure';
 
 
@@ -47,11 +48,37 @@ export class ZeppelinKernel {
 
     deactivate() {
         this._isActive = false;
-        return !this._isActive;
+        return this._isActive;
     }
 
     setService(service: NotebookService) {
         this._service = service;
+    }
+
+    async checkService(): Promise<boolean> {
+        if (this._isActive) {
+            return true;
+        }
+
+        let baseURL: string | undefined = this._context.workspaceState.get('currentZeppelinServerURL');
+        if (baseURL === undefined) {
+            showQuickPickURL(this._context);
+            // baseURL is supposed not to be null or undefined by now
+            baseURL = this._context.workspaceState.get('currentZeppelinServerURL');
+            if (!baseURL) {
+                return false;
+            }
+        }
+    
+        let service = new NotebookService(baseURL);
+        let isSuccess = await doLogin(this._context, service);
+        if (isSuccess) {
+            this.setService(service);
+            return this.activate();
+        }
+        else {
+            return this.deactivate();
+        }
     }
 
     private _executeAll(
@@ -65,6 +92,8 @@ export class ZeppelinKernel {
 	}
 
     private async _doExecution(cell: vscode.NotebookCell): Promise<void> {
+        await this.checkService();
+
         const execution = this._controller.createNotebookCellExecution(cell);
         execution.executionOrder = ++this._executionOrder;
 		execution.start(Date.now());

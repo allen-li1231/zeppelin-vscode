@@ -1,8 +1,7 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
-import { NotebookService } from '../common/api';
-import { showQuickPickURL, showQuickPickLogin, doLogin } from '../common/interaction';
+import { showQuickPickURL, showQuickPickLogin } from '../common/interaction';
 import { ZeppelinSerializer } from './notebookSerializer';
 import { ZeppelinKernel } from './notebookKernel';
 
@@ -32,25 +31,6 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 
 	let kernel = new ZeppelinKernel(context);
-	let baseURL: string | undefined = context.workspaceState.get('currentZeppelinServerURL');
-	if (baseURL === undefined) {
-		showQuickPickURL(context);
-		// baseURL is supposed not to be null or undefined by now
-		baseURL = context.workspaceState.get('currentZeppelinServerURL');
-		if (!baseURL) {
-			return undefined;
-		}
-	}
-
-	let service = new NotebookService(baseURL);
-	let isSuccess = await doLogin(context, service);
-	if (isSuccess) {
-		kernel.setService(service);
-		kernel.activate();
-	}
-	else {
-		kernel.deactivate();
-	}
 
 	context.subscriptions.push(kernel);
 }
