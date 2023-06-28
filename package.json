@@ -2,7 +2,7 @@
   "name": "vscode-zeppelin",
   "displayName": "vscode-zeppelin",
   "description": "Zeppelin Notebook Extension for VS Code",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "Allen Li",
   "author": {
     "name": "Allen Li"
