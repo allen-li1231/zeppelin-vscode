@@ -79,8 +79,7 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 					}
 		
 					try {
-						let outputData = JSON.parse(outputContents);
-						switch (outputData.mime)  {
+						switch (output.mime)  {
 							case 'text/plain': 
 								code = 'SUCCESS';
 								msgType = 'TEXT';
@@ -101,7 +100,7 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 								msgType = 'TEXT';
 						}
 						results.push({
-							data: outputData.data,
+							data: outputContents,
 							type: msgType
 						});
 					} catch(err) {
