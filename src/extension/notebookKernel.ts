@@ -69,6 +69,9 @@ export class ZeppelinKernel {
                 return false;
             }
         }
+        else if (baseURL === '') {
+            return false;
+        }
     
         let service = new NotebookService(baseURL);
         let isSuccess = await doLogin(this._context, service);
@@ -102,7 +105,7 @@ export class ZeppelinKernel {
             try {
                 let cancelTokenSource = this._service?.cancelTokenSource;
                 execution.token.onCancellationRequested(_ => cancelTokenSource?.cancel());
-                let res = await this._service?.runParagraph(cell.metadata.noteId, cell.metadata.id);
+                let res = await this._service?.runParagraph(cell.metadata.noteId, cell.metadata.id, true);
                 let cellOutput = res?.msg.map(this._parseMsgToOutput) ?? [];
     
                 execution.replaceOutput(new vscode.NotebookCellOutput(cellOutput));
