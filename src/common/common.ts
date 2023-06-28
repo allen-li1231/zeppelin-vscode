@@ -12,6 +12,7 @@ mapLanguageKind.set("sql", 2);
 
 export const reInterpreter = RegExp(/([\s\n]*%[\w\d\._]+)\s*\n+/);
 export const reURL = RegExp(/[-a-zA-Z0-9@:%._\+~#=]{1,256}\.?[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)?/gi);
+export const reCookies = RegExp(/^(JSESSIONID=((?!deleteMe).)*?);/s);
 
 
 export function formatURL(url: string): string {

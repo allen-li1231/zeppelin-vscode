@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 import { window } from 'vscode';
-import { logDebug, formatURL } from './common';
+import { logDebug, formatURL, reCookies } from './common';
 import { NoteData,
     ParagraphData,
     ParagraphConfig,
@@ -10,7 +10,8 @@ import axios, {
     AxiosInstance,
     AxiosRequestConfig,
     AxiosProxyConfig,
-    CancelTokenSource
+    CancelTokenSource,
+    AxiosError
 } from 'axios';
 
 
@@ -31,8 +32,6 @@ class BasicService {
         const config: AxiosRequestConfig = {
             baseURL: this.baseURL,
             timeout: 10000,
-            // eslint-disable-next-line @typescript-eslint/naming-convention
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             withCredentials: true,
             cancelToken: cancelTokenAxios.token,
             maxRedirects: 0,
@@ -43,11 +42,12 @@ class BasicService {
       if (proxy) {
         config.proxy = proxy;
       }
-      axios.defaults.withCredentials = true;
+
       this.session = axios.create(config);
       this.cancelTokenSource = cancelTokenAxios;
       this.config = config;
-  
+      this.session.defaults.headers.common["User-Agent"] = 'ZeppelinExtension/VSode';
+
       // create request session based on config
       this.session.interceptors.response.use(
             (response) => {
@@ -66,11 +66,26 @@ class BasicService {
         let res = await this.session.post(
             '/api/login',
             { userName: username, password: password },
-            { 
+            {
                 withCredentials: true,
-                headers: {'Content-Type': "application/x-www-form-urlencoded"}
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
             }
         );
+
+        // store cookies to default headers
+        if (res.headers['set-cookie']) {
+            for (let cookie of res.headers['set-cookie']) {
+                let group = reCookies.exec(cookie);
+                if (group) {
+                    this.session.defaults.headers.common['Cookie'] = group[1];
+                    this.session.defaults.headers.common['Content-Type'] = 'application/json';
+                    //break;
+                }
+            }
+        }
         return res;
     }
 }
@@ -269,7 +284,7 @@ export class NotebookService extends BasicService{
     }
 
     async runParagraph(noteId: string, paragraphId: string, sync: boolean = true, option?: any) {
-        let t = await this.listNotes();
+        // let t = await this.listNotes();
         let url;
         if (sync) {
             url = `/api/notebook/run/${noteId}/${paragraphId}`;
@@ -287,6 +302,10 @@ export class NotebookService extends BasicService{
         }
         else {
             res = await this.session.post(url);
+        }
+
+        if (res instanceof AxiosError) {
+            throw res;
         }
 
         return <ParagraphResult> res.data.body;

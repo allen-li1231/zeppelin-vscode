@@ -195,8 +195,6 @@ export class ZeppelinKernel {
             default:
                 outputItem = vscode.NotebookCellOutputItem.text(msg.data, 'text/plain');
         }
-    
-
         return outputItem;
     }
 }
