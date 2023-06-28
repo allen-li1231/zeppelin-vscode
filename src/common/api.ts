@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/naming-convention */
 import { window } from 'vscode';
 import { logDebug, formatURL } from './common';
 import { NoteData,
@@ -6,7 +7,6 @@ import { NoteData,
     ParagraphResult
 } from './dataStructure';
 import axios, {
-    AxiosError,
     AxiosInstance,
     AxiosRequestConfig,
     AxiosProxyConfig,
@@ -18,6 +18,7 @@ class BasicService {
     public baseURL: string;
     public session: AxiosInstance;
     public cancelTokenSource: CancelTokenSource;
+    public config: AxiosRequestConfig;
 
     constructor(
         baseURL: string,
@@ -28,67 +29,49 @@ class BasicService {
         const cancelTokenAxios = axios.CancelToken.source();
 
         const config: AxiosRequestConfig = {
-        baseURL: this.baseURL,
-        timeout: 10000,
-        // eslint-disable-next-line @typescript-eslint/naming-convention
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        withCredentials: true,
-        cancelToken: cancelTokenAxios.token,
-        responseType: 'json',
-        responseEncoding: 'utf8'
+            baseURL: this.baseURL,
+            timeout: 10000,
+            // eslint-disable-next-line @typescript-eslint/naming-convention
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            withCredentials: true,
+            cancelToken: cancelTokenAxios.token,
+            maxRedirects: 0,
+            responseType: 'json',
+            responseEncoding: 'utf8'
       };
 
       if (proxy) {
         config.proxy = proxy;
       }
-
+      axios.defaults.withCredentials = true;
       this.session = axios.create(config);
       this.cancelTokenSource = cancelTokenAxios;
+      this.config = config;
   
       // create request session based on config
       this.session.interceptors.response.use(
-        (response) => {
-            logDebug(response);
-            return response;
-        },
-        (error) => {
-            logDebug(error);
-            // instead of rejecting error, pass it to outer scope
-            return error;
-        }
-      );
+            (response) => {
+                logDebug(response);
+                return response;
+            },
+            (error) => {
+                logDebug(error);
+                // instead of rejecting error, pass it to outer scope
+                return error;
+            }
+        );
     }
 
     async login(username: string, password: string) {
         let res = await this.session.post(
             '/api/login',
-            { userName: username, password: password }
+            { userName: username, password: password },
+            { 
+                withCredentials: true,
+                headers: {'Content-Type': "application/x-www-form-urlencoded"}
+            }
         );
-
-        if (res instanceof AxiosError) {
-            if (!res.response) {
-                // local network issue
-                window.showErrorMessage(`${res.code}: ${res.message}`);
-            }
-            else if (res.response.status === 403) {
-                window.showErrorMessage('Wrong username or password');
-            }
-            // test if server has configured shiro for multi-users,
-            // server will respond 'UnavailableSecurityManagerException' if not.
-            else if (res.response.data.exception === 'UnavailableSecurityManagerException') {
-                window.showInformationMessage(`Zeppelin login API:
-                the remote server has no credential authorization manager configured.
-                Please contact server administrator if this is unexpected.`);
-                return true;
-            }
-            else {
-                // server-side error or client-side error
-                window.showErrorMessage(`${res.response.data.exception}: ${res.response.data.message}`);
-            }
-            return false;
-        }
-
-        return true;
+        return res;
     }
 }
 
@@ -286,6 +269,7 @@ export class NotebookService extends BasicService{
     }
 
     async runParagraph(noteId: string, paragraphId: string, sync: boolean = true, option?: any) {
+        let t = await this.listNotes();
         let url;
         if (sync) {
             url = `/api/notebook/run/${noteId}/${paragraphId}`;

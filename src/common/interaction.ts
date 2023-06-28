@@ -1,3 +1,4 @@
+import {AxiosError} from 'axios';
 import { reURL, logDebug } from './common';
 import { ExtensionContext, window } from 'vscode';
 import { NotebookService } from './api';
@@ -163,15 +164,16 @@ export async function showQuickPickLogin(context: ExtensionContext) {
 // if credential exists, will call login API subsequently.
 export async function doLogin(
 	context: ExtensionContext,
-	service: NotebookService
+	service: NotebookService,
+	retrying: boolean = false
 	): Promise<boolean> {
 
 	let username = await context.secrets.get('zeppelinUsername');
-	let isSuccess;
+	let res;
 	// prompt user to provide Zeppelin credential
 	// if he/she hasn't provided one under current workspace
 	// currently only store one credential for each workspace
-	if (username === undefined) {
+	if (username === undefined || retrying) {
 		// user name could be '' if remote server doesn't require credential to access to
 		let hasCredential = await showQuickPickLogin(context);
 		if (!hasCredential) {
@@ -181,13 +183,45 @@ export async function doLogin(
 		username = await context.secrets.get('zeppelinUsername');
 		let password = await context.secrets.get('zeppelinPassword') ?? '';
 
-		isSuccess = await service.login(username ?? '', password ?? '');
+		res = await service.login(username ?? '', password ?? '');
 	}
 	else {
 		// try to login using cached credential
 		let password = await context.secrets.get('zeppelinPassword') ?? '';
-		isSuccess = await service.login(username, password ?? '');
+		res = await service.login(username, password ?? '');
 	}
 
-	return isSuccess;
+	if (res instanceof AxiosError) {
+		if (!res.response) {
+			// local network issue
+			window.showErrorMessage(`${res.code}: ${res.message}`);
+		}
+		else if (res.response.status === 403) {
+			if (res.response.data.status === 'FORBIDDEN') {
+				// wrong username or password
+				const selection = await window.showErrorMessage('Wrong username or password', "Retype", "Cancel");
+				if ( selection === 'Retype' ) {
+					return await doLogin(context, service, true);
+				}
+			}
+			else {
+				window.showErrorMessage(res.response.data);
+			}
+		}
+		// test if server has configured shiro for multi-users,
+		// server will respond 'UnavailableSecurityManagerException' if not.
+		else if (res.response.data.exception === 'UnavailableSecurityManagerException') {
+			window.showInformationMessage(`Zeppelin login API:
+			the remote server has no credential authorization manager configured.
+			Please contact server administrator if this is unexpected.`);
+			return true;
+		}
+		else {
+			// server-side error or client-side error
+			window.showErrorMessage(`${res.response.data.exception}: ${res.response.data.message}`);
+		}
+		return false;
+	}
+
+	return true;
 }
