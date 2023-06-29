@@ -73,7 +73,7 @@ export class ZeppelinKernel {
             return false;
         }
     
-        let userAgent = `${NAME}-${getVersion(this._context)}/vscode-extension-${vscode.version}`;
+        let userAgent = `${NAME}/${getVersion(this._context)} vscode-extension/${vscode.version}`;
         let service = new NotebookService(baseURL, userAgent);
         let isSuccess = await doLogin(this._context, service);
         if (isSuccess) {
