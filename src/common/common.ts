@@ -1,3 +1,6 @@
+import { ExtensionContext } from "vscode";
+
+
 export const DEBUG_MODE = true;
 
 export const NAME = 'zeppelin-notebook';
@@ -15,13 +18,16 @@ export const reURL = RegExp(/[-a-zA-Z0-9@:%._\+~#=]{1,256}\.?[a-zA-Z0-9()]{1,6}\
 export const reCookies = RegExp(/^(JSESSIONID=((?!deleteMe).)*?);/s);
 
 
+export function getVersion(context: ExtensionContext) {
+    return context.extension.packageJSON.version;
+}
+
 export function formatURL(url: string): string {
     if(!url.startsWith('http')) {
         return `http://${url}`;
     } 
     return url;
 }
-
 
 export function logDebug(item: string | any, ...optionalParams: any[]) {
     if (DEBUG_MODE) {

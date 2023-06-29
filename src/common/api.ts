@@ -23,6 +23,7 @@ class BasicService {
 
     constructor(
         baseURL: string,
+        userAgent: string,
         proxy: AxiosProxyConfig | undefined = undefined
     ) {
         this.baseURL = formatURL(baseURL);
@@ -45,7 +46,8 @@ class BasicService {
       this.session = axios.create(config);
       this.cancelTokenSource = cancelTokenAxios;
       this.config = config;
-      this.session.defaults.headers.common["User-Agent"] = 'ZeppelinExtension/VSode';
+
+      this.session.defaults.headers.common["User-Agent"] = userAgent;
 
       // create request session based on config
       this.session.interceptors.response.use(
@@ -94,9 +96,10 @@ export class NotebookService extends BasicService{
 
     constructor(
         baseUrl: string,
-        proxy: AxiosProxyConfig | undefined = undefined
+        userAgent: string,
+        proxy: AxiosProxyConfig | undefined = undefined,
     ) {
-        super(baseUrl, proxy);
+        super(baseUrl, userAgent, proxy);
     }
 
     listNotes() {

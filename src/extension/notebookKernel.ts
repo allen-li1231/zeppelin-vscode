@@ -1,7 +1,7 @@
 // import { DEBUG_MODE, NAME, MIME_TYPE } from '../common/common';
 import * as vscode from 'vscode';
 import { NotebookService } from '../common/api';
-import { logDebug } from '../common/common';
+import { NAME, getVersion } from '../common/common';
 import { showQuickPickURL, doLogin } from '../common/interaction';
 import { ParagraphResult, ParagraphResultMsg} from '../common/dataStructure';
 
@@ -73,7 +73,8 @@ export class ZeppelinKernel {
             return false;
         }
     
-        let service = new NotebookService(baseURL);
+        let userAgent = `${NAME}-${getVersion(this._context)}/vscode-extension-${vscode.version}`;
+        let service = new NotebookService(baseURL, userAgent);
         let isSuccess = await doLogin(this._context, service);
         if (isSuccess) {
             this.setService(service);
