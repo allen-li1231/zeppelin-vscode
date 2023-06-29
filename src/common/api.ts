@@ -31,7 +31,6 @@ class BasicService {
 
         const config: AxiosRequestConfig = {
             baseURL: this.baseURL,
-            timeout: 10000,
             withCredentials: true,
             cancelToken: cancelTokenAxios.token,
             maxRedirects: 0,
