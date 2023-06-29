@@ -22,7 +22,9 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 			let lang: string = paragraph.config.editorSetting.language;
 			// default cell kind is markup language
 			let kind: number = mapLanguageKind.get(lang) ?? 1;
-			let text = paragraph.text;
+			// empty cell could have no text method, while NotebookCellData must have text value,
+			// thus we give it an empty string.
+			let text = paragraph.text ?? '';
 
 			let cell = new vscode.NotebookCellData(kind, text, lang);
 			// insert notebook id into metadata so we can get sufficient information to call api
