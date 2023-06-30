@@ -111,10 +111,7 @@ export class ZeppelinKernel {
             return false;
         }
 
-        res = await this._service?.updateParagraphConfig(cell.metadata.noteId, cell.metadata.id, config);
-        if (res instanceof AxiosError) {
-            return false;
-        }
+        this._service?.updateParagraphConfig(cell.metadata.noteId, cell.metadata.id, config);
 
         return true;
     }
@@ -152,68 +149,6 @@ export class ZeppelinKernel {
         }
 
         execution.end(true, Date.now());
-        // const logger = (d: any, r: any, requestParser: RequestParser) => {
-        //     try {
-        //         const response = new ResponseParser(d, r, requestParser);
-
-        //         execution.replaceOutput([new vscode.NotebookCellOutput([
-        //             // vscode.NotebookCellOutputItem.json(response.renderer(), MIME_TYPE),
-        //             vscode.NotebookCellOutputItem.json(response.json(), 'text/x-json'),
-        //             vscode.NotebookCellOutputItem.text(response.html(), 'text/html')
-        //         ])]);
-
-        //         execution.end(true, Date.now());
-        //     } catch (e) {
-        //         execution.replaceOutput([
-        //             new vscode.NotebookCellOutput([
-        //                 vscode.NotebookCellOutputItem.error({ 
-        //                     name: e instanceof Error && e.name || 'error', 
-        //                     message: e instanceof Error && e.message || JSON.stringify(e, undefined, 4)})
-        //             ])
-        //         ]);
-        //         execution.end(false, Date.now());
-        //     }
-        // };
-
-        // let req;
-        // let parser;
-        
-        // try {
-        //     parser = new RequestParser(cell.document.getText(), cell.document.eol);
-        //     req = parser.getRequest();
-
-        //     if(req === undefined) { 
-        //         execution.end(true, Date.now()); 
-        //         return;
-        //     }
-
-        // } catch (err) {
-        //     execution.replaceOutput([
-        //         new vscode.NotebookCellOutput([
-        //             vscode.NotebookCellOutputItem.error({ 
-        //                     name: err instanceof Error && err.name || 'error', 
-        //                     message: err instanceof Error && err.message || JSON.stringify(err, undefined, 4)})
-        //         ])
-        //     ]);
-        //     execution.end(false, Date.now());
-        //     return;
-        // }
-
-        // try {
-        //     const cancelTokenAxios = axios.CancelToken.source();
-
-        //     let options = {...req};
-        //     options['cancelToken'] = cancelTokenAxios.token;
-
-        //     execution.token.onCancellationRequested(_ => cancelTokenAxios.cancel());
-
-        //     let response = await axios(options);
-
-        //     logger(response, req, parser);
-        // } catch (exception) {
-        //     logger(exception, req, parser);
-        // }
-        
     }
     
     private _parseMsgToOutput(msg: ParagraphResultMsg) {
