@@ -27,10 +27,38 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 			let text = paragraph.text ?? '';
 
 			let cell = new vscode.NotebookCellData(kind, text, lang);
+			if (paragraph.results) {
+				let cellOutputs = parseParagraphResultToCellOutput(paragraph.results);
+				cell.outputs = [new vscode.NotebookCellOutput(cellOutputs)];
+			}
 			// insert notebook id into metadata so we can get sufficient information to call api
 			cell.metadata = <ParagraphWithNoteIdData> { noteId, ...paragraph };
 
 			return cell;
+		}
+
+		function parseParagraphResultToCellOutput(results: ParagraphResult) {
+			let mime: string;
+			let outputs: vscode.NotebookCellOutputItem[] = [];
+
+			let encoder = new TextEncoder();
+			for (let msg of results['msg']) {
+				if (msg['type'] === 'HTML') {
+					mime = 'text/html';
+				}
+				else if (results.code === 'ERROR') {
+					mime = 'application/vnd.code.notebook.error';
+				}
+				else {
+					mime = 'text/plain';	// application/vnd.code.notebook.stdout
+				}
+
+				outputs.push(
+					new vscode.NotebookCellOutputItem(encoder.encode(msg.data), mime)
+				);
+			}
+
+			return outputs;
 		}
 
 		var contents = new TextDecoder().decode(content);
@@ -82,9 +110,6 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 		
 					try {
 						switch (output.mime)  {
-							case 'text/plain': 
-								code = 'SUCCESS';
-								msgType = 'TEXT';
 							case 'text/plain': 
 								code = 'SUCCESS';
 								msgType = 'TEXT';
