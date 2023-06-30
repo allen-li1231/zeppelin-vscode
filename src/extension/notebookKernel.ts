@@ -4,6 +4,7 @@ import { NotebookService } from '../common/api';
 import { NAME, getVersion } from '../common/common';
 import { showQuickPickURL, doLogin } from '../common/interaction';
 import { ParagraphResult, ParagraphResultMsg} from '../common/dataStructure';
+import { AxiosError } from 'axios';
 
 
 export class ZeppelinKernel {
@@ -95,6 +96,29 @@ export class ZeppelinKernel {
 		}
 	}
 
+    public async syncParagraph(cell: vscode.NotebookCell) {
+        let text = cell.document.getText();
+        let config = {
+            "editorSetting": {
+                "language": cell.document.languageId,
+                "editOnDblClick": false,
+                "completionKey": "TAB",
+                "completionSupport": cell.kind !== 1
+            } };
+
+        let res = await this._service?.updateParagraphText(cell.metadata.noteId, cell.metadata.id, text);
+        if (res instanceof AxiosError) {
+            return false;
+        }
+
+        res = await this._service?.updateParagraphConfig(cell.metadata.noteId, cell.metadata.id, config);
+        if (res instanceof AxiosError) {
+            return false;
+        }
+
+        return true;
+    }
+
     private async _doExecution(cell: vscode.NotebookCell): Promise<void> {
         await this.checkService();
 
@@ -106,10 +130,15 @@ export class ZeppelinKernel {
             try {
                 let cancelTokenSource = this._service?.cancelTokenSource;
                 execution.token.onCancellationRequested(_ => cancelTokenSource?.cancel());
+
+                this.syncParagraph(cell);
                 let res = await this._service?.runParagraph(cell.metadata.noteId, cell.metadata.id, true);
-                let cellOutput = res?.msg.map(this._parseMsgToOutput) ?? [];
-    
+                let paragraphResult = <ParagraphResult> res?.data.body;
+
+                let cellOutput = paragraphResult?.msg.map(this._parseMsgToOutput) ?? [];
+        
                 execution.replaceOutput(new vscode.NotebookCellOutput(cellOutput));
+                cell.document.save();
 
             } catch (err) {
                 execution.replaceOutput(

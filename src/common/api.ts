@@ -310,7 +310,7 @@ export class NotebookService extends BasicService{
             throw res;
         }
 
-        return <ParagraphResult> res.data.body;
+        return res;
     }
 
     stopParagraph(noteId: string, paragraphId: string) {
