@@ -76,6 +76,10 @@ class BasicService {
             }
         );
 
+        if (res instanceof AxiosError) {
+            return res;
+        }
+
         // store cookies to default headers
         if (res.headers['set-cookie']) {
             for (let cookie of res.headers['set-cookie']) {
@@ -217,8 +221,8 @@ export class NotebookService extends BasicService{
     createParagraph(
         noteId: string,
         text: string,
-        title?: string,
         index: number = -1,
+        title?: string,
         config?: ParagraphConfig
         ) {
             let data: CreateParagraphData = { text: text, index: index };

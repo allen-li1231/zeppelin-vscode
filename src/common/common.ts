@@ -16,7 +16,7 @@ mapLanguageKind.set("sql", 2);
 export const reInterpreter = RegExp(/([\s\n]*%[\w\d\._]+)\s*\n+/);
 export const reURL = RegExp(/[-a-zA-Z0-9@:%._\+~#=]{1,256}\.?[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)?/gi);
 export const reCookies = RegExp(/^(JSESSIONID=((?!deleteMe).)*?);/s);
-
+export const reBase64= /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
 
 export function getVersion(context: ExtensionContext) {
     return context.extension.packageJSON.version;

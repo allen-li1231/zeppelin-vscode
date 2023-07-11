@@ -34,7 +34,6 @@
     "onLanguage:scala",
     "onLanguage:sql",
     "onLanguage:r",
-    "onLanguage:markdown",
     "onNotebook:zeppelin-notebook"
   ],
   "contributes": {
@@ -50,6 +49,42 @@
         ]
       }
     ],
+    "configuration": {
+      "title": "Zeppelin",
+      "properties": {
+        "zeppelin.autosave.throttleTime": {
+          "type": "integer",
+          "default": 5,
+          "description": "Set minimum save interval (in seconds) to local to Zeppelin server."
+        },
+        "zeppelin.proxy.host": {
+          "type": ["string", "null"],
+          "format": "uri",
+          "default": null,
+          "description": "Set proxy host for connection with Zeppelin server."
+        },
+        "zeppelin.proxy.port": {
+          "type": ["integer", "null"],
+          "default": null,
+          "description": "Set proxy port for connection with Zeppelin server."
+        },
+        "zeppelin.proxy.username": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "Specifies proxy authentication for connection with Zeppelin server."
+        },
+        "zeppelin.proxy.password": {
+          "type": ["", "null"],
+          "default": null,
+          "description": "Specifies proxy authentication for connection with Zeppelin server."
+        },
+        "zeppelin.proxy.protocol": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "Specifies the proxy protocol for connection with Zeppelin server."
+        }
+      }
+    },
     "commands": [
       {
         "command": "zeppelin-vscode.setZeppelinServerURL",

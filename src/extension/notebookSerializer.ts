@@ -1,11 +1,12 @@
 import * as vscode from 'vscode';
-import { logDebug, mapLanguageKind } from '../common/common';
+import { logDebug, mapLanguageKind, reBase64 } from '../common/common';
 import {
 	NoteData,
 	ParagraphData,
 	ParagraphResult,
 	ParagraphResultMsg
 } from '../common/dataStructure';
+import { ZeppelinKernel } from './notebookKernel';
 
 
 export class ZeppelinSerializer implements vscode.NotebookSerializer {
@@ -38,26 +39,66 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 		}
 
 		function parseParagraphResultToCellOutput(results: ParagraphResult) {
-			let mime: string;
 			let outputs: vscode.NotebookCellOutputItem[] = [];
 
 			let encoder = new TextEncoder();
+			let textOutput = '', htmlOutput = '', errorOutput = '';
+			let imageOutputs: Uint8Array[] = [];
 			for (let msg of results['msg']) {
 				if (msg['type'] === 'HTML') {
-					mime = 'text/html';
+					textOutput += msg.data;
+				}
+				else if (msg['type'] === 'IMG') {
+					let data = Uint8Array.from(atob(msg.data), c => c.charCodeAt(0));
+					imageOutputs.push(data);
 				}
 				else if (results.code === 'ERROR') {
-					mime = 'application/vnd.code.notebook.error';
+					errorOutput += msg.data;
 				}
 				else {
-					mime = 'text/plain';	// application/vnd.code.notebook.stdout
+					textOutput += msg.data;
 				}
-
-				outputs.push(
-					new vscode.NotebookCellOutputItem(encoder.encode(msg.data), mime)
-				);
 			}
 
+			if (textOutput.length > 0) {
+				outputs.push(
+					new vscode.NotebookCellOutputItem(
+						encoder.encode(textOutput),
+						'text/plain'
+					)
+				);
+			}
+			if (htmlOutput.length > 0) {
+				outputs.push(
+					new vscode.NotebookCellOutputItem(
+						encoder.encode(htmlOutput),
+						'text/html'
+					)
+				);
+			}
+			if (errorOutput.length > 0) {
+				outputs.push(
+					vscode.NotebookCellOutputItem.error({ 
+						name: 'error',
+						message: errorOutput})
+				);
+			}
+			if (imageOutputs.length > 0) {
+				let allArrayLength = imageOutputs.map((array) => array.length);
+				var mergedArray = new Uint8Array(
+					allArrayLength.reduce((partialSum, cur) => partialSum + cur)
+				);
+
+				let offset = 0;
+				imageOutputs.forEach(item => {
+					mergedArray.set(item, offset);
+					offset += item.length;
+				});
+				outputs.push(
+					new vscode.NotebookCellOutputItem(mergedArray, 'image/png')
+				);
+			
+			}
 			return outputs;
 		}
 
@@ -107,7 +148,7 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 						logDebug("error in decoding output data", err);
 						throw err;
 					}
-		
+
 					try {
 						switch (output.mime)  {
 							case 'text/plain': 
@@ -145,7 +186,18 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 			let { noteId, ...paragraph } = <ParagraphWithNoteIdData> cell.metadata;
 
 			paragraph.text = cell.value;
-			paragraph.config.editorSetting.language = cell.languageId;
+			if (paragraph.id !== undefined) {
+				paragraph.config.editorSetting.language = cell.languageId;
+			}
+			else {
+				paragraph.config = {
+					"editorSetting": {
+						"language": cell.languageId,
+						"editOnDblClick": false,
+						"completionKey": "TAB",
+						"completionSupport": cell.kind !== 1
+					} };
+			}
 
 			if (cell.outputs) {
 				paragraph.results = asRawParagraphResult(cell.outputs);

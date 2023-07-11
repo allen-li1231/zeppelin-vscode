@@ -26,14 +26,46 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(disposable);
 
-	context.subscriptions.push(
-		vscode.workspace.registerNotebookSerializer('zeppelin-notebook', new ZeppelinSerializer())
-	);
-
 	let kernel = new ZeppelinKernel(context);
 
 	context.subscriptions.push(kernel);
+
+	context.subscriptions.push(
+		vscode.workspace.registerNotebookSerializer(
+			'zeppelin-notebook', new ZeppelinSerializer())
+	);
+
+	vscode.workspace.onDidChangeNotebookDocument(event => {
+
+		if (!kernel.checkService() || kernel.isThrottling()) {
+			return;
+		}
+
+		// add or modify cell remote sync
+		for (let cellChange of event.cellChanges) {
+			if (cellChange.document !== undefined){
+				kernel.updateParagraph(cellChange.cell);
+			}
+		}
+
+		// remove paragraph remote sync
+		for (let contentChange of event.contentChanges) {
+			for (let cell of contentChange.removedCells) {
+				kernel.updateParagraph(cell);
+			}
+		}
+	});
+
+	vscode.workspace.onWillSaveNotebookDocument(async event => {
+
+		if (!kernel.checkService()) {
+			return;
+		}
+		for (let cell of event.notebook.getCells()) {
+			kernel.updateParagraph(cell);
+		}
+	});
 }
 
 // This method is called when your extension is deactivated
-export function deactivate() { }
+export function deactivate() {}
