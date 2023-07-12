@@ -1,12 +1,11 @@
 import * as vscode from 'vscode';
-import { logDebug, mapLanguageKind, reBase64 } from '../common/common';
+import { logDebug, mapLanguageKind } from '../common/common';
 import {
 	NoteData,
 	ParagraphData,
 	ParagraphResult,
 	ParagraphResultMsg
 } from '../common/dataStructure';
-import { ZeppelinKernel } from './notebookKernel';
 
 
 export class ZeppelinSerializer implements vscode.NotebookSerializer {
@@ -18,7 +17,6 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 
 		function parseParagraphToCellData(
 			paragraph: ParagraphData,
-			noteId?: string
 		): vscode.NotebookCellData {
 			let lang: string = paragraph.config.editorSetting.language;
 			// default cell kind is markup language
@@ -33,7 +31,7 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 				cell.outputs = [new vscode.NotebookCellOutput(cellOutputs)];
 			}
 			// insert notebook id into metadata so we can get sufficient information to call api
-			cell.metadata = <ParagraphWithNoteIdData> { noteId, ...paragraph };
+			cell.metadata = <ParagraphData> paragraph;
 
 			return cell;
 		}
@@ -97,7 +95,6 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 				outputs.push(
 					new vscode.NotebookCellOutputItem(mergedArray, 'image/png')
 				);
-			
 			}
 			return outputs;
 		}
@@ -117,7 +114,7 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 			throw err;
 		}
 
-		const cells = raw.paragraphs.map((p) => parseParagraphToCellData(p, raw?.id));
+		const cells = raw.paragraphs.map(parseParagraphToCellData);
 
 		let note = new vscode.NotebookData(cells);
 		note.metadata = raw;
@@ -130,60 +127,11 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 		_token: vscode.CancellationToken
 	): Promise<Uint8Array> {
 	// function to take output renderer data to a format to save to the file
-		
-		function asRawParagraphResult(
-			cellOutputs: vscode.NotebookCellOutput[]
-		): ParagraphResult {
-
-			let results: ParagraphResultMsg[] = [];
-			let code = 'READY';
-			let msgType = 'TEXT';
-			for (let cellOutput of cellOutputs){
-				for (let output of cellOutput.items ?? []) {
-					let outputContents = '';
-					try {
-						outputContents = new TextDecoder().decode(output.data);
-					} catch(err) {
-						// pass
-						logDebug("error in decoding output data", err);
-						throw err;
-					}
-
-					try {
-						switch (output.mime)  {
-							case 'text/plain': 
-								code = 'SUCCESS';
-								msgType = 'TEXT';
-							case 'text/html': 
-								code = 'SUCCESS';
-								msgType = 'HTML';
-							case 'application/vnd.code.notebook.stdout': 
-								code = 'SUCCESS';
-								msgType = 'TEXT';
-							case 'application/vnd.code.notebook.error': 
-								code = 'ERROR';
-								msgType = 'TEXT';
-							default:
-								code = 'SUCCESS';
-								msgType = 'TEXT';
-						}
-						results.push({
-							data: outputContents,
-							type: msgType
-						});
-					} catch(err) {
-						logDebug("error in parsing output countents to JSON", err);
-						throw err;
-					}
-				}
-			}
-			return { code: code, msg: results };
-		}
 
 		function asRawParagraph(
 			cell: vscode.NotebookCellData
 		): ParagraphData {
-			let { noteId, ...paragraph } = <ParagraphWithNoteIdData> cell.metadata;
+			let paragraph = <ParagraphData> cell.metadata;
 
 			paragraph.text = cell.value;
 			if (paragraph.id !== undefined) {
@@ -199,9 +147,7 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 					} };
 			}
 
-			if (cell.outputs) {
-				paragraph.results = asRawParagraphResult(cell.outputs);
-			}
+			paragraph.results = cell.metadata?.results;
 			return paragraph;
 		}
 
@@ -228,8 +174,4 @@ declare class TextDecoder {
 
 declare class TextEncoder {
 	encode(data: string): Uint8Array;
-}
-
-export interface ParagraphWithNoteIdData extends ParagraphData {
-    noteId: string
 }

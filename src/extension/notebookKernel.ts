@@ -16,10 +16,11 @@ export class ZeppelinKernel {
     private _context: vscode.ExtensionContext;
     private _service?: NotebookService;
     private readonly _controller: vscode.NotebookController;
+    private _queueEdits = new Map<vscode.NotebookCell, vscode.NotebookEdit[]>();
 	private _executionOrder = 0;
     private _isActive = false;
 
-    private _lastExecute = Date.now();
+    private _lastUpdate = Date.now();
 
 	constructor(context: vscode.ExtensionContext, service?: NotebookService) {
         // if (isInteractive) {
@@ -65,7 +66,7 @@ export class ZeppelinKernel {
     isThrottling() {
 		let config = vscode.workspace.getConfiguration();
         let throttleTime: number = config.get('zeppelin.autosave.throttleTime', 5);
-        return throttleTime >= (Date.now() - this._lastExecute) / 1000;
+        return throttleTime >= (Date.now() - this._lastUpdate) / 1000;
     }
 
     getServiceProxy() {
@@ -120,26 +121,83 @@ export class ZeppelinKernel {
         }
     }
 
-    public async updateCellMetadata(cell: vscode.NotebookCell, metadata: { [key: string]: any }) {
+    public async updateCellMetadata(
+        cell: vscode.NotebookCell,
+        metadata: { [key: string]: any }
+    ) {
         const editor = new vscode.WorkspaceEdit();
         let edit = vscode.NotebookEdit.updateCellMetadata(
             cell.index,
-            metadata
+            Object.assign({}, cell.metadata, metadata)
         );
         editor.set(cell.document.uri, [edit]);
         
         return vscode.workspace.applyEdit(editor);
     }
 
+    public async queueUpdateCellMetadata(
+        cell: vscode.NotebookCell,
+        metadata: { [key: string]: any }
+    ) {
+        let edit = vscode.NotebookEdit.updateCellMetadata(
+            cell.index,
+            metadata
+        );
+        if (this._queueEdits.has(cell)) {
+            this._queueEdits.get(cell)?.push(edit);
+        }
+        else {
+            this._queueEdits.set(cell, [edit]);
+        }
+    }
+
+    public applyQueueEdits() {
+        for (let [cell, edits] of this._queueEdits) {
+            const editor = new vscode.WorkspaceEdit();
+            editor.set(cell.document.uri, edits);
+            vscode.workspace.applyEdit(editor);
+        }
+        this._queueEdits.clear();
+    }
+
     public async updateParagraphText(cell: vscode.NotebookCell) {
         let text = cell.document.getText();
-        return this._service?.updateParagraphText(cell.metadata.noteId, cell.metadata.id, text);
+        let res = await this._service?.updateParagraphText(
+            cell.notebook.metadata.id, cell.metadata.id, text
+        );
+        if (res instanceof AxiosError) {
+            throw res;
+        }
+
+        await this.updateCellMetadata(cell, res?.data.body);
+    }
+
+    public async updateParagraphConfig(cell: vscode.NotebookCell) {
+        let config = {
+            "editorSetting": {
+                "language": cell.document.languageId,
+                "editOnDblClick": false,
+                "completionKey": "TAB",
+                "completionSupport": cell.kind !== 1
+            } };
+    
+        let res = await this._service?.updateParagraphConfig(
+            cell.notebook.metadata.id, cell.metadata.id, config
+        );
+        if (res instanceof AxiosError) {
+            throw res;
+        }
+
+        await this.updateCellMetadata(cell, res?.data.body);
     }
 
     public async updateParagraph(cell: vscode.NotebookCell) {
+        this._lastUpdate = Date.now();
         // cell deleted
         if (cell.index === -1) {
-            this._service?.deleteParagraph(cell.metadata.noteId, cell.metadata.paragraphId);
+            this._service?.deleteParagraph(
+                cell.notebook.metadata.id, cell.metadata.paragraphId
+            );
             return;
         }
 
@@ -152,7 +210,7 @@ export class ZeppelinKernel {
                 "completionSupport": cell.kind !== 1
             } };
 
-        // sync paragraph when cell is newly created
+        // create paragraph when cell is newly created
         if (cell.metadata.id === undefined) {
             let res = await this._service?.createParagraph(
                 cell.notebook.metadata.id, text, cell.index, '', config);
@@ -163,21 +221,27 @@ export class ZeppelinKernel {
             await this.updateCellMetadata(
                 cell,
                 {
-                    noteId: cell.notebook.metadata.id,
                     id: res?.data.body,
                     config
                 }
             );
         }
         else {
-            await this._service?.updateParagraphConfig(
-                cell.metadata.noteId, cell.metadata.id, config
-            );
-            await this._service?.updateParagraphText(
-                cell.metadata.noteId, cell.metadata.id, text
-            );
+            await this.updateParagraphConfig(cell);
+            await this.updateParagraphText(cell);
         }
-        this._lastExecute = Date.now();
+    }
+
+    private async _executeCell(cell: vscode.NotebookCell) {
+        let res = await this._service?.runParagraph(
+            cell.notebook.metadata.id, cell.metadata.id, true
+        );
+        let paragraphResult = <ParagraphResult> res?.data.body;
+
+        let cellOutput = paragraphResult?.msg.map(this._parseMsgToOutput) ?? [];
+        await this.updateCellMetadata(cell, {results: paragraphResult});
+
+        return cellOutput;
     }
 
     private _executeAll(
@@ -203,11 +267,9 @@ export class ZeppelinKernel {
                 execution.token.onCancellationRequested(_ => cancelTokenSource?.cancel());
 
                 await this.updateParagraph(cell);
-                let res = await this._service?.runParagraph(cell.metadata.noteId, cell.metadata.id, true);
-                let paragraphResult = <ParagraphResult> res?.data.body;
 
-                let cellOutput = paragraphResult?.msg.map(this._parseMsgToOutput) ?? [];
-        
+                let cellOutput = await this._executeCell(cell);
+
                 execution.replaceOutput(new vscode.NotebookCellOutput(cellOutput));
                 execution.end(true, Date.now());
 

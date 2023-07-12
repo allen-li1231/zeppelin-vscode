@@ -55,16 +55,6 @@ export async function activate(context: vscode.ExtensionContext) {
 			}
 		}
 	});
-
-	vscode.workspace.onWillSaveNotebookDocument(async event => {
-
-		if (!kernel.checkService()) {
-			return;
-		}
-		for (let cell of event.notebook.getCells()) {
-			kernel.updateParagraph(cell);
-		}
-	});
 }
 
 // This method is called when your extension is deactivated
