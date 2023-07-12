@@ -36,22 +36,21 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 
 	vscode.workspace.onDidChangeNotebookDocument(event => {
-
-		if (!kernel.checkService() || kernel.isThrottling()) {
+		if (!kernel.checkService()) {
 			return;
 		}
 
-		// add or modify cell remote sync
+		// add or modify paragraph on remote
 		for (let cellChange of event.cellChanges) {
-			if (cellChange.document !== undefined){
-				kernel.updateParagraph(cellChange.cell);
+			if (cellChange.document !== undefined) {
+				kernel.registerParagraphUpdate(cellChange.cell);
 			}
 		}
 
-		// remove paragraph remote sync
+		// remove paragraph on remote
 		for (let contentChange of event.contentChanges) {
 			for (let cell of contentChange.removedCells) {
-				kernel.updateParagraph(cell);
+				kernel.registerParagraphUpdate(cell);
 			}
 		}
 	});

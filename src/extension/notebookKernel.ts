@@ -1,10 +1,11 @@
 // import { DEBUG_MODE, NAME, MIME_TYPE } from '../common/common';
 import * as vscode from 'vscode';
-import { NotebookService } from '../common/api';
-import { NAME, getVersion } from '../common/common';
-import { showQuickPickURL, doLogin } from '../common/interaction';
-import { ParagraphResult, ParagraphResultMsg} from '../common/dataStructure';
 import { AxiosError, AxiosProxyConfig } from 'axios';
+import { NotebookService } from '../common/api';
+import { EXTENSION_NAME, getVersion, logDebug } from '../common/common';
+import { ParagraphResult} from '../common/dataStructure';
+import { showQuickPickURL, doLogin } from '../common/interaction';
+import { parseParagraphResultToCellOutput } from '../common/parser';
 
 
 export class ZeppelinKernel {
@@ -16,11 +17,12 @@ export class ZeppelinKernel {
     private _context: vscode.ExtensionContext;
     private _service?: NotebookService;
     private readonly _controller: vscode.NotebookController;
-    private _queueEdits = new Map<vscode.NotebookCell, vscode.NotebookEdit[]>();
+    private _pollNotebookEdits = new Map<vscode.NotebookCell, vscode.NotebookEdit[]>();
 	private _executionOrder = 0;
     private _isActive = false;
 
-    private _lastUpdate = Date.now();
+    private _intervalUpdateCell?: NodeJS.Timer;
+    private _pollUpdateParagraphs = new Map<vscode.NotebookCell, number>();
 
 	constructor(context: vscode.ExtensionContext, service?: NotebookService) {
         // if (isInteractive) {
@@ -47,10 +49,23 @@ export class ZeppelinKernel {
 
     activate() {
         this._isActive = !!this._service && !!this._service.baseURL;
+
+        if (this._isActive && this._intervalUpdateCell === undefined) {
+            let config = vscode.workspace.getConfiguration();
+            let poolingInterval = config.get('zeppelin.autosave.poolingInterval', 1);
+
+            this._intervalUpdateCell = setInterval(
+                this._doUpdatePollingCells.bind(this), poolingInterval * 1000
+            );
+        }
         return this._isActive;
     }
 
     deactivate() {
+        if (this._intervalUpdateCell !== undefined) {
+            clearInterval(this._intervalUpdateCell);
+            this._intervalUpdateCell = undefined;
+        }
         this._isActive = false;
         return this._isActive;
     }
@@ -61,12 +76,6 @@ export class ZeppelinKernel {
 
     setService(service: NotebookService) {
         this._service = service;
-    }
-
-    isThrottling() {
-		let config = vscode.workspace.getConfiguration();
-        let throttleTime: number = config.get('zeppelin.autosave.throttleTime', 5);
-        return throttleTime >= (Date.now() - this._lastUpdate) / 1000;
     }
 
     getServiceProxy() {
@@ -88,12 +97,13 @@ export class ZeppelinKernel {
         return proxy;
     }
 
-    async checkService(): Promise<boolean> {
+    public async checkService(): Promise<boolean> {
         if (this._isActive) {
             return true;
         }
 
-        let baseURL: string | undefined = this._context.workspaceState.get('currentZeppelinServerURL');
+        let baseURL: string | undefined = 
+            this._context.workspaceState.get('currentZeppelinServerURL');
         if (baseURL === undefined) {
             showQuickPickURL(this._context);
             // baseURL is supposed not to be null or undefined by now
@@ -106,7 +116,7 @@ export class ZeppelinKernel {
             return false;
         }
     
-        let userAgent = `${NAME}/${getVersion(this._context)} vscode-extension/${vscode.version}`;
+        let userAgent = `${EXTENSION_NAME}/${getVersion(this._context)} vscode-extension/${vscode.version}`;
 
         let proxy = this.getServiceProxy();
         let service = new NotebookService(baseURL, userAgent, proxy);
@@ -118,6 +128,23 @@ export class ZeppelinKernel {
         }
         else {
             return this.deactivate();
+        }
+    }
+
+    public registerParagraphUpdate(cell: vscode.NotebookCell) {
+        if (!this._pollUpdateParagraphs.has(cell)) {
+            this._pollUpdateParagraphs.set(cell, Date.now());
+        }
+    }
+
+    private _doUpdatePollingCells() {
+        let config = vscode.workspace.getConfiguration();
+        let throttleTime: number = config.get('zeppelin.autosave.throttleTime', 5);
+
+        for (let [cell, requestTime] of this._pollUpdateParagraphs) {
+            if (throttleTime < (Date.now() - requestTime) / 1000.) {
+                this.updateParagraph(cell);
+            }
         }
     }
 
@@ -135,7 +162,7 @@ export class ZeppelinKernel {
         return vscode.workspace.applyEdit(editor);
     }
 
-    public async queueUpdateCellMetadata(
+    public async pollUpdateCellMetadata(
         cell: vscode.NotebookCell,
         metadata: { [key: string]: any }
     ) {
@@ -143,21 +170,21 @@ export class ZeppelinKernel {
             cell.index,
             metadata
         );
-        if (this._queueEdits.has(cell)) {
-            this._queueEdits.get(cell)?.push(edit);
+        if (this._pollNotebookEdits.has(cell)) {
+            this._pollNotebookEdits.get(cell)?.push(edit);
         }
         else {
-            this._queueEdits.set(cell, [edit]);
+            this._pollNotebookEdits.set(cell, [edit]);
         }
     }
 
-    public applyQueueEdits() {
-        for (let [cell, edits] of this._queueEdits) {
+    public applyPolledNotebookEdits() {
+        for (let [cell, edits] of this._pollNotebookEdits) {
             const editor = new vscode.WorkspaceEdit();
             editor.set(cell.document.uri, edits);
             vscode.workspace.applyEdit(editor);
         }
-        this._queueEdits.clear();
+        this._pollNotebookEdits.clear();
     }
 
     public async updateParagraphText(cell: vscode.NotebookCell) {
@@ -192,43 +219,56 @@ export class ZeppelinKernel {
     }
 
     public async updateParagraph(cell: vscode.NotebookCell) {
-        this._lastUpdate = Date.now();
-        // cell deleted
-        if (cell.index === -1) {
-            this._service?.deleteParagraph(
-                cell.notebook.metadata.id, cell.metadata.paragraphId
-            );
-            return;
-        }
-
-        let text = cell.document.getText();
-        let config = {
-            "editorSetting": {
-                "language": cell.document.languageId,
-                "editOnDblClick": false,
-                "completionKey": "TAB",
-                "completionSupport": cell.kind !== 1
-            } };
-
-        // create paragraph when cell is newly created
-        if (cell.metadata.id === undefined) {
-            let res = await this._service?.createParagraph(
-                cell.notebook.metadata.id, text, cell.index, '', config);
-            if (res instanceof AxiosError) {
-                throw res;
+        try {
+            // index = -1: cell has been deleted from notebook
+            if (cell.index === -1) {
+                this._service?.deleteParagraph(
+                    cell.notebook.metadata.id, cell.metadata.id
+                );
+                this._pollUpdateParagraphs.delete(cell);
+                return;
             }
 
-            await this.updateCellMetadata(
-                cell,
-                {
-                    id: res?.data.body,
-                    config
+            let text = cell.document.getText();
+            let config = {
+                "editorSetting": {
+                    "language": cell.document.languageId,
+                    "editOnDblClick": false,
+                    "completionKey": "TAB",
+                    "completionSupport": cell.kind !== 1
+                } };
+
+            // create paragraph when cell is newly created
+            if (cell.metadata.id === undefined) {
+                let res = await this._service?.createParagraph(
+                    cell.notebook.metadata.id, text, cell.index, '', config);
+                if (res instanceof AxiosError) {
+                    throw res;
                 }
-            );
+
+                await this.updateCellMetadata(
+                    cell,
+                    {
+                        id: res?.data.body,
+                        config
+                    }
+                );
+            }
+            else {
+                await this.updateParagraphConfig(cell);
+                await this.updateParagraphText(cell);
+            }
+        } catch (err) {
+            logDebug("error in updateParagraph", err);
         }
-        else {
-            await this.updateParagraphConfig(cell);
-            await this.updateParagraphText(cell);
+
+        // unregister cell from poll, as the update is either finished or failed
+        this._pollUpdateParagraphs.delete(cell);
+
+        if (cell.kind <= 1) {
+            // need to call remote execution for markup paragraph languages
+            // so remote notebook paragraph result could be generated
+            this._executeCell(cell);
         }
     }
 
@@ -238,7 +278,7 @@ export class ZeppelinKernel {
         );
         let paragraphResult = <ParagraphResult> res?.data.body;
 
-        let cellOutput = paragraphResult?.msg.map(this._parseMsgToOutput) ?? [];
+        let cellOutput = parseParagraphResultToCellOutput(paragraphResult);
         await this.updateCellMetadata(cell, {results: paragraphResult});
 
         return cellOutput;
@@ -269,7 +309,6 @@ export class ZeppelinKernel {
                 await this.updateParagraph(cell);
 
                 let cellOutput = await this._executeCell(cell);
-
                 execution.replaceOutput(new vscode.NotebookCellOutput(cellOutput));
                 execution.end(true, Date.now());
 
@@ -284,17 +323,5 @@ export class ZeppelinKernel {
                 execution.end(false, Date.now());
             }
         }
-    }
-    
-    private _parseMsgToOutput(msg: ParagraphResultMsg) {
-        let outputItem: vscode.NotebookCellOutputItem;
-
-        switch (msg.type) {
-            case 'HTML':
-                outputItem = vscode.NotebookCellOutputItem.text(msg.data, 'text/html');
-            default:
-                outputItem = vscode.NotebookCellOutputItem.text(msg.data, 'text/plain');
-        }
-        return outputItem;
     }
 }

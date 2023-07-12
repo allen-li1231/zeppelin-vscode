@@ -3,7 +3,7 @@ import { ExtensionContext } from "vscode";
 
 export const DEBUG_MODE = true;
 
-export const NAME = 'zeppelin-notebook';
+export const EXTENSION_NAME = 'zeppelin-notebook';
 // export const MIME_TYPE = 'x-application/zeppelin-notebook';
 
 export const mapLanguageKind = new Map<string, number>();

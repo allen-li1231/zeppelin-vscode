@@ -55,7 +55,12 @@
         "zeppelin.autosave.throttleTime": {
           "type": "integer",
           "default": 5,
-          "description": "Set minimum save interval (in seconds) to local to Zeppelin server."
+          "description": "Set minimum cell saving interval (in seconds) to Zeppelin server."
+        },
+        "zeppelin.autosave.poolingInterval": {
+          "type": "integer",
+          "default": 1,
+          "description": "Set minimum save interval (in seconds) to Zeppelin server."
         },
         "zeppelin.proxy.host": {
           "type": ["string", "null"],
@@ -74,7 +79,7 @@
           "description": "Specifies proxy authentication for connection with Zeppelin server."
         },
         "zeppelin.proxy.password": {
-          "type": ["", "null"],
+          "type": ["string", "null"],
           "default": null,
           "description": "Specifies proxy authentication for connection with Zeppelin server."
         },
