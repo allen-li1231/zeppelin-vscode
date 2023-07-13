@@ -52,14 +52,6 @@ export function parseParagraphResultToCellOutput(
         }
     }
 
-    if (textOutput.length > 0) {
-        outputs.push(
-            new vscode.NotebookCellOutputItem(
-                encoder.encode(textOutput),
-                'text/plain'
-            )
-        );
-    }
     if (htmlOutput.length > 0) {
         outputs.push(
             new vscode.NotebookCellOutputItem(
@@ -68,13 +60,15 @@ export function parseParagraphResultToCellOutput(
             )
         );
     }
+
     if (errorOutput.length > 0) {
         outputs.push(
             vscode.NotebookCellOutputItem.error({ 
-                name: 'error',
+                name: 'ERROR',
                 message: errorOutput})
         );
     }
+
     if (imageOutputs.length > 0) {
         let allArrayLength = imageOutputs.map((array) => array.length);
         var mergedArray = new Uint8Array(
@@ -90,6 +84,16 @@ export function parseParagraphResultToCellOutput(
             new vscode.NotebookCellOutputItem(mergedArray, 'image/png')
         );
     }
+
+    if (textOutput.length > 0) {
+        outputs.push(
+            new vscode.NotebookCellOutputItem(
+                encoder.encode(textOutput),
+                'text/plain'
+            )
+        );
+    }
+
     return outputs;
 }
 
