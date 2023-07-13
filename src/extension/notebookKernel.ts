@@ -51,23 +51,30 @@ export class ZeppelinKernel {
         this._isActive = !!this._service && !!this._service.baseURL;
 
         if (this._isActive && this._intervalUpdateCell === undefined) {
-            let config = vscode.workspace.getConfiguration();
+            let config = vscode.workspace.getConfiguration('Zeppelin');
             let poolingInterval = config.get('zeppelin.autosave.poolingInterval', 1);
 
             this._intervalUpdateCell = setInterval(
                 this._doUpdatePollingCells.bind(this), poolingInterval * 1000
             );
         }
-        return this._isActive;
+        return this.isActive();
     }
 
     deactivate() {
+        if (!this.isActive()) {
+            return false;
+        }
+
         if (this._intervalUpdateCell !== undefined) {
+            // run registered update paragraph task immediately
+            // and unregister it after completed
             clearInterval(this._intervalUpdateCell);
+            this.instantUpdatePollingCells();
             this._intervalUpdateCell = undefined;
         }
         this._isActive = false;
-        return this._isActive;
+        return this.isActive();
     }
 
     isActive() {
@@ -98,7 +105,7 @@ export class ZeppelinKernel {
     }
 
     public async checkService(): Promise<boolean> {
-        if (this._isActive) {
+        if (this.isActive()) {
             return true;
         }
 
@@ -137,12 +144,18 @@ export class ZeppelinKernel {
         }
     }
 
+    public instantUpdatePollingCells() {
+        for (let cell of this._pollUpdateParagraphs.keys()) {
+            this.updateParagraph(cell);
+        }
+    }
+
     private _doUpdatePollingCells() {
         let config = vscode.workspace.getConfiguration();
         let throttleTime: number = config.get('zeppelin.autosave.throttleTime', 5);
 
         for (let [cell, requestTime] of this._pollUpdateParagraphs) {
-            if (throttleTime < (Date.now() - requestTime) / 1000.) {
+            if (throttleTime * 1000 < Date.now() - requestTime) {
                 this.updateParagraph(cell);
             }
         }
@@ -262,12 +275,13 @@ export class ZeppelinKernel {
             logDebug("error in updateParagraph", err);
         }
 
-        // unregister cell from poll, as the update is either finished or failed
+        // unregister cell from poll, as the update is either finished or failed now
         this._pollUpdateParagraphs.delete(cell);
 
         if (cell.kind <= 1) {
             // need to call remote execution for markup paragraph languages
             // so remote notebook paragraph result could be generated
+            // as markup languages are rendered locally
             this._executeCell(cell);
         }
     }

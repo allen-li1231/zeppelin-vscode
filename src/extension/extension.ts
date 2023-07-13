@@ -14,28 +14,25 @@ export async function activate(context: vscode.ExtensionContext) {
 	// The commandId parameter must match the command field in package.json
 	let disposable = vscode.commands.registerCommand(
 		'zeppelin-vscode.setZeppelinServerURL',
-		_ => ( showQuickPickURL(context) )
+		showQuickPickURL, context
 	);
-
 	context.subscriptions.push(disposable);
 
 	disposable = vscode.commands.registerCommand(
 		'zeppelin-vscode.setZeppelinCredential',
-		_ => ( showQuickPickLogin(context) )
+		showQuickPickLogin, context
 	);
-
 	context.subscriptions.push(disposable);
 
 	let kernel = new ZeppelinKernel(context);
-
 	context.subscriptions.push(kernel);
 
-	context.subscriptions.push(
-		vscode.workspace.registerNotebookSerializer(
-			'zeppelin-notebook', new ZeppelinSerializer())
+	disposable = vscode.workspace.registerNotebookSerializer(
+		'zeppelin-notebook', new ZeppelinSerializer()
 	);
+	context.subscriptions.push(disposable);
 
-	vscode.workspace.onDidChangeNotebookDocument(event => {
+	disposable = vscode.workspace.onDidChangeNotebookDocument(event => {
 		if (!kernel.checkService()) {
 			return;
 		}
@@ -54,6 +51,12 @@ export async function activate(context: vscode.ExtensionContext) {
 			}
 		}
 	});
+	context.subscriptions.push(disposable);
+
+	disposable = vscode.workspace.onWillSaveNotebookDocument(_ =>{
+		kernel.instantUpdatePollingCells();
+	});
+	context.subscriptions.push(disposable);
 }
 
 // This method is called when your extension is deactivated
