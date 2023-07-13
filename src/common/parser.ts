@@ -38,7 +38,7 @@ export function parseParagraphResultToCellOutput(
     let imageOutputs: Uint8Array[] = [];
     for (let msg of results['msg']) {
         if (msg['type'] === 'HTML') {
-            textOutput += msg.data;
+            htmlOutput += msg.data;
         }
         else if (msg['type'] === 'IMG') {
             let data = Uint8Array.from(atob(msg.data), c => c.charCodeAt(0));
