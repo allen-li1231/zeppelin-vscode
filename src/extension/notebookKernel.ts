@@ -2,7 +2,11 @@
 import * as vscode from 'vscode';
 import { AxiosError, AxiosProxyConfig } from 'axios';
 import { NotebookService } from '../common/api';
-import { EXTENSION_NAME, getVersion, logDebug } from '../common/common';
+import { EXTENSION_NAME,
+    getVersion,
+    logDebug,
+    getProxy
+} from '../common/common';
 import { ParagraphResult} from '../common/dataStructure';
 import { showQuickPickURL, doLogin } from '../common/interaction';
 import { parseParagraphResultToCellOutput } from '../common/parser';
@@ -44,6 +48,7 @@ export class ZeppelinKernel {
 	}
 
 	dispose(): void {
+        this.deactivate();
 		this._controller.dispose();
 	}
 
@@ -55,7 +60,7 @@ export class ZeppelinKernel {
             let poolingInterval = config.get('zeppelin.autosave.poolingInterval', 1);
 
             this._intervalUpdateCell = setInterval(
-                this._doUpdatePollingCells.bind(this), poolingInterval * 1000
+                this._doUpdatePollingParagraphs.bind(this), poolingInterval * 1000
             );
         }
         return this.isActive();
@@ -70,7 +75,7 @@ export class ZeppelinKernel {
             // run registered update paragraph task immediately
             // and unregister it after completed
             clearInterval(this._intervalUpdateCell);
-            this.instantUpdatePollingCells();
+            this.instantUpdatePollingParagraphs();
             this._intervalUpdateCell = undefined;
         }
         this._isActive = false;
@@ -85,26 +90,7 @@ export class ZeppelinKernel {
         this._service = service;
     }
 
-    getServiceProxy() {
-        let proxy: AxiosProxyConfig | undefined = undefined;
-
-        let config = vscode.workspace.getConfiguration('vscode-zeppelin');
-        if (!!config.get('zeppelin.proxy.host') && !!config.get('zeppelin.proxy.port')) {
-            proxy = {
-                host: config.get('zeppelin.proxy.host', ''),
-                port: config.get('zeppelin.proxy.port', 0),
-            };
-            if (!!config.get('zeppelin.proxy.username')) {
-                proxy["auth"] = {
-                    username: config.get('zeppelin.proxy.username', ''),
-                    password: config.get('zeppelin.proxy.password', '')
-                };
-            }
-        }
-        return proxy;
-    }
-
-    public async checkService(): Promise<boolean> {
+    public async checkInService(): Promise<boolean> {
         if (this.isActive()) {
             return true;
         }
@@ -125,8 +111,7 @@ export class ZeppelinKernel {
     
         let userAgent = `${EXTENSION_NAME}/${getVersion(this._context)} vscode-extension/${vscode.version}`;
 
-        let proxy = this.getServiceProxy();
-        let service = new NotebookService(baseURL, userAgent, proxy);
+        let service = new NotebookService(baseURL, userAgent, getProxy());
 
         let isSuccess = await doLogin(this._context, service);
         if (isSuccess) {
@@ -144,13 +129,13 @@ export class ZeppelinKernel {
         }
     }
 
-    public instantUpdatePollingCells() {
+    public instantUpdatePollingParagraphs() {
         for (let cell of this._pollUpdateParagraphs.keys()) {
             this.updateParagraph(cell);
         }
     }
 
-    private _doUpdatePollingCells() {
+    private _doUpdatePollingParagraphs() {
         let config = vscode.workspace.getConfiguration();
         let throttleTime: number = config.get('zeppelin.autosave.throttleTime', 5);
 
@@ -168,6 +153,7 @@ export class ZeppelinKernel {
         const editor = new vscode.WorkspaceEdit();
         let edit = vscode.NotebookEdit.updateCellMetadata(
             cell.index,
+            // update based on new metadata provided
             Object.assign({}, cell.metadata, metadata)
         );
         editor.set(cell.document.uri, [edit]);
@@ -309,33 +295,34 @@ export class ZeppelinKernel {
 	}
 
     private async _doExecution(cell: vscode.NotebookCell): Promise<void> {
-        await this.checkService();
+        if (!this.isActive()) {
+            return;
+        }
 
         const execution = this._controller.createNotebookCellExecution(cell);
         execution.executionOrder = ++this._executionOrder;
 		execution.start(Date.now());
 
-        if (this._isActive) {
-            try {
-                let cancelTokenSource = this._service?.cancelTokenSource;
-                execution.token.onCancellationRequested(_ => cancelTokenSource?.cancel());
+        try {
+            let cancelTokenSource = this._service?.cancelTokenSource;
+            execution.token.onCancellationRequested(_ => cancelTokenSource?.cancel());
 
-                await this.updateParagraph(cell);
+            await this.updateParagraph(cell);
 
-                let cellOutput = await this._executeCell(cell);
-                execution.replaceOutput(new vscode.NotebookCellOutput(cellOutput));
-                execution.end(true, Date.now());
+            let cellOutput = await this._executeCell(cell);
+            execution.replaceOutput(new vscode.NotebookCellOutput(cellOutput));
+            execution.end(true, Date.now());
 
-            } catch (err) {
-                execution.replaceOutput(
-                    new vscode.NotebookCellOutput([
-                        vscode.NotebookCellOutputItem.error({ 
-                            name: err instanceof Error && err.name || 'error', 
-                            message: err instanceof Error && err.message || JSON.stringify(err, undefined, 4)})
-                    ])
-                );
-                execution.end(false, Date.now());
-            }
+        } catch (err) {
+            execution.replaceOutput(
+                new vscode.NotebookCellOutput([
+                    vscode.NotebookCellOutputItem.error({ 
+                        name: err instanceof Error && err.name || 'error', 
+                        message: err instanceof Error && err.message || JSON.stringify(err, undefined, 4)
+                    })
+                ])
+            );
+            execution.end(false, Date.now());
         }
     }
 }

@@ -1,4 +1,4 @@
-import {AxiosError} from 'axios';
+import { AxiosError } from 'axios';
 import { reURL, logDebug } from './common';
 import { ExtensionContext, window } from 'vscode';
 import { NotebookService } from './api';
@@ -46,7 +46,8 @@ export async function showInputURL() {
 // function that gives user a set of options to choose Zeppelin URLs,
 // URLs and the respective display names will be shared across workspaces.
 export async function showQuickPickURL(context: ExtensionContext) {
-	let urlHistory: { [key: string]: string }[] = context.globalState.get('urlHistory') ?? [];
+	let urlHistory: { [key: string]: string }[] 
+		= context.globalState.get('urlHistory') ?? [];
 	let pickUrlItems = urlHistory.map(pair => ({ 
 		label: pair.label,
 		description: pair.url,
@@ -57,13 +58,14 @@ export async function showQuickPickURL(context: ExtensionContext) {
 	quickPick.placeholder = 'Pick How To Connect to Zeppelin';
 	quickPick.items = [
 
-		// option 1: None, ZeppelinKernel will become silent and notes won't run code in cell.
+		// option 1: None, ZeppelinKernel will become silent
+		// and notes won't run code in cell.
 		{
 			label: `$(close)None`,
 			detail: 'Do not connect to any remote Zeppelin server'
 		},
-		// option 2: Existing, this will prompt user to provide server URL and display name.
-		// if the URL provided exists in URL history 	
+		// option 2: Existing, prompt user to provide server URL and name.
+		// if the URL provided exists in URL history
 		{
 			label: `$(server-environment)Existing`,
 			detail: 'Specify the URL of an existing server'
@@ -71,7 +73,7 @@ export async function showQuickPickURL(context: ExtensionContext) {
 		// option 3: choose from URL history.
 		...pickUrlItems
 	];
-	quickPick.onDidChangeSelection(async selection => {
+	let disposable = quickPick.onDidChangeSelection(async selection => {
 		let picked = selection[0];
 		if (!picked) {
 			return;
@@ -128,8 +130,10 @@ export async function showQuickPickURL(context: ExtensionContext) {
 		context.globalState.update('urlHistory', urlHistory);
 		context.globalState.setKeysForSync(['urlHistory']);
 	});
+	context.subscriptions.push(disposable);
 
-	quickPick.onDidHide(() => quickPick.dispose());
+	disposable = quickPick.onDidHide(() => quickPick.dispose());
+	context.subscriptions.push(disposable);
 
 	logDebug("showing quick-pick URLs");
 	quickPick.show();
@@ -174,7 +178,8 @@ export async function doLogin(
 	// if he/she hasn't provided one under current workspace
 	// currently only store one credential for each workspace
 	if (username === undefined || retrying) {
-		// user name could be '' if remote server doesn't require credential to access to
+		// user name could be '' 
+		// if remote server doesn't require credential
 		let hasCredential = await showQuickPickLogin(context);
 		if (!hasCredential) {
 			return false;
@@ -199,7 +204,9 @@ export async function doLogin(
 		else if (res.response.status === 403) {
 			if (res.response.data.status === 'FORBIDDEN') {
 				// wrong username or password
-				const selection = await window.showErrorMessage('Wrong username or password', "Retype", "Cancel");
+				const selection = await window.showErrorMessage(
+					'Wrong username or password', "Retype", "Cancel"
+				);
 				if ( selection === 'Retype' ) {
 					return await doLogin(context, service, true);
 				}
@@ -210,18 +217,46 @@ export async function doLogin(
 		}
 		// test if server has configured shiro for multi-users,
 		// server will respond 'UnavailableSecurityManagerException' if not.
-		else if (res.response.data.exception === 'UnavailableSecurityManagerException') {
+		else if (res.response.data.exception 
+				=== 'UnavailableSecurityManagerException'
+			) {
 			window.showInformationMessage(`Zeppelin login API:
-			the remote server has no credential authorization manager configured.
+			remote server has no credential authorization manager configured.
 			Please contact server administrator if this is unexpected.`);
 			return true;
 		}
 		else {
-			// server-side error or client-side error
-			window.showErrorMessage(`${res.response.data.exception}: ${res.response.data.message}`);
+			// server side error or client side error
+			window.showErrorMessage(
+				`${res.response.data.exception}: ${res.response.data.message}`
+			);
 		}
 		return false;
 	}
 
 	return true;
+}
+
+
+// function that prompt user to connect to remote Zeppelin server
+export async function promptRemoteConnection() {
+	let selection = await window.showInformationMessage(
+		`Notebook under current workspace is read-only 
+		as it is not connected to Zeppelin server,
+		do you want to connect to server?`,
+		"Yes", "No"
+	);
+
+	return selection === 'Yes';
+}
+
+
+// function that prompt user to always connect to server under current workspace
+export async function promptAlwaysConnect(context: ExtensionContext) {
+	let selection = await window.showInformationMessage(
+		`Always connect to the same server for notebooks under current workspace?`,
+		"Yes", "No"
+	);
+	context.workspaceState.update('alwaysConnectZeppelinServer', selection === 'Yes');
+	return selection === 'Yes';
 }

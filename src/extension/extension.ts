@@ -1,9 +1,15 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
-import { showQuickPickURL, showQuickPickLogin } from '../common/interaction';
+import {
+	showQuickPickURL,
+	showQuickPickLogin,
+	promptRemoteConnection,
+	promptAlwaysConnect
+} from '../common/interaction';
 import { ZeppelinSerializer } from './notebookSerializer';
 import { ZeppelinKernel } from './notebookKernel';
+import { serialize } from 'v8';
 
 
 // This method is called when your extension is activated
@@ -32,8 +38,31 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(disposable);
 
+	disposable = vscode.workspace.onDidOpenNotebookDocument( async _ => {
+		vscode.commands.executeCommand(
+			"workbench.action.files.setActiveEditorReadonlyInSession"
+		);
+
+		let alwaysConnect = context.workspaceState.get('alwaysConnectZeppelinServer');
+		if (!alwaysConnect) {
+			let selection = await promptRemoteConnection();
+			if (selection && await kernel.checkInService()) {
+				vscode.commands.executeCommand(
+					"workbench.action.files.setActiveEditorWriteableInSession"
+				);
+				promptAlwaysConnect(context);
+			}
+		}
+		else if (await kernel.checkInService()) {
+			vscode.commands.executeCommand(
+				"workbench.action.files.setActiveEditorWriteableInSession"
+			);
+		}
+	});
+	context.subscriptions.push(disposable);
+
 	disposable = vscode.workspace.onDidChangeNotebookDocument(event => {
-		if (!kernel.checkService()) {
+		if (!kernel.isActive()) {
 			return;
 		}
 
@@ -53,8 +82,10 @@ export async function activate(context: vscode.ExtensionContext) {
 	});
 	context.subscriptions.push(disposable);
 
-	disposable = vscode.workspace.onWillSaveNotebookDocument(_ =>{
-		kernel.instantUpdatePollingCells();
+	disposable = vscode.workspace.onWillSaveNotebookDocument(event => {
+		if (event.notebook.isDirty) {
+			kernel.instantUpdatePollingParagraphs();
+		}
 	});
 	context.subscriptions.push(disposable);
 }

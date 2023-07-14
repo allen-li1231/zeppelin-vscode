@@ -1,5 +1,5 @@
-import { ExtensionContext } from "vscode";
-
+import { ExtensionContext, workspace } from "vscode";
+import { AxiosProxyConfig } from 'axios';
 
 export const DEBUG_MODE = true;
 
@@ -33,4 +33,24 @@ export function logDebug(item: string | any, ...optionalParams: any[]) {
     if (DEBUG_MODE) {
         console.log(item, optionalParams);
     }
+}
+
+
+export function getProxy() {
+    let proxy: AxiosProxyConfig | undefined = undefined;
+
+    let config = workspace.getConfiguration('vscode-zeppelin');
+    if (!!config.get('zeppelin.proxy.host') && !!config.get('zeppelin.proxy.port')) {
+        proxy = {
+            host: config.get('zeppelin.proxy.host', ''),
+            port: config.get('zeppelin.proxy.port', 0),
+        };
+        if (!!config.get('zeppelin.proxy.username')) {
+            proxy["auth"] = {
+                username: config.get('zeppelin.proxy.username', ''),
+                password: config.get('zeppelin.proxy.password', '')
+            };
+        }
+    }
+    return proxy;
 }
