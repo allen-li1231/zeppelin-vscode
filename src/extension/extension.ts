@@ -1,15 +1,10 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
-import {
-	showQuickPickURL,
-	showQuickPickLogin,
-	promptRemoteConnection,
-	promptAlwaysConnect
-} from '../common/interaction';
+import * as interact from '../common/interaction';
 import { ZeppelinSerializer } from './notebookSerializer';
 import { ZeppelinKernel } from './notebookKernel';
-import { serialize } from 'v8';
+import { NOTEBOOK_SUFFIX } from '../common/common';
 
 
 // This method is called when your extension is activated
@@ -20,46 +15,93 @@ export async function activate(context: vscode.ExtensionContext) {
 	// The commandId parameter must match the command field in package.json
 	let disposable = vscode.commands.registerCommand(
 		'zeppelin-vscode.setZeppelinServerURL',
-		showQuickPickURL, context
+		interact.showQuickPickURL, context
 	);
 	context.subscriptions.push(disposable);
+
 
 	disposable = vscode.commands.registerCommand(
 		'zeppelin-vscode.setZeppelinCredential',
-		showQuickPickLogin, context
+		interact.showQuickPickLogin, context
 	);
 	context.subscriptions.push(disposable);
 
+
+	disposable = vscode.commands.registerCommand(
+		'zeppelin-vscode.unlockCurrentNotebook',
+		interact.promptUnlockCurrentNotebook, context
+	);
+	context.subscriptions.push(disposable);
+
+
 	let kernel = new ZeppelinKernel(context);
 	context.subscriptions.push(kernel);
+
 
 	disposable = vscode.workspace.registerNotebookSerializer(
 		'zeppelin-notebook', new ZeppelinSerializer()
 	);
 	context.subscriptions.push(disposable);
 
-	disposable = vscode.workspace.onDidOpenNotebookDocument( async _ => {
+
+	disposable = vscode.workspace.onDidCreateFiles(event => {
+		let fs = require("fs");
+
+		for (let uri of event.files) {
+			if (uri.fsPath.endsWith(NOTEBOOK_SUFFIX)) {
+				fs.writeFileSync(uri.fsPath,  '{"paragraphs": []}');
+			}
+		}
+	});
+	context.subscriptions.push(disposable);
+
+
+	disposable = vscode.workspace.onDidOpenNotebookDocument(async note => {
+
+		// lock file before kernel is able to connected to server
 		vscode.commands.executeCommand(
 			"workbench.action.files.setActiveEditorReadonlyInSession"
 		);
 
-		let alwaysConnect = context.workspaceState.get('alwaysConnectZeppelinServer');
-		if (!alwaysConnect) {
-			let selection = await promptRemoteConnection();
-			if (selection && await kernel.checkInService()) {
-				vscode.commands.executeCommand(
-					"workbench.action.files.setActiveEditorWriteableInSession"
-				);
-				promptAlwaysConnect(context);
-			}
+		// fastforward could be undefined (user never determined),
+		// Yes, No or Never (user specified)
+		let fastforward = context.workspaceState.get('alwaysConnectSameServer');
+		if (fastforward === 'Never') {
+			return;
 		}
-		else if (await kernel.checkInService()) {
+
+		let willConnectRemote = fastforward !== 'No';
+
+		if (fastforward !== 'Yes') {
+			// ask user to connect
+			willConnectRemote = await interact.promptRemoteConnection();
+		}
+
+		// task after notebook is created or remote server is on.
+		let unlockNote = () => {
+			// unlock file
 			vscode.commands.executeCommand(
 				"workbench.action.files.setActiveEditorWriteableInSession"
 			);
+			if (fastforward === undefined) {
+				// ask if connect automatically from now on.
+				interact.promptAlwaysConnect(context);
+			}
+		};
+
+		// task when remote server is connect but the note is not on it.
+		if (willConnectRemote && await kernel.checkInService()) {
+			if (await kernel.hasNote(note.metadata.id)) {
+				unlockNote();
+			}
+			else {
+				// import/create identical note when there doesn't exist one.
+				interact.promptCreateNotebook(kernel, note, unlockNote);
+			}
 		}
 	});
 	context.subscriptions.push(disposable);
+
 
 	disposable = vscode.workspace.onDidChangeNotebookDocument(event => {
 		if (!kernel.isActive()) {
@@ -81,6 +123,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	});
 	context.subscriptions.push(disposable);
+
 
 	disposable = vscode.workspace.onWillSaveNotebookDocument(event => {
 		if (event.notebook.isDirty) {

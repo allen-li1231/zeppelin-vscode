@@ -1,13 +1,13 @@
 // import { DEBUG_MODE, NAME, MIME_TYPE } from '../common/common';
 import * as vscode from 'vscode';
-import { AxiosError, AxiosProxyConfig } from 'axios';
+import { AxiosError } from 'axios';
 import { NotebookService } from '../common/api';
 import { EXTENSION_NAME,
     getVersion,
     logDebug,
     getProxy
 } from '../common/common';
-import { ParagraphResult} from '../common/dataStructure';
+import { NoteData, ParagraphData, ParagraphResult } from '../common/dataStructure';
 import { showQuickPickURL, doLogin } from '../common/interaction';
 import { parseParagraphResultToCellOutput } from '../common/parser';
 
@@ -90,6 +90,10 @@ export class ZeppelinKernel {
         this._service = service;
     }
 
+    getService() {
+        return this._service;
+    }
+
     public async checkInService(): Promise<boolean> {
         if (this.isActive()) {
             return true;
@@ -123,6 +127,66 @@ export class ZeppelinKernel {
         }
     }
 
+    public async listNotes() {
+        let res = await this._service?.listNotes();
+        return res?.data.body;
+    }
+
+    public async hasNote(noteId: string | undefined) {
+        if (noteId === undefined) {
+            return false;
+        }
+
+        for (let note of await this.listNotes()) {
+            if (!note.path.startsWith('/~Trash') && note.id === noteId) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public async createNote(name: string, paragraphs?: ParagraphData[]) {
+        let res = await this._service?.createNote(name, paragraphs);
+
+        logDebug(res);
+        if (res instanceof AxiosError) {
+            if (res.response?.status === 500) {
+                vscode.window.showErrorMessage(
+                    `Cannot create note. Please check if note name
+                     is duplicated on the server.`);
+            }
+            else{
+                vscode.window.showErrorMessage(`${res.code}: ${res.message}`);
+            }
+        }
+
+        return res?.data.body;
+    }
+
+    public async importNote(note: NoteData) {
+        let res = await this._service?.importNote(note);
+
+        logDebug(res);
+        if (res instanceof AxiosError) {
+            if (res.response?.status === 500) {
+                vscode.window.showErrorMessage(
+                    `Cannot import note. Please check if note name
+                     is duplicated on the server.`);
+            }
+            else{
+                vscode.window.showErrorMessage(`${res.code}: ${res.message}`);
+            }
+        }
+
+        return res?.data.body;
+    }
+
+    public async doesNotebookExist(
+        note: vscode.NotebookData | vscode.NotebookDocument
+    ) {
+        return this.isActive() && await this.hasNote(note?.metadata?.id);
+    }
+
     public registerParagraphUpdate(cell: vscode.NotebookCell) {
         if (!this._pollUpdateParagraphs.has(cell)) {
             this._pollUpdateParagraphs.set(cell, Date.now());
@@ -146,7 +210,21 @@ export class ZeppelinKernel {
         }
     }
 
-    public async updateCellMetadata(
+    public updateNoteMetadata(
+        note: vscode.NotebookDocument,
+        metadata: { [key: string]: any }
+    ) {
+        const editor = new vscode.WorkspaceEdit();
+        let edit = vscode.NotebookEdit.updateNotebookMetadata(
+            // update based on new metadata provided
+            Object.assign({}, note.metadata, metadata)
+        );
+        editor.set(note.uri, [edit]);
+        
+        return vscode.workspace.applyEdit(editor);
+    }
+
+    public updateCellMetadata(
         cell: vscode.NotebookCell,
         metadata: { [key: string]: any }
     ) {
@@ -161,7 +239,7 @@ export class ZeppelinKernel {
         return vscode.workspace.applyEdit(editor);
     }
 
-    public async pollUpdateCellMetadata(
+    public pollUpdateCellMetadata(
         cell: vscode.NotebookCell,
         metadata: { [key: string]: any }
     ) {
@@ -237,7 +315,7 @@ export class ZeppelinKernel {
                     "completionSupport": cell.kind !== 1
                 } };
 
-            // create paragraph when cell is newly created
+            // create corresponding paragraph when a cell is newly created
             if (cell.metadata.id === undefined) {
                 let res = await this._service?.createParagraph(
                     cell.notebook.metadata.id, text, cell.index, '', config);
@@ -268,11 +346,11 @@ export class ZeppelinKernel {
             // need to call remote execution for markup paragraph languages
             // so remote notebook paragraph result could be generated
             // as markup languages are rendered locally
-            this._executeCell(cell);
+            this._runParagraph(cell);
         }
     }
 
-    private async _executeCell(cell: vscode.NotebookCell) {
+    private async _runParagraph(cell: vscode.NotebookCell) {
         let res = await this._service?.runParagraph(
             cell.notebook.metadata.id, cell.metadata.id, true
         );
@@ -309,7 +387,7 @@ export class ZeppelinKernel {
 
             await this.updateParagraph(cell);
 
-            let cellOutput = await this._executeCell(cell);
+            let cellOutput = await this._runParagraph(cell);
             execution.replaceOutput(new vscode.NotebookCellOutput(cellOutput));
             execution.end(true, Date.now());
 

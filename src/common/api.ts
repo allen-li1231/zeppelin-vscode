@@ -112,10 +112,10 @@ export class NotebookService extends BasicService{
         );
     }
 
-    createNote(name: string, paragraphs: ParagraphData[]) {
+    createNote(name: string, paragraphs?: ParagraphData[]) {
         return this.session.post(
             '/api/notebook',
-            { name: name, paragraphs: paragraphs }
+            { name: name, paragraphs: paragraphs ?? [] }
         );
     }
 

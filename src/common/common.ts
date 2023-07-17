@@ -4,7 +4,7 @@ import { AxiosProxyConfig } from 'axios';
 export const DEBUG_MODE = true;
 
 export const EXTENSION_NAME = 'zeppelin-notebook';
-// export const MIME_TYPE = 'x-application/zeppelin-notebook';
+export const NOTEBOOK_SUFFIX = '.zpln';
 
 export const mapLanguageKind = new Map<string, number>();
 mapLanguageKind.set("markdown", 1);

@@ -147,18 +147,25 @@ export function parseCellOutputsToParagraphResult(
 }
 
 export function parseCellToParagraphData(
-    cell: vscode.NotebookCellData
+    cell: vscode.NotebookCellData | vscode.NotebookCell
 ): ParagraphData {
-    let paragraph = <ParagraphData> cell.metadata;
+    let paragraph = <ParagraphData> {...cell.metadata};
 
-    paragraph.text = cell.value;
+    paragraph.text = cell instanceof vscode.NotebookCellData
+        ? cell.value
+        : cell.document.getText();
+
+    let languageId = cell instanceof vscode.NotebookCellData
+        ? cell.languageId
+        : cell.document.languageId;
+
     if (paragraph.id !== undefined) {
-        paragraph.config.editorSetting.language = cell.languageId;
+        paragraph.config.editorSetting.language = languageId;
     }
     else {
         paragraph.config = {
             "editorSetting": {
-                "language": cell.languageId,
+                "language": languageId,
                 "editOnDblClick": false,
                 "completionKey": "TAB",
                 "completionSupport": cell.kind !== 1
