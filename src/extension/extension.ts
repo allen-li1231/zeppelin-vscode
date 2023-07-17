@@ -65,14 +65,15 @@ export async function activate(context: vscode.ExtensionContext) {
 
 		// fastforward could be undefined (user never determined),
 		// Yes, No or Never (user specified)
-		let fastforward = context.workspaceState.get('alwaysConnectSameServer');
-		if (fastforward === 'Never') {
+		let config = vscode.workspace.getConfiguration('Zeppelin');
+		let selection = config.get('zeppelin.alwaysConnectLastServer', undefined);
+		if (selection === 'Never') {
 			return;
 		}
 
-		let willConnectRemote = fastforward !== 'No';
+		let willConnectRemote = selection !== 'No';
 
-		if (fastforward !== 'Yes') {
+		if (selection !== 'Yes') {
 			// ask user to connect
 			willConnectRemote = await interact.promptRemoteConnection();
 		}
@@ -83,9 +84,9 @@ export async function activate(context: vscode.ExtensionContext) {
 			vscode.commands.executeCommand(
 				"workbench.action.files.setActiveEditorWriteableInSession"
 			);
-			if (fastforward === undefined) {
+			if (selection === undefined) {
 				// ask if connect automatically from now on.
-				interact.promptAlwaysConnect(context);
+				interact.promptAlwaysConnect();
 			}
 		};
 

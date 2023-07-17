@@ -62,6 +62,12 @@
           "default": 1,
           "description": "Set minimum save interval (in seconds) to Zeppelin server."
         },
+        "zeppelin.alwaysConnectLastServer": {
+          "type": ["string", "null"],
+          "default": null,
+          "enum": ["Yes", "No", "Never"],
+          "description": "Specify whether to always try connecting to last Zeppelin server and unlocking notebook subsequently."
+        },
         "zeppelin.proxy.host": {
           "type": ["string", "null"],
           "format": "uri",

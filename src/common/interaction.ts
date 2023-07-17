@@ -253,12 +253,13 @@ export async function promptRemoteConnection() {
 
 
 // function that prompts user to always connect to server under current workspace
-export async function promptAlwaysConnect(context: vscode.ExtensionContext) {
+export async function promptAlwaysConnect() {
 	let selection = await vscode.window.showInformationMessage(
 		`Always connect to the same server for notebooks under current workspace?`,
 		"Yes", "No", "Never"
 	);
-	context.workspaceState.update('alwaysConnectSameServer', selection);
+	let config = vscode.workspace.getConfiguration('Zeppelin');
+	config.update('zeppelin.alwaysConnectLastServer', selection);
 	return selection;
 }
 
@@ -352,25 +353,24 @@ export async function promptCreateNotebook(
 
 
 // task after notebook is created or remote server is on.
-function unlockActiveEditor(context: vscode.ExtensionContext) {
+function unlockActiveEditor() {
 	// unlock file
 	vscode.commands.executeCommand(
 		"workbench.action.files.setActiveEditorWriteableInSession"
 	);
 
-	promptAlwaysConnect(context);
+	promptAlwaysConnect();
 };
 
 
 export async function promptUnlockCurrentNotebook(
-	context: vscode.ExtensionContext,
 	kernel: ZeppelinKernel,
 	note: vscode.NotebookDocument
 ) {
 	// task when remote server is connect but the note is not on it.
 	if (await kernel.checkInService()) {
 		if (await kernel.hasNote(note.metadata.id)) {
-			unlockActiveEditor(context);
+			unlockActiveEditor();
 		}
 		else {
 			// import/create identical note when there doesn't exist one.
