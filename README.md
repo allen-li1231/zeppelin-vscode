@@ -12,7 +12,7 @@ A [Visual Studio Code](https://code.visualstudio.com/) extension that provides b
 * download Zeppelin notebook file (either .json or .zpln) from Zeppelin web server.
 * rename file suffix into ".zpln" if it is ".json".
 * open it using VS Code, during first cell run you will be prompted to provide server url and credential.
-* you may access more configurations by searching 'zeppelin' in settings or commands.
+* more configurations can be accessed by searching for 'zeppelin' in setting or command palette.
 
 ## Contribution
 __The extension is currently under personal development. If you would like to develop with me, please fire an issue.__
