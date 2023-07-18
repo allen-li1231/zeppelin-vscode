@@ -258,8 +258,8 @@ export async function promptAlwaysConnect() {
 		`Always connect to the same server for notebooks under current workspace?`,
 		"Yes", "No", "Never"
 	);
-	let config = vscode.workspace.getConfiguration('Zeppelin');
-	config.update('zeppelin.alwaysConnectLastServer', selection);
+	let config = vscode.workspace.getConfiguration('zeppelin');
+	config.update('alwaysConnectLastServer', selection);
 	return selection;
 }
 
@@ -268,10 +268,10 @@ export async function promptAlwaysConnect() {
 // based on notebook provided
 export async function promptCreateNotebook(
 	kernel: ZeppelinKernel,
-	note: vscode.NotebookDocument,
+	note: vscode.NotebookDocument | undefined,
 	onCreateSuccess?: Function
 ) {
-	if (!kernel.isActive()) {
+	if (!kernel.isActive() || note === undefined) {
 		return false;
 	}
 
@@ -315,7 +315,7 @@ export async function promptCreateNotebook(
 					noteId = await kernel.createNote(newNotebookPath, paragraphs);
 				}
 				else {
-					noteId = await kernel.importNote(<NoteData> note.metadata);
+					noteId = await kernel.importNote(note.metadata);
 				}
 			}
 			catch (err) {
@@ -363,11 +363,13 @@ function unlockActiveEditor() {
 };
 
 
-export async function promptUnlockCurrentNotebook(
-	kernel: ZeppelinKernel,
-	note: vscode.NotebookDocument
-) {
-	// task when remote server is connect but the note is not on it.
+export async function promptUnlockCurrentNotebook(kernel: ZeppelinKernel) {
+	let note = vscode.window.activeNotebookEditor?.notebook;
+	if (note === undefined) {
+		return;
+	}
+
+	// task when remote server is connectable.
 	if (await kernel.checkInService()) {
 		if (await kernel.hasNote(note.metadata.id)) {
 			unlockActiveEditor();

@@ -125,7 +125,7 @@ export class NotebookService extends BasicService{
         );
     }
 
-    importNote(note: NoteData) {
+    importNote(note: any) {
         return this.session.post(
             '/api/notebook/import',
             note

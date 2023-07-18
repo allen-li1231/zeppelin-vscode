@@ -44,7 +44,7 @@
         "displayName": "Zeppelin Notebook",
         "selector": [
           {
-            "filenamePattern": "*.zpln"
+            "filenamePattern": "{*.zpln}"
           }
         ]
       }
@@ -66,7 +66,7 @@
           "type": ["string", "null"],
           "default": null,
           "enum": ["Yes", "No", "Never"],
-          "description": "Specify whether to always try connecting to last Zeppelin server and unlocking notebook subsequently."
+          "description": "Specify whether to always try connecting to last used Zeppelin server and unlocking notebook subsequently."
         },
         "zeppelin.proxy.host": {
           "type": ["string", "null"],
@@ -98,14 +98,40 @@
     },
     "commands": [
       {
-        "command": "zeppelin-vscode.setZeppelinServerURL",
+        "command": "vscode-zeppelin.importCurrentNotebook",
+        "title": "Zeppelin: Import Current Notebook to Zeppelin Server"
+      },
+      {
+        "command": "vscode-zeppelin.setZeppelinServerURL",
         "title": "Zeppelin: Set Zeppelin Server URL"
       },
       {
-        "command": "zeppelin-vscode.setZeppelinCredential",
+        "command": "vscode-zeppelin.setZeppelinCredential",
         "title": "Zeppelin: Set Zeppelin Credential (username and password)"
+      },
+      {
+        "command": "vscode-zeppelin.unlockCurrentNotebook",
+        "title": "Zeppelin: Unlock Current Notebook by Connecting to Server"
       }
-    ]
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "vscode-zeppelin.importCurrentNotebook",
+          "when": "!activeEditorIsReadonly && (resourceExtname == .zpln || resourceExtname == .ipynb)"
+        },
+        {
+          "command": "vscode-zeppelin.setZeppelinServerURL"
+        },
+        {
+          "command": "vscode-zeppelin.setZeppelinCredential"
+        },
+        {
+          "command": "vscode-zeppelin.unlockCurrentNotebook",
+          "when": "resourceExtname == .zpln && activeEditorIsReadonly"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",

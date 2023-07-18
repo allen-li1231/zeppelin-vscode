@@ -39,16 +39,16 @@ export function logDebug(item: string | any, ...optionalParams: any[]) {
 export function getProxy() {
     let proxy: AxiosProxyConfig | undefined = undefined;
 
-    let config = workspace.getConfiguration('vscode-zeppelin');
-    if (!!config.get('zeppelin.proxy.host') && !!config.get('zeppelin.proxy.port')) {
+    let config = workspace.getConfiguration('zeppelin');
+    if (!!config.get('proxy.host') && !!config.get('proxy.port')) {
         proxy = {
-            host: config.get('zeppelin.proxy.host', ''),
-            port: config.get('zeppelin.proxy.port', 0),
+            host: config.get('proxy.host', ''),
+            port: config.get('proxy.port', 0),
         };
-        if (!!config.get('zeppelin.proxy.username')) {
+        if (!!config.get('proxy.username')) {
             proxy["auth"] = {
-                username: config.get('zeppelin.proxy.username', ''),
-                password: config.get('zeppelin.proxy.password', '')
+                username: config.get('proxy.username', ''),
+                password: config.get('proxy.password', '')
             };
         }
     }

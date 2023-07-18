@@ -56,8 +56,9 @@ export class ZeppelinKernel {
         this._isActive = !!this._service && !!this._service.baseURL;
 
         if (this._isActive && this._intervalUpdateCell === undefined) {
-            let config = vscode.workspace.getConfiguration('Zeppelin');
-            let poolingInterval = config.get('zeppelin.autosave.poolingInterval', 1);
+            let config = vscode.workspace.getConfiguration('zeppelin');
+            
+            let poolingInterval = config.get('autosave.poolingInterval', 1);
 
             this._intervalUpdateCell = setInterval(
                 this._doUpdatePollingParagraphs.bind(this), poolingInterval * 1000
@@ -163,7 +164,7 @@ export class ZeppelinKernel {
         return res?.data.body;
     }
 
-    public async importNote(note: NoteData) {
+    public async importNote(note: any) {
         let res = await this._service?.importNote(note);
 
         logDebug(res);
@@ -200,8 +201,8 @@ export class ZeppelinKernel {
     }
 
     private _doUpdatePollingParagraphs() {
-        let config = vscode.workspace.getConfiguration();
-        let throttleTime: number = config.get('zeppelin.autosave.throttleTime', 5);
+        let config = vscode.workspace.getConfiguration('zeppelin');
+        let throttleTime: number = config.get('autosave.throttleTime', 5);
 
         for (let [cell, requestTime] of this._pollUpdateParagraphs) {
             if (throttleTime * 1000 < Date.now() - requestTime) {
@@ -270,6 +271,10 @@ export class ZeppelinKernel {
             cell.notebook.metadata.id, cell.metadata.id, text
         );
         if (res instanceof AxiosError) {
+            if (res.response?.status === 404) {
+                vscode.window.showErrorMessage(`${res.code}: ${res.message}`);
+            }
+            logDebug(res);
             throw res;
         }
 
@@ -289,6 +294,10 @@ export class ZeppelinKernel {
             cell.notebook.metadata.id, cell.metadata.id, config
         );
         if (res instanceof AxiosError) {
+            if (res.response?.status === 404) {
+                vscode.window.showErrorMessage(`${res.code}: ${res.message}`);
+            }
+            logDebug(res);
             throw res;
         }
 
@@ -332,8 +341,8 @@ export class ZeppelinKernel {
                 );
             }
             else {
-                await this.updateParagraphConfig(cell);
-                await this.updateParagraphText(cell);
+                let res = await this.updateParagraphConfig(cell);
+                res = await this.updateParagraphText(cell);
             }
         } catch (err) {
             logDebug("error in updateParagraph", err);
