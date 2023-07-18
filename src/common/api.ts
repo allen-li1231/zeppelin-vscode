@@ -76,6 +76,10 @@ class BasicService {
             }
         );
 
+        if (res instanceof AxiosError) {
+            return res;
+        }
+
         // store cookies to default headers
         if (res.headers['set-cookie']) {
             for (let cookie of res.headers['set-cookie']) {
@@ -108,10 +112,10 @@ export class NotebookService extends BasicService{
         );
     }
 
-    createNote(name: string, paragraphs: ParagraphData[]) {
+    createNote(name: string, paragraphs?: ParagraphData[]) {
         return this.session.post(
             '/api/notebook',
-            { name: name, paragraphs: paragraphs }
+            { name: name, paragraphs: paragraphs ?? [] }
         );
     }
 
@@ -121,7 +125,7 @@ export class NotebookService extends BasicService{
         );
     }
 
-    importNote(note: NoteData) {
+    importNote(note: any) {
         return this.session.post(
             '/api/notebook/import',
             note
@@ -217,8 +221,8 @@ export class NotebookService extends BasicService{
     createParagraph(
         noteId: string,
         text: string,
-        title?: string,
         index: number = -1,
+        title?: string,
         config?: ParagraphConfig
         ) {
             let data: CreateParagraphData = { text: text, index: index };

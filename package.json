@@ -34,7 +34,6 @@
     "onLanguage:scala",
     "onLanguage:sql",
     "onLanguage:r",
-    "onLanguage:markdown",
     "onNotebook:zeppelin-notebook"
   ],
   "contributes": {
@@ -45,21 +44,94 @@
         "displayName": "Zeppelin Notebook",
         "selector": [
           {
-            "filenamePattern": "*.zpln"
+            "filenamePattern": "{*.zpln}"
           }
         ]
       }
     ],
+    "configuration": {
+      "title": "Zeppelin",
+      "properties": {
+        "zeppelin.autosave.throttleTime": {
+          "type": "integer",
+          "default": 5,
+          "description": "Set minimum cell saving interval (in seconds) to Zeppelin server."
+        },
+        "zeppelin.autosave.poolingInterval": {
+          "type": "integer",
+          "default": 1,
+          "description": "Set minimum save interval (in seconds) to Zeppelin server."
+        },
+        "zeppelin.alwaysConnectLastServer": {
+          "type": ["string", "null"],
+          "default": null,
+          "enum": ["Yes", "No", "Never"],
+          "description": "Specify whether to always try connecting to last used Zeppelin server and unlocking notebook subsequently."
+        },
+        "zeppelin.proxy.host": {
+          "type": ["string", "null"],
+          "format": "uri",
+          "default": null,
+          "description": "Set proxy host for connection with Zeppelin server."
+        },
+        "zeppelin.proxy.port": {
+          "type": ["integer", "null"],
+          "default": null,
+          "description": "Set proxy port for connection with Zeppelin server."
+        },
+        "zeppelin.proxy.username": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "Specifies proxy authentication for connection with Zeppelin server."
+        },
+        "zeppelin.proxy.password": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "Specifies proxy authentication for connection with Zeppelin server."
+        },
+        "zeppelin.proxy.protocol": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "Specifies the proxy protocol for connection with Zeppelin server."
+        }
+      }
+    },
     "commands": [
       {
-        "command": "zeppelin-vscode.setZeppelinServerURL",
+        "command": "vscode-zeppelin.importCurrentNotebook",
+        "title": "Zeppelin: Import Current Notebook to Zeppelin Server"
+      },
+      {
+        "command": "vscode-zeppelin.setZeppelinServerURL",
         "title": "Zeppelin: Set Zeppelin Server URL"
       },
       {
-        "command": "zeppelin-vscode.setZeppelinCredential",
+        "command": "vscode-zeppelin.setZeppelinCredential",
         "title": "Zeppelin: Set Zeppelin Credential (username and password)"
+      },
+      {
+        "command": "vscode-zeppelin.unlockCurrentNotebook",
+        "title": "Zeppelin: Unlock Current Notebook by Connecting to Server"
       }
-    ]
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "vscode-zeppelin.importCurrentNotebook",
+          "when": "!activeEditorIsReadonly && (resourceExtname == .zpln || resourceExtname == .ipynb)"
+        },
+        {
+          "command": "vscode-zeppelin.setZeppelinServerURL"
+        },
+        {
+          "command": "vscode-zeppelin.setZeppelinCredential"
+        },
+        {
+          "command": "vscode-zeppelin.unlockCurrentNotebook",
+          "when": "resourceExtname == .zpln && activeEditorIsReadonly"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
@@ -78,6 +150,7 @@
     "@types/mocha": "^10.0.1",
     "@types/node": "16.x",
     "@types/vscode": "^1.75.0",
+    "@types/vscode-notebook-renderer": "^1.72",
     "@typescript-eslint/eslint-plugin": "^5.59.1",
     "@typescript-eslint/parser": "^5.59.1",
     "@vscode/test-electron": "^2.3.0",
