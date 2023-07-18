@@ -98,7 +98,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			vscode.commands.executeCommand(
 				"workbench.action.files.setActiveEditorWriteableInSession"
 			);
-			if (selection === undefined) {
+			if (selection === null) {
 				// ask if connect automatically from now on.
 				interact.promptAlwaysConnect();
 			}

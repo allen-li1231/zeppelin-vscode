@@ -45,10 +45,10 @@ export function getProxy() {
             host: config.get('proxy.host', ''),
             port: config.get('proxy.port', 0),
         };
-        if (!!config.get('proxy.username')) {
+        if (!!config.get('proxy.credential.username')) {
             proxy["auth"] = {
-                username: config.get('proxy.username', ''),
-                password: config.get('proxy.password', '')
+                username: config.get('proxy.credential.username', ''),
+                password: config.get('proxy.credential.password', '')
             };
         }
     }
