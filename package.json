@@ -17,11 +17,13 @@
   },
   "main": "./dist/extension.js",
   "keywords": [
-    "notebookKernelZeppelin",
+    "Apache Zeppelin",
     "zeppelin",
     "notebook",
     "python",
-    "scala"
+    "r",
+    "scala",
+    "sql"
   ],
   "categories": [
     "Data Science",
