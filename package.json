@@ -56,9 +56,15 @@
       "properties": {
         "zeppelin.alwaysConnectLastServer": {
           "order": 0,
-          "type": ["string"],
+          "type": [
+            "string"
+          ],
           "default": null,
-          "enum": ["Yes", "No", "Never"],
+          "enum": [
+            "Yes",
+            "No",
+            "Never"
+          ],
           "description": "Specify whether to always try connecting to last used Zeppelin server and unlock notebook subsequently."
         },
         "zeppelin.autosave.throttleTime": {
@@ -75,32 +81,42 @@
         },
         "zeppelin.proxy.host": {
           "order": 3,
-          "type": ["string"],
+          "type": [
+            "string"
+          ],
           "format": "uri",
           "default": null,
           "description": "Set proxy host for connection with Zeppelin server."
         },
         "zeppelin.proxy.port": {
           "order": 4,
-          "type": ["integer"],
+          "type": [
+            "integer"
+          ],
           "default": null,
           "description": "Set proxy port for connection with Zeppelin server."
         },
         "zeppelin.proxy.credential.username": {
           "order": 5,
-          "type": ["string"],
+          "type": [
+            "string"
+          ],
           "default": null,
           "description": "Specifies proxy authentication for connection with Zeppelin server."
         },
         "zeppelin.proxy.credential.password": {
           "order": 6,
-          "type": ["string"],
+          "type": [
+            "string"
+          ],
           "default": null,
           "description": "Specifies proxy authentication for connection with Zeppelin server."
         },
         "zeppelin.proxy.credential.protocol": {
           "order": 7,
-          "type": ["string"],
+          "type": [
+            "string"
+          ],
           "default": null,
           "description": "Specifies the proxy protocol for connection with Zeppelin server."
         }
@@ -144,7 +160,11 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run package",
+    "vscode:prepublish": "npm run esbuild-base -- --minify",
+    "esbuild-base": "esbuild ./src/extension/extension.ts --bundle --outfile=out/main.js --external:vscode --format=cjs --platform=node",
+    "esbuild": "npm run esbuild-base -- --sourcemap",
+    "esbuild-watch": "npm run esbuild-base -- --sourcemap --watch",
+    "test-compile": "tsc -p ./",
     "compile": "webpack",
     "watch": "webpack --watch",
     "package": "webpack --mode production --devtool hidden-source-map",
@@ -165,11 +185,12 @@
     "@typescript-eslint/parser": "^5.59.1",
     "@vscode/test-electron": "^2.3.0",
     "axios": "^1.4.0",
+    "esbuild": "^0.18.14",
     "eslint": "^8.39.0",
     "glob": "^8.1.0",
-    "ts-loader": "^9.4.2",
+    "ts-loader": "^9.4.4",
     "typescript": "^5.0.4",
-    "webpack": "^5.81.0",
-    "webpack-cli": "^5.0.2"
+    "webpack": "^5.88.2",
+    "webpack-cli": "^5.1.4"
   }
 }

@@ -2,7 +2,6 @@ import { AxiosError } from 'axios';
 import { NotebookService } from './api';
 import { reURL, logDebug } from './common';
 import * as vscode from 'vscode';
-import { NoteData } from './dataStructure';
 import { ZeppelinKernel } from '../extension/notebookKernel';
 import { parseCellToParagraphData } from './parser';
 

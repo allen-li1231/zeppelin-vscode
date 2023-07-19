@@ -1,10 +1,8 @@
 /* eslint-disable @typescript-eslint/naming-convention */
-import { window } from 'vscode';
 import { logDebug, formatURL, reCookies } from './common';
-import { NoteData,
+import {
     ParagraphData,
-    ParagraphConfig,
-    ParagraphResult
+    ParagraphConfig
 } from './dataStructure';
 import axios, {
     AxiosInstance,

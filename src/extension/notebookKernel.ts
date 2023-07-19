@@ -7,7 +7,7 @@ import { EXTENSION_NAME,
     logDebug,
     getProxy
 } from '../common/common';
-import { NoteData, ParagraphData, ParagraphResult } from '../common/dataStructure';
+import { ParagraphData, ParagraphResult } from '../common/dataStructure';
 import { showQuickPickURL, doLogin } from '../common/interaction';
 import { parseParagraphResultToCellOutput } from '../common/parser';
 

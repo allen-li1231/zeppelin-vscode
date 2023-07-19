@@ -1,6 +1,3 @@
-import * as vscode from 'vscode';
-
-
 // the Zeppelin note is basically a json file
 // containing note and paragraph information
 export interface NoteData {
