@@ -139,7 +139,10 @@ export class ZeppelinKernel {
         }
 
         for (let note of await this.listNotes()) {
-            if (!note.path.startsWith('/~Trash') && note.id === noteId) {
+            // before Zeppelin 10.0, path of note
+            // is stored in 'name' key instead of 'path'
+            let path = note.path ?? note.name;
+            if (!path.startsWith('/~Trash') && note.id === noteId) {
                 return true;
             }
         }

@@ -283,11 +283,15 @@ export async function promptCreateNotebook(
 	let visiblePaths: string[];
 	try {
 		visiblePaths = visibleNotes.map(
-			(info: {[key: string]: string}) =>
+			(info: {[key: string]: string}) => {
+				// before Zeppelin 10.0, path of note
+            	// is stored in 'name' key instead of 'path'
+				let path = info.path ?? info.name;
 				// take base directory of notes
-				info.path.startsWith('/~Trash')
-				? '/'
-				: info.path.substring(0, info.path.lastIndexOf('/') + 1)
+				return path.startsWith('/~Trash')
+					? '/'
+					: path.substring(0, path.lastIndexOf('/') + 1);
+			}
 		);
 
 		// remove duplicated paths and sort the rests

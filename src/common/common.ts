@@ -1,7 +1,7 @@
 import { ExtensionContext, workspace } from "vscode";
 import { AxiosProxyConfig } from 'axios';
 
-export const DEBUG_MODE = false;
+export const DEBUG_MODE = true;
 
 export const EXTENSION_NAME = 'zeppelin-notebook';
 export const NOTEBOOK_SUFFIX = '.zpln';
