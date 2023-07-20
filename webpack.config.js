@@ -24,7 +24,6 @@ const extensionConfig = {
     // modules added here also need to be added in the .vscodeignore file
   },
   resolve: {
-    mainFields: ['browser', 'module', 'main'], // look for `browser` entry point in imported node modules
     // support reading TypeScript and JavaScript files, 📖 -> https://github.com/TypeStrong/ts-loader
     extensions: ['.ts', '.js']
   },
@@ -38,15 +37,6 @@ const extensionConfig = {
             loader: 'ts-loader'
           }
         ]
-      },
-      {
-        test: /\.ts$/,
-        exclude: /node_modules/,
-        loader: 'esbuild-loader',
-        options: {
-          loader: 'ts',
-          target: 'es2020'
-        }
       },
     ]
   },
