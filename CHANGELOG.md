@@ -7,3 +7,40 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 ## [Unreleased]
 
 - Initial release
+
+## [0.1.1] - 2023-7-18
+
+### Addded
+- Settings related to specifying or selecting an existing Zeppelin server.
+- Useful commands in command palette.
+- Make notebook read-only when not connected to a server.
+- user can either unlock file using command or by instructions in a window poped up when it is opened.
+- User will be prompted to provide notebook save path if the current notebook does not exists on the server.
+- Autosave with syncing to server every 5 seconds by default (configurable in setting).
+
+### Fixed
+- Various API connection problems and login status caching problems.
+- Jupyter notebook can be imported to a Zeppelin server after 0.10.0 using command.
+- Pictures, HTMLs can now be rendered in cell outputs, **need user to tweak output presentation to see different types of outputs**.
+- Bug in getting and updating workspace settings during extension run.
+
+### Changed
+- Refactor serialization and deserializaion code to increase reusability.
+
+
+## [0.1.2] - 2023-7-19
+
+### Added
+- Configurability to automatically connect to last-used server without asking user.
+- Enrich settings description.
+
+### Fixed
+- Compatibility issue related to listNotes API before 0.10.0.
+
+### Changed
+- Present a better extension name. Due to this change, the extension was republished.
+- Reorder and group settings.
+- Update VS Code version requirement, and use esbuild to speed up builds.
+
+### Removed
+- Unused npm package in package.json.
