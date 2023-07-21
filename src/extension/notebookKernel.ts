@@ -35,10 +35,9 @@ export class ZeppelinKernel {
         // }
         this._context = context;
         this._service = service;
-        this._controller = vscode.notebooks.createNotebookController(this.id, 
-                                                                    this.notebookType, 
-                                                                    this.label);
-
+        this._controller = vscode.notebooks.createNotebookController(
+            this.id, this.notebookType, this.label
+        );
 		this._controller.supportedLanguages = ['python', 'scala', 'markdown', 'r', 'sql'];
 		this._controller.supportsExecutionOrder = true;
 		this._controller.description = 'Zeppelin notebook kernel';
@@ -87,44 +86,60 @@ export class ZeppelinKernel {
         return this._isActive;
     }
 
-    setService(service: NotebookService) {
+    setService(baseURL: string) {
+        let userAgent = `${EXTENSION_NAME}/${getVersion(this._context)} vscode-extension/${vscode.version}`;
+
+        let service = new NotebookService(baseURL, userAgent, getProxy());
+
         this._service = service;
+        return service;
     }
 
     getService() {
         return this._service;
     }
 
-    public async checkInService(): Promise<boolean> {
+    private async _doLoginUsingBaseURL(baseURL: string | undefined) {
+        if (!baseURL) {
+            return false;
+        }
+
+        let service = this.setService(baseURL);
+        let isSuccess = await doLogin(this._context, service);
+        if (isSuccess) {
+            return this.activate();
+        }
+        else {
+            return this.deactivate();
+        }
+    }
+
+    public async checkInService(
+        onDidServiceActivate?: Function
+    ) {
         if (this.isActive()) {
-            return true;
+            return;
         }
 
         let baseURL: string | undefined = 
             this._context.workspaceState.get('currentZeppelinServerURL');
         if (baseURL === undefined) {
-            showQuickPickURL(this._context);
-            // baseURL is supposed not to be null or undefined by now
-            baseURL = this._context.workspaceState.get('currentZeppelinServerURL');
-            if (!baseURL) {
-                return false;
-            }
-        }
-        else if (baseURL === '') {
-            return false;
-        }
-    
-        let userAgent = `${EXTENSION_NAME}/${getVersion(this._context)} vscode-extension/${vscode.version}`;
+            showQuickPickURL(this._context, (async () => {
+                // baseURL is supposed not to be null or undefined by now
+                baseURL = this._context.workspaceState.get('currentZeppelinServerURL');
 
-        let service = new NotebookService(baseURL, userAgent, getProxy());
+                let isActive = await this._doLoginUsingBaseURL(baseURL);
+                if (isActive && onDidServiceActivate !== undefined) {
+                    onDidServiceActivate();
+                }
 
-        let isSuccess = await doLogin(this._context, service);
-        if (isSuccess) {
-            this.setService(service);
-            return this.activate();
+            }).bind(this));
         }
         else {
-            return this.deactivate();
+            let isActive = await this._doLoginUsingBaseURL(baseURL);
+            if (isActive && onDidServiceActivate !== undefined) {
+                onDidServiceActivate();
+            }
         }
     }
 

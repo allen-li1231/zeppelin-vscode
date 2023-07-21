@@ -47,8 +47,11 @@ export async function showInputURL() {
 
 // function that gives user a set of options to choose Zeppelin URLs,
 // URLs and the respective display names will be shared across workspaces.
-export async function showQuickPickURL(context: vscode.ExtensionContext) {
-	let urlHistory: { [key: string]: string }[] 
+export async function showQuickPickURL(
+	context: vscode.ExtensionContext,
+	onDidHide?: Function
+) {
+	let urlHistory: { [key: string]: string }[]
 		= context.globalState.get('urlHistory') ?? [];
 	let pickUrlItems = urlHistory.map(pair => ({ 
 		label: pair.label,
@@ -81,10 +84,13 @@ export async function showQuickPickURL(context: vscode.ExtensionContext) {
 			return;
 		}
 
+		let pickedLabel: string;
 		let pickedURL: string;
 
 		if (picked.label === `$(close)None`) {
+			pickedLabel = '';
 			pickedURL = '';
+			context.workspaceState.update('currentZeppelinServerLabel', pickedLabel);
 			context.workspaceState.update('currentZeppelinServerURL', pickedURL);
 			quickPick.hide();
 			return;
@@ -98,6 +104,7 @@ export async function showQuickPickURL(context: vscode.ExtensionContext) {
 				return;
 			}
 
+			pickedLabel = pickedPair.label;
 			pickedURL = pickedPair.url;
 			// url history is sorted by most recent usage
 			// put picked url to the front of url history list
@@ -116,6 +123,7 @@ export async function showQuickPickURL(context: vscode.ExtensionContext) {
 			}
 
 			logDebug("URL picked from history", picked);
+			pickedLabel = picked.label;
 			pickedURL = picked.description;
 			urlHistory = urlHistory.filter(pair => pair.url !== pickedURL);
 			urlHistory.unshift({
@@ -124,16 +132,22 @@ export async function showQuickPickURL(context: vscode.ExtensionContext) {
 				lastConnect: (new Date()).toString()
 			});
 		}
-		quickPick.hide();
 
 		// save current URL to workspace.
+		context.workspaceState.update('currentZeppelinServerLabel', pickedLabel);
 		context.workspaceState.update('currentZeppelinServerURL', pickedURL);
 		// save URL history across workspaces.
 		context.globalState.update('urlHistory', urlHistory);
 		context.globalState.setKeysForSync(['urlHistory']);
+		quickPick.hide();
 	});
 
-	quickPick.onDidHide(quickPick.dispose);
+	quickPick.onDidHide( _=> {
+		if (onDidHide !== undefined) {
+			onDidHide();
+		}
+		quickPick.dispose();
+	});
 
 	logDebug("showing quick-pick URLs", quickPick);
 	quickPick.show();
@@ -373,13 +387,13 @@ export async function promptUnlockCurrentNotebook(kernel: ZeppelinKernel) {
 	}
 
 	// task when remote server is connectable.
-	if (await kernel.checkInService()) {
-		if (await kernel.hasNote(note.metadata.id)) {
+	kernel.checkInService(async () => {
+		if (await kernel.hasNote(note?.metadata.id)) {
 			unlockActiveEditor();
 		}
 		else {
 			// import/create identical note when there doesn't exist one.
 			promptCreateNotebook(kernel, note, unlockActiveEditor);
 		}
-	}
+	});
 }

@@ -12,5 +12,6 @@
     "typescript.tsc.autoDetect": "off",
     "files.watcherExclude": {
         "**/target": true
-    }
+    },
+    "zeppelin.alwaysConnectLastServer": "Yes"
 }

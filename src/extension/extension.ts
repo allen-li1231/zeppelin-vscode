@@ -25,21 +25,21 @@ export async function activate(context: vscode.ExtensionContext) {
 
 
 	disposable = vscode.commands.registerCommand(
-		'vscode-zeppelin.setZeppelinServerURL',
+		'zeppelin-vscode.setZeppelinServerURL',
 		_ => interact.showQuickPickURL(context)
 	);
 	context.subscriptions.push(disposable);
 
 
 	disposable = vscode.commands.registerCommand(
-		'vscode-zeppelin.setZeppelinCredential',
+		'zeppelin-vscode.setZeppelinCredential',
 		_ => interact.showQuickPickLogin(context)
 	);
 	context.subscriptions.push(disposable);
 
 
 	disposable = vscode.commands.registerCommand(
-		'vscode-zeppelin.importCurrentNotebook',
+		'zeppelin-vscode.importCurrentNotebook',
 		_ => interact.promptCreateNotebook(
 			kernel, vscode.window.activeNotebookEditor?.notebook
 		)
@@ -48,7 +48,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 
 	disposable = vscode.commands.registerCommand(
-		'vscode-zeppelin.unlockCurrentNotebook',
+		'zeppelin-vscode.unlockCurrentNotebook',
 		_ => interact.promptUnlockCurrentNotebook(kernel)
 	);
 	context.subscriptions.push(disposable);
@@ -105,14 +105,16 @@ export async function activate(context: vscode.ExtensionContext) {
 		};
 
 		// task when remote server is connectable but the note is not on it.
-		if (willConnectRemote && await kernel.checkInService()) {
-			if (await kernel.hasNote(note.metadata.id)) {
-				unlockNote();
-			}
-			else {
-				// import/create identical note when there doesn't exist one.
-				interact.promptCreateNotebook(kernel, note, unlockNote);
-			}
+		if (willConnectRemote) {
+			kernel.checkInService(async () => {
+				if (await kernel.hasNote(note.metadata.id)) {
+					unlockNote();
+				}
+				else {
+					// import/create identical note when there doesn't exist one.
+					interact.promptCreateNotebook(kernel, note, unlockNote);
+				}
+			});
 		}
 	});
 	context.subscriptions.push(disposable);

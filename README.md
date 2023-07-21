@@ -8,11 +8,14 @@ A [Visual Studio Code](https://code.visualstudio.com/) extension that provides b
 * Local changes automatically synced with server.
 
 ## How to Use
-* install Zeppelin VS Code Extension.
-* download Zeppelin notebook file (either .json or .zpln) from Zeppelin web server.
-* rename file suffix into ".zpln" if it is ".json".
-* open it using VS Code, during first cell run you will be prompted to provide server url and credential.
-* more configurations can be accessed by searching for 'zeppelin' in setting or command palette.
+* Install Zeppelin VS Code Extension.
+* Download Zeppelin notebook file (either .json or .zpln) from Zeppelin web server.
+* Rename file suffix into ".zpln" if it is ".json".
+* Open it using VS Code, during first cell run you will be prompted to provide server url and credential.
+* More configurations can be accessed by searching for 'zeppelin' in setting or command palette.
 
 ## Contribution
 __The extension is currently under personal development. If you would like to develop with me, please fire an issue.__
+
+## Feedback
+__Desperately needed! Please do report bugs or advise any improvement by firing issues.__
