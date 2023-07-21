@@ -105,14 +105,16 @@ export async function activate(context: vscode.ExtensionContext) {
 		};
 
 		// task when remote server is connectable but the note is not on it.
-		if (willConnectRemote && await kernel.checkInService()) {
-			if (await kernel.hasNote(note.metadata.id)) {
-				unlockNote();
-			}
-			else {
-				// import/create identical note when there doesn't exist one.
-				interact.promptCreateNotebook(kernel, note, unlockNote);
-			}
+		if (willConnectRemote) {
+			kernel.checkInService(async () => {
+				if (await kernel.hasNote(note.metadata.id)) {
+					unlockNote();
+				}
+				else {
+					// import/create identical note when there doesn't exist one.
+					interact.promptCreateNotebook(kernel, note, unlockNote);
+				}
+			});
 		}
 	});
 	context.subscriptions.push(disposable);

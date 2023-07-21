@@ -47,8 +47,11 @@ export async function showInputURL() {
 
 // function that gives user a set of options to choose Zeppelin URLs,
 // URLs and the respective display names will be shared across workspaces.
-export async function showQuickPickURL(context: vscode.ExtensionContext) {
-	let urlHistory: { [key: string]: string }[] 
+export async function showQuickPickURL(
+	context: vscode.ExtensionContext,
+	onDidHide?: Function
+) {
+	let urlHistory: { [key: string]: string }[]
 		= context.globalState.get('urlHistory') ?? [];
 	let pickUrlItems = urlHistory.map(pair => ({ 
 		label: pair.label,
@@ -129,7 +132,6 @@ export async function showQuickPickURL(context: vscode.ExtensionContext) {
 				lastConnect: (new Date()).toString()
 			});
 		}
-		quickPick.hide();
 
 		// save current URL to workspace.
 		context.workspaceState.update('currentZeppelinServerLabel', pickedLabel);
@@ -137,9 +139,15 @@ export async function showQuickPickURL(context: vscode.ExtensionContext) {
 		// save URL history across workspaces.
 		context.globalState.update('urlHistory', urlHistory);
 		context.globalState.setKeysForSync(['urlHistory']);
+		quickPick.hide();
 	});
 
-	quickPick.onDidHide(quickPick.dispose);
+	quickPick.onDidHide( _=> {
+		if (onDidHide !== undefined) {
+			onDidHide();
+		}
+		quickPick.dispose();
+	});
 
 	logDebug("showing quick-pick URLs", quickPick);
 	quickPick.show();
@@ -379,13 +387,13 @@ export async function promptUnlockCurrentNotebook(kernel: ZeppelinKernel) {
 	}
 
 	// task when remote server is connectable.
-	if (await kernel.checkInService()) {
-		if (await kernel.hasNote(note.metadata.id)) {
+	kernel.checkInService(async () => {
+		if (await kernel.hasNote(note?.metadata.id)) {
 			unlockActiveEditor();
 		}
 		else {
 			// import/create identical note when there doesn't exist one.
 			promptCreateNotebook(kernel, note, unlockActiveEditor);
 		}
-	}
+	});
 }
