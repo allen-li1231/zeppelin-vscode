@@ -121,7 +121,11 @@ export class ZeppelinKernel {
         let isSuccess = await doLogin(this._context, service);
         if (isSuccess) {
             this.setService(service);
-            return this.activate();
+            this.activate();
+            this._controller.label = this._context.workspaceState.get(
+                'currentZeppelinServerLabel', this.label
+            );
+            return this.isActive();
         }
         else {
             return this.deactivate();

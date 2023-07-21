@@ -38,16 +38,7 @@ const extensionConfig = {
             loader: 'ts-loader'
           }
         ]
-      },
-      {
-        test: /\.ts$/,
-        exclude: /node_modules/,
-        loader: 'esbuild-loader',
-        options: {
-          loader: 'ts',
-          target: 'es2020'
-        }
-      },
+      }
     ]
   },
   devtool: 'nosources-source-map',

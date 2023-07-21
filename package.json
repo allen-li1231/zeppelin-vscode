@@ -124,47 +124,43 @@
     },
     "commands": [
       {
-        "command": "vscode-zeppelin.importCurrentNotebook",
+        "command": "zeppelin-vscode.importCurrentNotebook",
         "title": "Zeppelin: Import Current Notebook to Zeppelin Server"
       },
       {
-        "command": "vscode-zeppelin.setZeppelinServerURL",
+        "command": "zeppelin-vscode.setZeppelinServerURL",
         "title": "Zeppelin: Set Zeppelin Server URL"
       },
       {
-        "command": "vscode-zeppelin.setZeppelinCredential",
+        "command": "zeppelin-vscode.setZeppelinCredential",
         "title": "Zeppelin: Set Zeppelin Credential (username and password)"
       },
       {
-        "command": "vscode-zeppelin.unlockCurrentNotebook",
+        "command": "zeppelin-vscode.unlockCurrentNotebook",
         "title": "Zeppelin: Unlock Current Notebook by Connecting to Server"
       }
     ],
     "menus": {
       "commandPalette": [
         {
-          "command": "vscode-zeppelin.importCurrentNotebook",
+          "command": "zeppelin-vscode.importCurrentNotebook",
           "when": "!activeEditorIsReadonly && (resourceExtname == .zpln || resourceExtname == .ipynb)"
         },
         {
-          "command": "vscode-zeppelin.setZeppelinServerURL"
+          "command": "zeppelin-vscode.setZeppelinServerURL"
         },
         {
-          "command": "vscode-zeppelin.setZeppelinCredential"
+          "command": "zeppelin-vscode.setZeppelinCredential"
         },
         {
-          "command": "vscode-zeppelin.unlockCurrentNotebook",
+          "command": "zeppelin-vscode.unlockCurrentNotebook",
           "when": "resourceExtname == .zpln && activeEditorIsReadonly"
         }
       ]
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run esbuild-base -- --minify",
-    "esbuild-base": "esbuild ./src/extension/extension.ts --bundle --outfile=out/main.js --external:vscode --format=cjs --platform=node",
-    "esbuild": "npm run esbuild-base -- --sourcemap",
-    "esbuild-watch": "npm run esbuild-base -- --sourcemap --watch",
-    "test-compile": "tsc -p ./",
+    "vscode:prepublish": "npm run package",
     "compile": "webpack",
     "watch": "webpack --watch",
     "package": "webpack --mode production --devtool hidden-source-map",
@@ -185,7 +181,6 @@
     "@typescript-eslint/parser": "^5.59.1",
     "@vscode/test-electron": "^2.3.0",
     "axios": "^1.4.0",
-    "esbuild": "^0.18.14",
     "eslint": "^8.39.0",
     "glob": "^8.1.0",
     "ts-loader": "^9.4.4",

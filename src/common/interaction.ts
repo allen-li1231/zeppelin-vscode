@@ -81,10 +81,13 @@ export async function showQuickPickURL(context: vscode.ExtensionContext) {
 			return;
 		}
 
+		let pickedLabel: string;
 		let pickedURL: string;
 
 		if (picked.label === `$(close)None`) {
+			pickedLabel = '';
 			pickedURL = '';
+			context.workspaceState.update('currentZeppelinServerLabel', pickedLabel);
 			context.workspaceState.update('currentZeppelinServerURL', pickedURL);
 			quickPick.hide();
 			return;
@@ -98,6 +101,7 @@ export async function showQuickPickURL(context: vscode.ExtensionContext) {
 				return;
 			}
 
+			pickedLabel = pickedPair.label;
 			pickedURL = pickedPair.url;
 			// url history is sorted by most recent usage
 			// put picked url to the front of url history list
@@ -116,6 +120,7 @@ export async function showQuickPickURL(context: vscode.ExtensionContext) {
 			}
 
 			logDebug("URL picked from history", picked);
+			pickedLabel = picked.label;
 			pickedURL = picked.description;
 			urlHistory = urlHistory.filter(pair => pair.url !== pickedURL);
 			urlHistory.unshift({
@@ -127,6 +132,7 @@ export async function showQuickPickURL(context: vscode.ExtensionContext) {
 		quickPick.hide();
 
 		// save current URL to workspace.
+		context.workspaceState.update('currentZeppelinServerLabel', pickedLabel);
 		context.workspaceState.update('currentZeppelinServerURL', pickedURL);
 		// save URL history across workspaces.
 		context.globalState.update('urlHistory', urlHistory);

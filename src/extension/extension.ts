@@ -25,21 +25,21 @@ export async function activate(context: vscode.ExtensionContext) {
 
 
 	disposable = vscode.commands.registerCommand(
-		'vscode-zeppelin.setZeppelinServerURL',
+		'zeppelin-vscode.setZeppelinServerURL',
 		_ => interact.showQuickPickURL(context)
 	);
 	context.subscriptions.push(disposable);
 
 
 	disposable = vscode.commands.registerCommand(
-		'vscode-zeppelin.setZeppelinCredential',
+		'zeppelin-vscode.setZeppelinCredential',
 		_ => interact.showQuickPickLogin(context)
 	);
 	context.subscriptions.push(disposable);
 
 
 	disposable = vscode.commands.registerCommand(
-		'vscode-zeppelin.importCurrentNotebook',
+		'zeppelin-vscode.importCurrentNotebook',
 		_ => interact.promptCreateNotebook(
 			kernel, vscode.window.activeNotebookEditor?.notebook
 		)
@@ -48,7 +48,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 
 	disposable = vscode.commands.registerCommand(
-		'vscode-zeppelin.unlockCurrentNotebook',
+		'zeppelin-vscode.unlockCurrentNotebook',
 		_ => interact.promptUnlockCurrentNotebook(kernel)
 	);
 	context.subscriptions.push(disposable);
