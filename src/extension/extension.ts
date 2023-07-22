@@ -26,7 +26,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	disposable = vscode.commands.registerCommand(
 		'zeppelin-vscode.setZeppelinServerURL',
-		_ => interact.showQuickPickURL(context)
+		() => {interact.promptZeppelinServerURL(kernel);}
 	);
 	context.subscriptions.push(disposable);
 
@@ -104,9 +104,12 @@ export async function activate(context: vscode.ExtensionContext) {
 			}
 		};
 
-		// task when remote server is connectable but the note is not on it.
 		if (willConnectRemote) {
-			kernel.checkInService(async () => {
+			let baseURL = context.workspaceState.get(
+				'currentZeppelinServerURL', undefined
+			);
+			kernel.checkInService(baseURL, async () => {
+				// task when remote server is connectable but the note is not on it.
 				if (await kernel.hasNote(note.metadata.id)) {
 					unlockNote();
 				}

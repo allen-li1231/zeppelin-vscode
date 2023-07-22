@@ -54,15 +54,23 @@ export class ZeppelinKernel {
     activate() {
         this._isActive = !!this._service && !!this._service.baseURL;
 
-        if (this._isActive && this._intervalUpdateCell === undefined) {
-            let config = vscode.workspace.getConfiguration('zeppelin');
-            
-            let poolingInterval = config.get('autosave.poolingInterval', 1);
+        if (this._isActive ) {
+            let label = this._context.workspaceState.get('currentZeppelinServerName', this.label);
+            let desc = this._context.workspaceState.get('currentZeppelinServerURL', undefined);
+            this.setDisplay(label, EXTENSION_NAME, desc);
 
-            this._intervalUpdateCell = setInterval(
-                this._doUpdatePollingParagraphs.bind(this), poolingInterval * 1000
-            );
+            if (this._intervalUpdateCell === undefined) {
+                let config = vscode.workspace.getConfiguration('zeppelin');
+                
+                let poolingInterval = config.get('autosave.poolingInterval', 1);
+    
+                this._intervalUpdateCell = setInterval(
+                    this._doUpdatePollingParagraphs.bind(this), poolingInterval * 1000
+                );
+            }
         }
+
+
         return this.isActive();
     }
 
@@ -70,6 +78,8 @@ export class ZeppelinKernel {
         if (!this.isActive()) {
             return false;
         }
+
+        this.setDisplay(this.label, EXTENSION_NAME);
 
         if (this._intervalUpdateCell !== undefined) {
             // run registered update paragraph task immediately
@@ -86,6 +96,16 @@ export class ZeppelinKernel {
         return this._isActive;
     }
 
+    setDisplay(label: string, description?: string, detail?: string) {
+        this._controller.label = label;
+        this._controller.description = description;
+        this._controller.detail = detail;
+    }
+
+    getContext() {
+        return this._context;
+    }
+
     setService(baseURL: string) {
         let userAgent = `${EXTENSION_NAME}/${getVersion(this._context)} vscode-extension/${vscode.version}`;
 
@@ -99,9 +119,9 @@ export class ZeppelinKernel {
         return this._service;
     }
 
-    private async _doLoginUsingBaseURL(baseURL: string | undefined) {
+    private async _toggleActivation(baseURL: string | undefined) {
         if (!baseURL) {
-            return false;
+            return this.deactivate();
         }
 
         let service = this.setService(baseURL);
@@ -115,20 +135,22 @@ export class ZeppelinKernel {
     }
 
     public async checkInService(
+        baseURL: string | undefined,
         onDidServiceActivate?: Function
     ) {
-        if (this.isActive()) {
+        if (baseURL === this._service?.baseURL && this.isActive()) {
+            if (onDidServiceActivate !== undefined) {
+                onDidServiceActivate();
+            }
             return;
         }
 
-        let baseURL: string | undefined = 
-            this._context.workspaceState.get('currentZeppelinServerURL');
-        if (baseURL === undefined) {
+        if (!baseURL) {
             showQuickPickURL(this._context, (async () => {
                 // baseURL is supposed not to be null or undefined by now
                 baseURL = this._context.workspaceState.get('currentZeppelinServerURL');
 
-                let isActive = await this._doLoginUsingBaseURL(baseURL);
+                let isActive = await this._toggleActivation(baseURL);
                 if (isActive && onDidServiceActivate !== undefined) {
                     onDidServiceActivate();
                 }
@@ -136,7 +158,7 @@ export class ZeppelinKernel {
             }).bind(this));
         }
         else {
-            let isActive = await this._doLoginUsingBaseURL(baseURL);
+            let isActive = await this._toggleActivation(baseURL);
             if (isActive && onDidServiceActivate !== undefined) {
                 onDidServiceActivate();
             }

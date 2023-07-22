@@ -88,10 +88,8 @@ export async function showQuickPickURL(
 		let pickedURL: string;
 
 		if (picked.label === `$(close)None`) {
-			pickedLabel = '';
-			pickedURL = '';
-			context.workspaceState.update('currentZeppelinServerLabel', pickedLabel);
-			context.workspaceState.update('currentZeppelinServerURL', pickedURL);
+			context.workspaceState.update('currentZeppelinServerName', undefined);
+			context.workspaceState.update('currentZeppelinServerURL', '');
 			quickPick.hide();
 			return;
 		}
@@ -129,12 +127,13 @@ export async function showQuickPickURL(
 			urlHistory.unshift({
 				label: picked.label,
 				url: picked.description,
-				lastConnect: (new Date()).toString()
+				lastConnect: (new Date()).toString(),
+				connectable: "false"
 			});
 		}
 
 		// save current URL to workspace.
-		context.workspaceState.update('currentZeppelinServerLabel', pickedLabel);
+		context.workspaceState.update('currentZeppelinServerName', pickedLabel);
 		context.workspaceState.update('currentZeppelinServerURL', pickedURL);
 		// save URL history across workspaces.
 		context.globalState.update('urlHistory', urlHistory);
@@ -380,14 +379,36 @@ function unlockActiveEditor() {
 };
 
 
-export async function promptUnlockCurrentNotebook(kernel: ZeppelinKernel) {
+export async function promptZeppelinServerURL(kernel: ZeppelinKernel) {
 	let note = vscode.window.activeNotebookEditor?.notebook;
 	if (note === undefined) {
 		return;
 	}
 
 	// task when remote server is connectable.
-	kernel.checkInService(async () => {
+	kernel.checkInService(undefined, async () => {
+		if (await kernel.hasNote(note?.metadata.id)) {
+			unlockActiveEditor();
+		}
+		else {
+			// import/create identical note when there doesn't exist one.
+			promptCreateNotebook(kernel, note, unlockActiveEditor);
+		}
+	});
+}
+
+
+export async function promptUnlockCurrentNotebook(kernel: ZeppelinKernel) {
+	let note = vscode.window.activeNotebookEditor?.notebook;
+	if (note === undefined) {
+		return;
+	}
+
+	let baseURL = kernel.getContext().workspaceState.get(
+		'currentZeppelinServerURL', undefined
+	);
+	// task when remote server is connectable.
+	kernel.checkInService(baseURL, async () => {
 		if (await kernel.hasNote(note?.metadata.id)) {
 			unlockActiveEditor();
 		}
