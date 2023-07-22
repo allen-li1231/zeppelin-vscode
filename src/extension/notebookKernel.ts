@@ -16,7 +16,12 @@ export class ZeppelinKernel {
     readonly id: string = 'zeppelin-notebook-kernel';
     readonly notebookType: string = 'zeppelin-notebook';
     readonly label: string = 'Zeppelin Notebook';
-    readonly supportedLanguages = ['python', 'scala', 'markdown', 'r', 'sql'];
+    readonly supportedLanguages = [
+        'alluxio', 'beam', 'bigquery', 'cassandra', 'elasticsearch', 'flink',
+        'geode', 'groovy', 'hazelcastjet', 'hbase', 'hive', 'ignite', 'ignite',
+        'influxdb', 'java', 'kotlin', 'ksql', 'kylin', 'mahout', 'markdown',
+        'mongodb', 'neo4j', 'pig', 'python', 'r', 'sap', 'scala', 'scalding',
+        'scio', 'shell', 'spark', 'sparql', 'sql'];
 
     private _context: vscode.ExtensionContext;
     private _service?: NotebookService;
