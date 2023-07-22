@@ -35,7 +35,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - Enrich settings description.
 
 ### Fixed
-- Compatibility issue related to listNotes API before 0.10.0.
+- Compatibility issue related to listNotes Zeppelin API before 0.10.0.
 
 ### Changed
 - Present a better extension name. Due to this change, the extension was republished.
@@ -44,3 +44,13 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ### Removed
 - Unused npm package in package.json.
+
+
+## [0.1.3] - 2023-7-21
+
+### Added
+- Kernel now can be selected by clicking on current kernel, and display names of list of kernels become user-friendly.
+
+### Fixed
+- Bug that causes API service and kernel display name not responding to user switching Zeppelin server.
+- Bug that causes first-time opening a notebook doesn't trigger login procedure after user has provided Zeppelin server URL
