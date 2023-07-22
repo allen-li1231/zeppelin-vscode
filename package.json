@@ -20,9 +20,14 @@
     "Apache Zeppelin",
     "zeppelin",
     "notebook",
+    "elasticsearch",
+    "hive",
+    "java",
+    "neo4j",
     "python",
     "r",
     "scala",
+    "spark",
     "sql"
   ],
   "categories": [

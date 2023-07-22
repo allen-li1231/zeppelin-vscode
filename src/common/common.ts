@@ -6,12 +6,18 @@ export const DEBUG_MODE = true;
 export const EXTENSION_NAME = 'zeppelin-notebook';
 export const NOTEBOOK_SUFFIX = '.zpln';
 
+export const SUPPORTEDLANGUAGE = [
+    'alluxio', 'beam', 'bigquery', 'cassandra', 'elasticsearch', 'flink',
+    'geode', 'groovy', 'hazelcastjet', 'hbase', 'hive', 'ignite', 'ignite',
+    'influxdb', 'java', 'kotlin', 'ksql', 'kylin', 'mahout', 'markdown',
+    'mongodb', 'neo4j', 'pig', 'python', 'r', 'sap', 'scala', 'scalding',
+    'scio', 'shell', 'spark', 'sparql', 'sql'];
+
 export const mapLanguageKind = new Map<string, number>();
-mapLanguageKind.set("markdown", 1);
-mapLanguageKind.set("python", 2);
-mapLanguageKind.set("scala", 2);
-mapLanguageKind.set("r", 2);
-mapLanguageKind.set("sql", 2);
+for (let lang of SUPPORTEDLANGUAGE) {
+    mapLanguageKind.set(lang, 2);
+}
+mapLanguageKind.set('markdown', 1);
 
 export const reInterpreter = RegExp(/([\s\n]*%[\w\d\._]+)\s*\n+/);
 export const reURL = RegExp(/[-a-zA-Z0-9@:%._\+~#=]{1,256}\.?[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)?/gi);

@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { AxiosError } from 'axios';
 import { NotebookService } from '../common/api';
 import { EXTENSION_NAME,
+    SUPPORTEDLANGUAGE,
     getVersion,
     logDebug,
     getProxy
@@ -16,12 +17,7 @@ export class ZeppelinKernel {
     readonly id: string = 'zeppelin-notebook-kernel';
     readonly notebookType: string = 'zeppelin-notebook';
     readonly label: string = 'Zeppelin Notebook';
-    readonly supportedLanguages = [
-        'alluxio', 'beam', 'bigquery', 'cassandra', 'elasticsearch', 'flink',
-        'geode', 'groovy', 'hazelcastjet', 'hbase', 'hive', 'ignite', 'ignite',
-        'influxdb', 'java', 'kotlin', 'ksql', 'kylin', 'mahout', 'markdown',
-        'mongodb', 'neo4j', 'pig', 'python', 'r', 'sap', 'scala', 'scalding',
-        'scio', 'shell', 'spark', 'sparql', 'sql'];
+    readonly supportedLanguages = SUPPORTEDLANGUAGE;
 
     private _context: vscode.ExtensionContext;
     private _service?: NotebookService;
@@ -43,7 +39,7 @@ export class ZeppelinKernel {
         this._controller = vscode.notebooks.createNotebookController(
             this.id, this.notebookType, this.label
         );
-		this._controller.supportedLanguages = ['python', 'scala', 'markdown', 'r', 'sql'];
+		this._controller.supportedLanguages = this.supportedLanguages;
 		this._controller.supportsExecutionOrder = true;
 		this._controller.description = 'Zeppelin notebook kernel';
 		this._controller.executeHandler = this._executeAll.bind(this);
