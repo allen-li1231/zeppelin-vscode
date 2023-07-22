@@ -57,7 +57,7 @@ export class ZeppelinKernel {
         if (this._isActive ) {
             let label = this._context.workspaceState.get('currentZeppelinServerName', this.label);
             let desc = this._context.workspaceState.get('currentZeppelinServerURL', undefined);
-            this.setDisplay(label, desc, EXTENSION_NAME);
+            this.setDisplay(label, EXTENSION_NAME, desc);
 
             if (this._intervalUpdateCell === undefined) {
                 let config = vscode.workspace.getConfiguration('zeppelin');
@@ -79,7 +79,7 @@ export class ZeppelinKernel {
             return false;
         }
 
-        this.setDisplay(this.label, undefined, EXTENSION_NAME);
+        this.setDisplay(this.label, EXTENSION_NAME);
 
         if (this._intervalUpdateCell !== undefined) {
             // run registered update paragraph task immediately
