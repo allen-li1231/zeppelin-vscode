@@ -53,4 +53,10 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ### Fixed
 - Bug that causes API service and kernel display name not responding to user switching Zeppelin server.
-- Bug that causes first-time opening a notebook doesn't trigger login procedure after user has provided Zeppelin server URL
+- Bug that causes first-time opening a notebook doesn't trigger login procedure after user has provided Zeppelin server URL.
+
+
+## [0.1.4] - 2023-7-25
+
+### Fixed
+- Bug that causes changing server credentials doesn't trigger a new login.
