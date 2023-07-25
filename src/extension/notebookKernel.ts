@@ -55,7 +55,7 @@ export class ZeppelinKernel {
     activate() {
         this._isActive = !!this._service && !!this._service.baseURL;
 
-        if (this._isActive ) {
+        if (this._isActive) {
             let label = this._context.workspaceState.get('currentZeppelinServerName', this.label);
             let desc = this._context.workspaceState.get('currentZeppelinServerURL', undefined);
             this.setDisplay(label, EXTENSION_NAME, desc);

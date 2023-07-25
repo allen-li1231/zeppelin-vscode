@@ -26,14 +26,14 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	disposable = vscode.commands.registerCommand(
 		'zeppelin-vscode.setZeppelinServerURL',
-		() => {interact.promptZeppelinServerURL(kernel);}
+		() => interact.promptZeppelinServerURL(kernel)
 	);
 	context.subscriptions.push(disposable);
 
 
 	disposable = vscode.commands.registerCommand(
 		'zeppelin-vscode.setZeppelinCredential',
-		_ => interact.showQuickPickLogin(context)
+		_ => interact.promptZeppelinCredential(kernel)
 	);
 	context.subscriptions.push(disposable);
 

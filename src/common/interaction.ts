@@ -379,6 +379,8 @@ function unlockActiveEditor() {
 };
 
 
+// function that prompt user to provide zeppelin server URL, 
+// will also ask for Zeppelin credential if last used credential is not valid
 export async function promptZeppelinServerURL(kernel: ZeppelinKernel) {
 	let note = vscode.window.activeNotebookEditor?.notebook;
 	if (note === undefined) {
@@ -387,6 +389,31 @@ export async function promptZeppelinServerURL(kernel: ZeppelinKernel) {
 
 	// task when remote server is connectable.
 	kernel.checkInService(undefined, async () => {
+		if (await kernel.hasNote(note?.metadata.id)) {
+			unlockActiveEditor();
+		}
+		else {
+			// import/create identical note when there doesn't exist one.
+			promptCreateNotebook(kernel, note, unlockActiveEditor);
+		}
+	});
+}
+
+
+export async function promptZeppelinCredential(kernel: ZeppelinKernel) {
+	let note = vscode.window.activeNotebookEditor?.notebook;
+	if (note === undefined) {
+		return;
+	}
+
+	let baseURL = kernel.getContext().workspaceState.get(
+		'currentZeppelinServerURL', undefined
+	);
+	// remove username so login procedure could be triggered
+	kernel.getContext().secrets.delete('zeppelinUsername');
+
+	// task when remote server is connectable.
+	kernel.checkInService(baseURL, async () => {
 		if (await kernel.hasNote(note?.metadata.id)) {
 			unlockActiveEditor();
 		}
