@@ -11,7 +11,7 @@
   "repository": {
     "url": "https://github.com/allen-li1231/zeppelin-vscode"
   },
-  "icon": "zeppelin-notebook.ico",
+  "icon": "zeppelin.png",
   "engines": {
     "vscode": "^1.79.0"
   },
