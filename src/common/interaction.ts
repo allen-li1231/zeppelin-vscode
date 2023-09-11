@@ -425,6 +425,11 @@ export async function promptZeppelinCredential(kernel: ZeppelinKernel) {
 }
 
 
+// function that prompt user to unlock current Zeppelin notebook
+// user will be asked to provide Zeppelin URL and credential (if never provided)
+// then the extension will check if notebook exists on server
+// if not, will prompt user to create one
+// only when successfully logged in and notebook exists will it be unlocked
 export async function promptUnlockCurrentNotebook(kernel: ZeppelinKernel) {
 	let note = vscode.window.activeNotebookEditor?.notebook;
 	if (note === undefined) {
