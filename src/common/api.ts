@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/naming-convention */
+import { window } from 'vscode';
 import { logDebug, formatURL, reCookies } from './common';
 import {
     ParagraphData,
@@ -55,6 +56,14 @@ class BasicService {
             },
             (error) => {
                 logDebug(error);
+                let url = error.request?.path;
+
+                if (error.response?.status === 401) {
+                    window.showWarningMessage(
+                        `You do not have permission to access '${url}'`
+                    );
+                }
+
                 // instead of rejecting error, pass it to outer scope
                 return error;
             }
