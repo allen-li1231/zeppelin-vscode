@@ -287,8 +287,9 @@ export async function promptCreateNotebook(
 		return false;
 	}
 
-	// take name in metadata, or note path base name as name of note
-	let name = note.metadata.name ?? note.uri.path.split('/').pop();
+	// take name in metadata, or note path base name as name of new note
+	var name = note.metadata.name ?? note.uri.path.replace(/\.[^.]+$/, '');
+	let baseName = name.split('/').pop();
 
 	let visibleNotes = await kernel.listNotes();
 
@@ -296,13 +297,14 @@ export async function promptCreateNotebook(
 	try {
 		visiblePaths = visibleNotes.map(
 			(info: {[key: string]: string}) => {
-				// before Zeppelin 10.0, path of note
+				// before Zeppelin 0.10.0, path of note
             	// is stored in 'name' key instead of 'path'
 				let path = info.path ?? info.name;
 				// take base directory of notes
 				return path.startsWith('/~Trash')
 					? '/'
-					: path.substring(0, path.lastIndexOf('/') + 1);
+					// remove first and last '/'
+					: path.substring(1, path.lastIndexOf('/') + 1);
 			}
 		);
 
@@ -313,14 +315,21 @@ export async function promptCreateNotebook(
 		return false;
 	}
 
+	const disposables: vscode.Disposable[] = [];
 	const quickPick = vscode.window.createQuickPick();
 	// remove suffix
-	quickPick.value = name.replace(/\.[^/.]+$/, '');
-	quickPick.title = `Specify Path to Save the
-		 New Notebook "${name}" on Zeppelin Server`;
+	quickPick.value = name;
+	quickPick.title = `Specify Path to Save a
+		 New "${name}" to Zeppelin Server`;
+	quickPick.ignoreFocusOut = true;
 	quickPick.items = visiblePaths.map(value => { return { label: value }; });
 
-	quickPick.onDidAccept( async _ => {
+	disposables.push(quickPick.onDidAccept( async _ => {
+		if (quickPick.busy) {
+			quickPick.busy = false;
+			return;
+		}
+
 		let newNotebookPath = quickPick.value;
 		if (!!newNotebookPath){
 			let noteId: string;
@@ -348,18 +357,22 @@ export async function promptCreateNotebook(
 		}
 
 		quickPick.hide();
-	});
+	}));
 
-	quickPick.onDidChangeSelection(selection => {
+	disposables.push(quickPick.onDidChangeSelection(selection => {
 		let picked = selection[0];
 		if (!picked) {
 			return;
 		}
 
-		quickPick.value = picked.label + name;
-	});
+		quickPick.value = picked.label + baseName;
+		quickPick.busy = true;
+	}));
 
-	quickPick.onDidHide(quickPick.dispose);
+	disposables.push(quickPick.onDidHide(() => {
+		disposables.forEach(d => d.dispose());
+		quickPick.dispose();
+	}));
 
 	logDebug("showing quick-pick remote paths", quickPick);
 	quickPick.show();
