@@ -63,6 +63,9 @@ class BasicService {
                         `You do not have permission to access '${url}'`
                     );
                 }
+                else {
+                    window.showErrorMessage(error.response.data.message);
+                }
 
                 // instead of rejecting error, pass it to outer scope
                 return error;
