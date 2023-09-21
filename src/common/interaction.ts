@@ -340,6 +340,7 @@ export async function promptCreateNotebook(
 					noteId = await kernel.createNote(newNotebookPath, paragraphs);
 				}
 				else {
+					await kernel.updateNoteMetadata(note, {name: newNotebookPath});
 					noteId = await kernel.importNote(note.metadata);
 				}
 			}
