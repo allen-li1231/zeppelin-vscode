@@ -2,12 +2,6 @@
 
 All notable changes to the "zeppelin-vscode" extension will be documented in this file.
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
-
-## [Unreleased]
-
-- Initial release
-
 ## [0.1.1] - 2023-7-18
 
 ### Addded
@@ -74,6 +68,6 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 ### Fixed
 - Bug that causes imported note's path not correctly set.
 - Following bugs in promptCreateNotebook:
-    > Quickpick tiggers not fully disposed.
-    > Selectable note save path not shown correctly.
-    > Note base name not appended to save path as expected.
+> 1. Quickpick tiggers not fully disposed.
+> 2. Selectable note save path not shown correctly.
+> 3. Note base name not appended to save path as expected.
