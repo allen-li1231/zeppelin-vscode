@@ -42,6 +42,7 @@ export interface ParagraphData {
 }
 
 export interface ParagraphConfig {
+    lineNumbers?: boolean;
     colWidth?: number;
     editorMode?: string;
     editorSetting: {

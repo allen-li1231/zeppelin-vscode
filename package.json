@@ -66,7 +66,6 @@
     "onLanguage:sql",
     "onLanguage:spark",
     "onLanguage:sparql",
-    
     "onNotebook:zeppelin-notebook"
   ],
   "contributes": {
@@ -156,7 +155,8 @@
     "commands": [
       {
         "command": "zeppelin-vscode.importCurrentNotebook",
-        "title": "Zeppelin: Import Current Notebook to Zeppelin Server"
+        "title": "Zeppelin: Import Current Notebook to Zeppelin Server",
+        "enablement": "resourceExtname == .zpln || resourceExtname == .ipynb"
       },
       {
         "command": "zeppelin-vscode.setZeppelinServerURL",
@@ -168,14 +168,15 @@
       },
       {
         "command": "zeppelin-vscode.unlockCurrentNotebook",
-        "title": "Zeppelin: Unlock Current Notebook by Connecting to Server"
+        "title": "Zeppelin: Unlock Current Notebook by Connecting to Server",
+        "enablement": "resourceExtname == .zpln && !activeEditorIsReadonly"
       }
     ],
     "menus": {
       "commandPalette": [
         {
           "command": "zeppelin-vscode.importCurrentNotebook",
-          "when": "!activeEditorIsReadonly && (resourceExtname == .zpln || resourceExtname == .ipynb)"
+          "when": "resourceExtname == .zpln || resourceExtname == .ipynb"
         },
         {
           "command": "zeppelin-vscode.setZeppelinServerURL"
@@ -185,7 +186,7 @@
         },
         {
           "command": "zeppelin-vscode.unlockCurrentNotebook",
-          "when": "resourceExtname == .zpln && activeEditorIsReadonly"
+          "when": "resourceExtname == .zpln && !activeEditorIsReadonly"
         }
       ]
     }
@@ -203,7 +204,7 @@
   },
   "devDependencies": {
     "@types/glob": "^8.1.0",
-    "@types/lodash": "^4.14.195",
+    "@types/lodash": "^4.14.198",
     "@types/mocha": "^10.0.1",
     "@types/node": "16.x",
     "@types/vscode": "^1.79.0",
@@ -214,6 +215,7 @@
     "axios": "^1.4.0",
     "eslint": "^8.39.0",
     "glob": "^8.1.0",
+    "lodash": "^4.17.21",
     "ts-loader": "^9.4.4",
     "typescript": "^5.0.4",
     "webpack": "^5.88.2",

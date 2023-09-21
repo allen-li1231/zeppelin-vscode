@@ -4,7 +4,8 @@ import * as vscode from 'vscode';
 import * as interact from '../common/interaction';
 import { ZeppelinSerializer } from './notebookSerializer';
 import { ZeppelinKernel } from './notebookKernel';
-import { NOTEBOOK_SUFFIX } from '../common/common';
+import { NOTEBOOK_SUFFIX, logDebug } from '../common/common';
+import _ = require('lodash');
 
 
 // This method is called when your extension is activated
@@ -129,22 +130,36 @@ export async function activate(context: vscode.ExtensionContext) {
 			return;
 		}
 
-		// add or modify paragraph on remote
+		// modify paragraph on remote
 		for (let cellChange of event.cellChanges) {
 			if (cellChange.document !== undefined) {
 				kernel.registerParagraphUpdate(cellChange.cell);
 			}
 		}
 
-		// remove paragraph on remote
+		// add or remove paragraph on remote
 		for (let contentChange of event.contentChanges) {
-			for (let cell of contentChange.removedCells) {
-				kernel.registerParagraphUpdate(cell);
-			}
+			// cell language change behavior in VS Code: remove original cell,
+			// and add (inplace) a new cell having the requested language id
+			for (let [cellAdded, cellRemoved] of
+					_.zip(contentChange.addedCells, contentChange.removedCells)) {
+				if (cellAdded?.metadata.id !== undefined
+					&& cellAdded.metadata.id === cellRemoved?.metadata.id) {
+						kernel.registerParagraphUpdate(cellAdded);
+					}
+					else {
+						// normal add/remove cell registering
+						if (cellAdded !== undefined) {
+							kernel.registerParagraphUpdate(cellAdded);
+						}
+						if (cellRemoved !== undefined) {
+							kernel.registerParagraphUpdate(cellRemoved);
+						}
+					}
+				}
 		}
 	});
 	context.subscriptions.push(disposable);
-
 
 	disposable = vscode.workspace.onWillSaveNotebookDocument(event => {
 		if (!event.notebook.uri.fsPath.endsWith(NOTEBOOK_SUFFIX)
@@ -154,6 +169,45 @@ export async function activate(context: vscode.ExtensionContext) {
 
 		if (event.notebook.isDirty) {
 			kernel.instantUpdatePollingParagraphs();
+		}
+	});
+	context.subscriptions.push(disposable);
+
+	disposable = vscode.window.onDidChangeTextEditorOptions(async event => {
+		if (!event.textEditor.document.uri.fsPath.endsWith(NOTEBOOK_SUFFIX)
+			|| !kernel.isActive()) {
+		return;
+	}
+		let lineNumbers = 
+			event.options.lineNumbers !== vscode.TextEditorLineNumbersStyle.Off;
+
+		let notebook = vscode.window.activeNotebookEditor?.notebook;
+		if (notebook === undefined
+			|| !notebook.uri.fsPath.endsWith(NOTEBOOK_SUFFIX)) {
+			return;
+		}
+
+
+		for (let cell of notebook.getCells()) {
+			if (cell.document !== event.textEditor.document) {
+				continue;
+			}
+			let res: boolean = await kernel.updateCellMetadata(cell, {
+				config: {
+					"lineNumbers": lineNumbers,
+					"editorSetting": {
+						"language": cell.document.languageId,
+						"editOnDblClick": false,
+						"completionKey": "TAB",
+						"completionSupport": cell.kind !== 1
+					}
+				}
+			});
+			if (!res) {
+				break;
+			}
+			kernel.updateParagraphConfig(cell);
+			break;
 		}
 	});
 	context.subscriptions.push(disposable);
