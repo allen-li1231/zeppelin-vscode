@@ -41,7 +41,6 @@ export function logDebug(item: string | any, ...optionalParams: any[]) {
     }
 }
 
-
 export function getProxy() {
     let proxy: AxiosProxyConfig | undefined = undefined;
 
