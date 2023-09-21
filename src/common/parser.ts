@@ -163,7 +163,10 @@ export function parseCellToParagraphData(
         paragraph.config.editorSetting.language = languageId;
     }
     else {
+        let lineNumbers = vscode.workspace.getConfiguration("editor").get("lineNumbers")
+            !== vscode.TextEditorLineNumbersStyle.Off;
         paragraph.config = {
+            "lineNumbers": paragraph.config.lineNumbers ?? lineNumbers,
             "editorSetting": {
                 "language": languageId,
                 "editOnDblClick": false,

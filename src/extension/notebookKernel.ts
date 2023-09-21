@@ -210,14 +210,7 @@ export class ZeppelinKernel {
 
         logDebug(res);
         if (res instanceof AxiosError) {
-            if (res.response?.status === 500) {
-                vscode.window.showErrorMessage(
-                    `Cannot import note. Please check if note name
-                     is duplicated on the server.`);
-            }
-            else{
-                vscode.window.showErrorMessage(`${res.code}: ${res.message}`);
-            }
+            return undefined;
         }
 
         return res?.data.body;
@@ -323,7 +316,10 @@ export class ZeppelinKernel {
     }
 
     public async updateParagraphConfig(cell: vscode.NotebookCell) {
+        var lineNumbers = vscode.workspace.getConfiguration("editor").get("lineNumbers")
+            !== vscode.TextEditorLineNumbersStyle.Off;
         let config = {
+            "lineNumbers": cell.metadata?.config.lineNumbers ?? lineNumbers,
             "editorSetting": {
                 "language": cell.document.languageId,
                 "editOnDblClick": false,
@@ -356,17 +352,20 @@ export class ZeppelinKernel {
                 return;
             }
 
-            let text = cell.document.getText();
-            let config = {
-                "editorSetting": {
-                    "language": cell.document.languageId,
-                    "editOnDblClick": false,
-                    "completionKey": "TAB",
-                    "completionSupport": cell.kind !== 1
-                } };
-
             // create corresponding paragraph when a cell is newly created
             if (cell.metadata.id === undefined) {
+                let text = cell.document.getText();
+                let lineNumbers = vscode.workspace.getConfiguration("editor").get("lineNumbers");
+                let config = {
+                    "lineNumbers": lineNumbers !== vscode.TextEditorLineNumbersStyle.Off,
+                    "editorSetting": {
+                        "language": cell.document.languageId,
+                        "editOnDblClick": false,
+                        "completionKey": "TAB",
+                        "completionSupport": cell.kind !== 1
+                    }
+                };
+
                 let res = await this._service?.createParagraph(
                     cell.notebook.metadata.id, text, cell.index, '', config);
                 if (res instanceof AxiosError) {
