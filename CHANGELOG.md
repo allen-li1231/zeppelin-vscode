@@ -60,3 +60,20 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ### Fixed
 - Bug that causes changing server credentials doesn't trigger a new login.
+
+
+## [0.1.5] - 2023-9-21
+
+### Added
+- Line number toggling command, and automatically synced to server (still buggy when toggling all cells' line numbers, the problem lies in VSCode api provided)
+
+### Enhancement
+- Allow api error message to emit using vscode.window.showErrorMessage.
+- Comments enrichment.
+
+### Fixed
+- Bug that causes imported note's path not correctly set.
+- Following bugs in promptCreateNotebook:
+    > Quickpick tiggers not fully disposed.
+    > Selectable note save path not shown correctly.
+    > Note base name not appended to save path as expected.
