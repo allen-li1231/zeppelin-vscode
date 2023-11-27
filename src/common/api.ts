@@ -58,13 +58,18 @@ class BasicService {
                 logDebug(error);
                 let url = error.request?.path;
 
-                if (error.response?.status === 401) {
+                if (!error.response) {
+                    window.showErrorMessage(`Error calling ${url}: ${error.message}
+                        Possibly due to local network issue`);
+                }
+                else if (error.response?.status === 401) {
                     window.showWarningMessage(
                         `You do not have permission to access '${url}'`
                     );
                 }
                 else {
-                    window.showErrorMessage(error.response.data.message);
+                    window.showErrorMessage(`${error.message}: 
+                        ${error.response.data.message ?? error.response.statusText}`);
                 }
 
                 // instead of rejecting error, pass it to outer scope
