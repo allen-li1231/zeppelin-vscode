@@ -462,7 +462,8 @@ export async function promptZeppelinCredential(kernel: ZeppelinKernel) {
 		'currentZeppelinServerURL', undefined
 	);
 	// remove username so login procedure could be triggered
-	kernel.getContext().secrets.delete('zeppelinUsername');
+	await kernel.getContext().secrets.delete('zeppelinUsername');
+	kernel.deactivate();
 
 	// task when remote server is connectable.
 	kernel.checkInService(baseURL, async () => {
