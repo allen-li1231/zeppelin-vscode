@@ -79,3 +79,9 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 - url history records can be deleted manually.
 - Decrease default paragraph update delay throttle time from 5 seconds to 1 second.
 - Network issues are enabled to be emitted to vscode.window.
+
+
+## [0.1.7] - 2023-11-27
+
+### Fixed
+- Prompting Zeppelin credentials not working properly.
