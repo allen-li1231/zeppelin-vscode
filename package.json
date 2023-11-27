@@ -2,7 +2,7 @@
   "name": "zeppelin-vscode",
   "displayName": "Zeppelin Notebook",
   "description": "Apache Zeppelin Notebook Extension for VS Code",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "publisher": "AllenLi1231",
   "author": {
     "name": "Allen Li"
@@ -100,7 +100,7 @@
         "zeppelin.autosave.throttleTime": {
           "order": 1,
           "type": "integer",
-          "default": 5,
+          "default": 1,
           "description": "Set paragraph update delay time (in seconds). Avoid too fast changes of cells causing response pressure on Zeppelin server."
         },
         "zeppelin.autosave.poolingInterval": {

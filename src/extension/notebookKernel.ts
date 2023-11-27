@@ -236,7 +236,7 @@ export class ZeppelinKernel {
 
     private _doUpdatePollingParagraphs() {
         let config = vscode.workspace.getConfiguration('zeppelin');
-        let throttleTime: number = config.get('autosave.throttleTime', 5);
+        let throttleTime: number = config.get('autosave.throttleTime', 1);
 
         for (let [cell, requestTime] of this._pollUpdateParagraphs) {
             if (throttleTime * 1000 < Date.now() - requestTime) {
