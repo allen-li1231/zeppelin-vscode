@@ -71,3 +71,11 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 > 1. Quickpick tiggers not fully disposed.
 > 2. Selectable note save path not shown correctly.
 > 3. Note base name not appended to save path as expected.
+
+
+## [0.1.6] - 2023-11-27
+
+### Enhancement
+- url history records can be deleted manually.
+- Decrease default paragraph update delay throttle time from 5 seconds to 1 second.
+- Network issues are enabled to be emitted to vscode.window.
