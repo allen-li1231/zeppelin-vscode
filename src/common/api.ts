@@ -67,9 +67,13 @@ class BasicService {
                         `You do not have permission to access '${url}'`
                     );
                 }
-                else {
+                else if (error.response?.status !== 403) {
+                    // simplify credential error
                     window.showErrorMessage(`${error.message}: 
-                        ${error.response.data.message ?? error.response.statusText}`);
+                        ${!!error.response.data.message
+                          ? error.response.data.message
+                          : error.response.statusText
+                        }`);
                 }
 
                 // instead of rejecting error, pass it to outer scope
