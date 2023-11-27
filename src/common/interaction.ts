@@ -56,7 +56,8 @@ export async function showQuickPickURL(
 	let pickUrlItems = urlHistory.map(pair => ({ 
 		label: pair.label,
 		description: pair.url,
-		detail: 'Last Connection: ' + pair.lastConnect
+		detail: 'Last Connection: ' + pair.lastConnect,
+		buttons: [{iconPath: new vscode.ThemeIcon('trash')}]
 	}));
 
 	const quickPick = vscode.window.createQuickPick();
@@ -95,6 +96,8 @@ export async function showQuickPickURL(
 		}
 
 		if (picked.label === `$(server-environment)Existing`) {
+			context.workspaceState.update('currentZeppelinServerName', undefined);
+			context.workspaceState.update('currentZeppelinServerURL', '');
 			let pickedPair = await showInputURL().catch(logDebug);
 			if (!pickedPair) {
 				// user aborted, pass
@@ -147,6 +150,43 @@ export async function showQuickPickURL(
 		}
 		quickPick.dispose();
 	});
+
+	quickPick.onDidTriggerItemButton(e => {
+		let idx = urlHistory.findIndex(pair => pair.label === e.item.label);
+		urlHistory.splice(idx, 1);
+
+		if (context.workspaceState.get('currentZeppelinServerName') === e.item.label) {
+			context.workspaceState.update('currentZeppelinServerName', undefined);
+			context.workspaceState.update('currentZeppelinServerURL', '');
+		}
+		// save URL history across workspaces.
+		context.globalState.update('urlHistory', urlHistory);
+		context.globalState.setKeysForSync(['urlHistory']);
+
+		let pickUrlItems = urlHistory.map(pair => ({ 
+			label: pair.label,
+			description: pair.url,
+			detail: 'Last Connection: ' + pair.lastConnect,
+			buttons: [{iconPath: new vscode.ThemeIcon('trash')}]
+		}));
+		quickPick.items = [
+
+			// option 1: None, ZeppelinKernel will become silent
+			// and notes won't run code in cell.
+			{
+				label: `$(close)None`,
+				detail: 'Do not connect to any remote Zeppelin server'
+			},
+			// option 2: Existing, prompt user to provide server URL and name.
+			// if the URL provided exists in URL history
+			{
+				label: `$(server-environment)Existing`,
+				detail: 'Specify the URL of an existing server'
+			},
+			// option 3: choose from URL history.
+			...pickUrlItems
+		];
+		});
 
 	logDebug("showing quick-pick URLs", quickPick);
 	quickPick.show();
@@ -212,7 +252,7 @@ export async function doLogin(
 	if (res instanceof AxiosError) {
 		if (!res.response) {
 			// local network issue
-			vscode.window.showErrorMessage(`${res.code}: ${res.message}`);
+			vscode.window.showErrorMessage(`Failed to login for user '${username}'`);
 		}
 		else if (res.response.status === 403) {
 			if (res.response.data.status === 'FORBIDDEN') {
@@ -240,9 +280,7 @@ export async function doLogin(
 		}
 		else {
 			// server side error or client side error
-			vscode.window.showErrorMessage(
-				`${res.response.data.exception}: ${res.response.data.message}`
-			);
+			vscode.window.showErrorMessage(`Failed to login for user '${username}'`);
 		}
 		return false;
 	}
