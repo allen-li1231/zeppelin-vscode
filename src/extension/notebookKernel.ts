@@ -430,25 +430,33 @@ export class ZeppelinKernel {
         execution.executionOrder = ++this._executionOrder;
 		execution.start(Date.now());
 
-        try {
-            let cancelTokenSource = this._service?.cancelTokenSource;
-            execution.token.onCancellationRequested(_ => cancelTokenSource?.cancel());
+        let cancelTokenSource = this._service?.cancelTokenSource;
+        execution.token.onCancellationRequested(_ => cancelTokenSource?.cancel());
 
+        try {
             await this.updateParagraph(cell);
 
             let cellOutput = await this._runParagraph(cell);
-            execution.replaceOutput(new vscode.NotebookCellOutput(cellOutput));
+            execution.replaceOutput(new vscode.NotebookCellOutput(cellOutput ?? []));
             execution.end(true, Date.now());
 
         } catch (err) {
-            execution.replaceOutput(
-                new vscode.NotebookCellOutput([
+            let cellOutput: vscode.NotebookCellOutput;
+            if (err instanceof AxiosError && err.code === "ERR_CANCELED") {
+                cellOutput = new vscode.NotebookCellOutput([
+                    vscode.NotebookCellOutputItem.text("")
+                ]);
+            }
+            else {
+                cellOutput = new vscode.NotebookCellOutput([
                     vscode.NotebookCellOutputItem.error({ 
                         name: err instanceof Error && err.name || 'error', 
                         message: err instanceof Error && err.message || JSON.stringify(err, undefined, 4)
                     })
-                ])
-            );
+                ]);
+            }
+
+            execution.replaceOutput(cellOutput);
             execution.end(false, Date.now());
         }
     }

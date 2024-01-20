@@ -56,11 +56,15 @@ class BasicService {
             },
             (error) => {
                 logDebug(error);
+                if (error.code === "ERR_CANCELED") {
+                    return error;
+                }
+
                 let url = error.request?.path;
 
                 if (!error.response) {
                     window.showErrorMessage(`Error calling ${url}: ${error.message}
-                        Possibly due to local network issue`);
+                        possibly due to local network issue`);
                 }
                 else if (error.response?.status === 401) {
                     window.showWarningMessage(
