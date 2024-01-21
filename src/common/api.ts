@@ -86,6 +86,20 @@ class BasicService {
         );
     }
 
+    resetCancelToken() {
+        this.cancelTokenSource = axios.CancelToken.source();
+        this.session.defaults.cancelToken = this.cancelTokenSource.token;
+    }
+
+    getCancelToken() {
+        return this.cancelTokenSource;
+    }
+
+    cancelConnect() {
+        this.getCancelToken().cancel();
+        this.resetCancelToken();
+    }
+
     async login(username: string, password: string) {
         let res = await this.session.post(
             '/api/login',

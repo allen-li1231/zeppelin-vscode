@@ -309,7 +309,7 @@ export async function promptAlwaysConnect() {
 		"Yes", "No", "Never"
 	);
 	let config = vscode.workspace.getConfiguration('zeppelin');
-	config.update('alwaysConnectLastServer', selection);
+	config.update('alwaysConnectToTheLastServer', selection);
 	return selection;
 }
 

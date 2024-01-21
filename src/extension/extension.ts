@@ -80,7 +80,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		// user selection could be undefined (user never determined),
 		// Yes, No or Never (user specified)
 		let config = vscode.workspace.getConfiguration('zeppelin');
-		let selection = config.get('alwaysConnectLastServer');
+		let selection = config.get('alwaysConnectToTheLastServer');
 		if (selection === 'Never') {
 			return;
 		}
