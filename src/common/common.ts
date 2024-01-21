@@ -49,6 +49,7 @@ export function getProxy() {
         proxy = {
             host: config.get('proxy.host', ''),
             port: config.get('proxy.port', 0),
+            protocol: config.get('proxy.protocol')
         };
         if (!!config.get('proxy.credential.username')) {
             proxy["auth"] = {
