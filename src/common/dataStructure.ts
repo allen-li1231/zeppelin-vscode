@@ -29,10 +29,12 @@ export interface ParagraphData {
     config: ParagraphConfig;
     dateCreated?: string;
     dateUpdated?: string;
+    dateFinished?: string;
     errorMessage?: string;
     focus?: boolean,
-    id?: string;
+    id: string;
     jobName?: string;
+    progress?: Number;
     progressUpdateIntervalMs?: number;
     settings?: ParagraphSetting;
     results?: ParagraphResult;
