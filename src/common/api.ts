@@ -277,7 +277,7 @@ export class NotebookService extends BasicService{
 
     getParagraphInfo(noteId: string, paragraphId: string) {
         return this.session.get(
-            `/api/notebook/${noteId}/${paragraphId}`
+            `/api/notebook/${noteId}/paragraph/${paragraphId}`
         );
     }
 
