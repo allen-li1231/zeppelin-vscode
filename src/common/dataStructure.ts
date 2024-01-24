@@ -1,3 +1,5 @@
+import { Mutex } from "./mutex";
+
 // the Zeppelin note is basically a json file
 // containing note and paragraph information
 export interface NoteData {
@@ -8,7 +10,8 @@ export interface NoteData {
     name: string;
     noteForms?: any;
     noteParams?: any;
-    paragraphs: ParagraphData[];
+    paragraphs?: ParagraphData[];
+    mutex?: Mutex;
 }
 
 export interface AngularObjects {

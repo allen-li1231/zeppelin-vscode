@@ -8,9 +8,11 @@ import { EXTENSION_NAME,
     logDebug,
     getProxy
 } from '../common/common';
-import { ParagraphData, ParagraphResult } from '../common/dataStructure';
+import { NoteData, ParagraphData, ParagraphResult } from '../common/dataStructure';
 import { showQuickPickURL, doLogin } from '../common/interaction';
-import { parseParagraphResultToCellOutput } from '../common/parser';
+import { parseParagraphToCellData, parseParagraphResultToCellOutput 
+} from '../common/parser';
+import { Mutex } from '../common/mutex';
 
 
 export class ZeppelinKernel {
@@ -22,12 +24,18 @@ export class ZeppelinKernel {
     private _context: vscode.ExtensionContext;
     private _service?: NotebookService;
     private readonly _controller: vscode.NotebookController;
-    private _pollNotebookEdits = new Map<vscode.NotebookCell, vscode.NotebookEdit[]>();
-	private _executionOrder = 0;
     private _isActive = false;
+    private _globalMutex = new Mutex();
 
-    private _intervalUpdateCell?: NodeJS.Timer;
-    private _pollUpdateParagraphs = new Map<vscode.NotebookCell, number>();
+    // private _timerSyncNote?: NodeJS.Timer;
+    private _timerUpdateCell?: NodeJS.Timer;
+    private _recurseTrackExecution?: Function;
+    private _mapTrackExecution = new Map<
+        string, [vscode.NotebookCellExecution, number]
+    >();
+    private _mapNotebookEdits = new Map<vscode.NotebookCell, vscode.NotebookEdit[]>();
+    private _mapUpdateParagraph = new Map<vscode.NotebookCell, number>();
+    private _flagRegisterParagraphUpdate = true;
 
 	constructor(context: vscode.ExtensionContext, service?: NotebookService) {
         // if (isInteractive) {
@@ -40,7 +48,7 @@ export class ZeppelinKernel {
             this.id, this.notebookType, this.label
         );
 		this._controller.supportedLanguages = this.supportedLanguages;
-		this._controller.supportsExecutionOrder = true;
+		this._controller.supportsExecutionOrder = false;
 		this._controller.description = 'Zeppelin notebook kernel';
 		this._controller.executeHandler = this._executeAll.bind(this);
 		this._controller.interruptHandler = this._interruptAll.bind(this);
@@ -61,18 +69,43 @@ export class ZeppelinKernel {
             let desc = this._context.workspaceState.get('currentZeppelinServerURL', undefined);
             this.setDisplay(label, EXTENSION_NAME, desc);
 
-            if (this._intervalUpdateCell === undefined) {
-                let config = vscode.workspace.getConfiguration('zeppelin');
-                
+            let config = vscode.workspace.getConfiguration('zeppelin');
+            if (this._timerUpdateCell === undefined) {
                 let poolingInterval = config.get('autosave.poolingInterval', 1);
     
-                this._intervalUpdateCell = setInterval(
+                this._timerUpdateCell = setInterval(
                     this._doUpdatePollingParagraphs.bind(this), poolingInterval * 1000
                 );
             }
+
+            // if (this._timerSyncNote === undefined) {
+            //     let note = vscode.window.activeNotebookEditor?.notebook;
+
+            //     if (note !== undefined && config.get('autosave.toggleSync', true)) {
+            //         let syncInterval = config.get('autosave.syncInterval', 5);
+            //         this._timerSyncNote = setInterval(
+            //             () => this.syncNote.bind(this)(note), syncInterval * 1000
+            //         );
+            //     }
+            // }
+
+            if (this._recurseTrackExecution === undefined) {
+                let trackExecutionInterval = config.get('trackExecutionInterval', 5);
+                let recurseTracker = () => {
+                    if (!this.isActive()) {
+                        return;
+                    }
+                    setTimeout(async () => {
+                        this._globalMutex.runExclusive(
+                            this._doTrackAllExecution.bind(this)
+                        );
+                        recurseTracker();
+                    }, trackExecutionInterval * 1000);
+                };
+                this._recurseTrackExecution = recurseTracker;
+                this._recurseTrackExecution();
+            }
         }
-
-
         return this.isActive();
     }
 
@@ -83,13 +116,21 @@ export class ZeppelinKernel {
 
         this.setDisplay(this.label, EXTENSION_NAME);
 
-        if (this._intervalUpdateCell !== undefined) {
+        if (this._timerUpdateCell !== undefined) {
             // run registered update paragraph task immediately
             // and unregister it after completed
-            clearInterval(this._intervalUpdateCell);
+            clearInterval(this._timerUpdateCell);
             this.instantUpdatePollingParagraphs();
-            this._intervalUpdateCell = undefined;
+            this._timerUpdateCell = undefined;
         }
+
+        // if (this._timerSyncNote !== undefined) {
+        //     clearInterval(this._timerSyncNote);
+        //     this._timerSyncNote = undefined;
+        // }
+
+        this._recurseTrackExecution = undefined;
+
         this._isActive = false;
         return this.isActive();
     }
@@ -121,7 +162,7 @@ export class ZeppelinKernel {
         return this._service;
     }
 
-    private async _toggleActivation(baseURL: string | undefined) {
+    private async _activateService(baseURL: string | undefined) {
         if (!baseURL) {
             return this.deactivate();
         }
@@ -152,7 +193,7 @@ export class ZeppelinKernel {
                 // baseURL is supposed not to be null or undefined by now
                 baseURL = this._context.workspaceState.get('currentZeppelinServerURL');
 
-                let isActive = await this._toggleActivation(baseURL);
+                let isActive = await this._activateService(baseURL);
                 if (isActive && onDidServiceActivate !== undefined) {
                     onDidServiceActivate();
                 }
@@ -160,7 +201,7 @@ export class ZeppelinKernel {
             }).bind(this));
         }
         else {
-            let isActive = await this._toggleActivation(baseURL);
+            let isActive = await this._activateService(baseURL);
             if (isActive && onDidServiceActivate !== undefined) {
                 onDidServiceActivate();
             }
@@ -191,7 +232,7 @@ export class ZeppelinKernel {
     public async createNote(name: string, paragraphs?: ParagraphData[]) {
         let res = await this._service?.createNote(name, paragraphs);
 
-        logDebug(res);
+        logDebug("error in createNote", res);
         if (res instanceof AxiosError) {
             if (res.response?.status === 500) {
                 vscode.window.showErrorMessage(
@@ -209,7 +250,7 @@ export class ZeppelinKernel {
     public async importNote(note: any) {
         let res = await this._service?.importNote(note);
 
-        logDebug(res);
+        logDebug("error in importNote", res);
         if (res instanceof AxiosError) {
             return undefined;
         }
@@ -224,28 +265,148 @@ export class ZeppelinKernel {
     }
 
     public registerParagraphUpdate(cell: vscode.NotebookCell) {
-        if (!this._pollUpdateParagraphs.has(cell)) {
-            this._pollUpdateParagraphs.set(cell, Date.now());
+        if (this._flagRegisterParagraphUpdate
+            && !this._mapUpdateParagraph.has(cell)) {
+            this._mapUpdateParagraph.set(cell, Date.now());
         }
     }
 
     public async instantUpdatePollingParagraphs() {
-        let notebookCells = Array.from(this._pollUpdateParagraphs.keys());
-        return Promise.all(notebookCells.map(this.updateParagraph));
+        this._globalMutex.runExclusive(async () => {
+            let notebookCells = Array.from(this._mapUpdateParagraph.keys());
+            return Promise.all(notebookCells.map(this.updateParagraph.bind(this)));
+        });
     }
 
     private _doUpdatePollingParagraphs() {
-        let config = vscode.workspace.getConfiguration('zeppelin');
-        let throttleTime: number = config.get('autosave.throttleTime', 1);
+        this._globalMutex.runExclusive(async () => {
+            let config = vscode.workspace.getConfiguration('zeppelin');
+            let throttleTime: number = config.get('autosave.throttleTime', 1);
 
-        for (let [cell, requestTime] of this._pollUpdateParagraphs) {
-            if (throttleTime * 1000 < Date.now() - requestTime) {
-                this.updateParagraph(cell);
+            for (let [cell, requestTime] of this._mapUpdateParagraph) {
+                if (throttleTime * 1000 < Date.now() - requestTime) {
+                    this.updateParagraph(cell);
+                }
             }
+        });
+    }
+
+    public async trackExecution(execution: vscode.NotebookCellExecution) {
+        try {
+            let res = await this.getService()?.getParagraphInfo(
+                execution.cell.notebook.metadata.id, execution.cell.metadata.id
+            );
+            let paragraph: ParagraphData = res?.data.body ?? res?.data;
+            
+            if (paragraph.status !== "RUNNING") {
+                this.unregisterTrackExecution(execution);
+            }
+
+            if (execution.cell.index < 0) {
+                this.unregisterTrackExecution(execution);
+                execution.end(undefined);
+                return;
+            }
+
+            this.pollUpdateCellMetadata(execution.cell, paragraph);
+            if (paragraph.results) {
+                let cellOutput = parseParagraphResultToCellOutput(paragraph.results);
+                execution.replaceOutput(new vscode.NotebookCellOutput(cellOutput));
+            }
+            else {
+                execution.clearOutput();
+            }
+
+            if (paragraph.status !== "RUNNING") {
+                execution.end(
+                    paragraph.status !== "ERROR",
+                    paragraph.dateFinished === undefined
+                        ? Date.now()
+                        : Date.parse(paragraph.dateFinished) || Date.now()
+                );
+            }
+
+        } catch (err) {
+            let cellOutput = new vscode.NotebookCellOutput([
+                vscode.NotebookCellOutputItem.error({
+                    name: err instanceof Error && err.name || 'error', 
+                    message: err instanceof Error && err.message || JSON.stringify(err, undefined, 4)
+                })
+            ]);
+            execution.replaceOutput(cellOutput);
+            execution.end(false, Date.now());
         }
     }
 
-    public updateNoteMetadata(
+    private async _doTrackAllExecution() {
+        let config = vscode.workspace.getConfiguration('zeppelin');
+        let interval: number = config.get('trackExecutionInterval', 1);
+        let aryExecution = [];
+
+        for (let [_, [execution, requestTime]] of this._mapTrackExecution) {
+            if (interval * 1000 < Date.now() - requestTime) {
+                aryExecution.push(this.trackExecution(execution));
+            }
+        }
+
+        return Promise.all(aryExecution);
+    }
+
+    public registerTrackExecution(execution: vscode.NotebookCellExecution) {
+        this._mapTrackExecution.set(
+            execution.cell.metadata.id, [execution, Date.now()]
+        );
+    }
+
+    public unregisterTrackExecution(execution: vscode.NotebookCellExecution) {
+        return this._mapTrackExecution.delete(execution.cell.metadata.id);
+    }
+
+    public getExecutionByParagraphId(paragraphId: string) {
+        return this._mapTrackExecution.get(paragraphId)?.[0];
+    }
+
+    public async replaceNoteCells(
+        note: vscode.NotebookDocument,
+        range: vscode.NotebookRange,
+        cells: vscode.NotebookCellData[]
+    ) {
+        const editor = new vscode.WorkspaceEdit();
+        let edit = vscode.NotebookEdit.replaceCells(
+            // update based on new metadata provided
+            range, cells
+        );
+        editor.set(note.uri, [edit]);
+        
+        return vscode.workspace.applyEdit(editor);
+    }
+
+    public async insertNoteCells(
+        note: vscode.NotebookDocument,
+        index: number,
+        cells: vscode.NotebookCellData[]
+    ) {
+        const editor = new vscode.WorkspaceEdit();
+        let edit = vscode.NotebookEdit.insertCells(
+            index, cells
+        );
+        editor.set(note.uri, [edit]);
+
+        return vscode.workspace.applyEdit(editor);
+    }
+
+    public async deleteNoteCells(
+        note: vscode.NotebookDocument,
+        range: vscode.NotebookRange
+    ) {
+        const editor = new vscode.WorkspaceEdit();
+        let edit = vscode.NotebookEdit.deleteCells(range);
+        editor.set(note.uri, [edit]);
+
+        return vscode.workspace.applyEdit(editor);
+    }
+
+    public async updateNoteMetadata(
         note: vscode.NotebookDocument,
         metadata: { [key: string]: any }
     ) {
@@ -259,10 +420,13 @@ export class ZeppelinKernel {
         return vscode.workspace.applyEdit(editor);
     }
 
-    public updateCellMetadata(
+    public async updateCellMetadata(
         cell: vscode.NotebookCell,
         metadata: { [key: string]: any }
     ) {
+        if (cell.index < 0) {
+            console.log(cell);
+        }
         const editor = new vscode.WorkspaceEdit();
         let edit = vscode.NotebookEdit.updateCellMetadata(
             cell.index,
@@ -278,51 +442,118 @@ export class ZeppelinKernel {
         cell: vscode.NotebookCell,
         metadata: { [key: string]: any }
     ) {
-        let edit = vscode.NotebookEdit.updateCellMetadata(
-            cell.index,
-            metadata
-        );
-        if (this._pollNotebookEdits.has(cell)) {
-            this._pollNotebookEdits.get(cell)?.push(edit);
-        }
-        else {
-            this._pollNotebookEdits.set(cell, [edit]);
-        }
+        this._globalMutex.runExclusive(async () => {
+            let edit = vscode.NotebookEdit.updateCellMetadata(
+                cell.index,
+                // update based on new metadata provided
+                Object.assign({}, cell.metadata, metadata)
+            );
+            if (this._mapNotebookEdits.has(cell)) {
+                this._mapNotebookEdits.get(cell)?.push(edit);
+            }
+            else {
+                this._mapNotebookEdits.set(cell, [edit]);
+            }
+        });
     }
 
-    public async syncNote(note: vscode.NotebookDocument) {
+    public async editNote(
+        note: vscode.NotebookDocument,
+        replaceRange?: vscode.NotebookRange,
+        replaceCells?: vscode.NotebookCellData[],
+        insertIndex?: number,
+        insertCells?: vscode.NotebookCellData[],
+        deleteRange?: vscode.NotebookRange,
+        metadata?: { [key: string]: any }
+    ) {
+        let aryEdits = [];
+        const editor = new vscode.WorkspaceEdit();
+
+        if (replaceRange !== undefined && replaceCells !== undefined) {
+            aryEdits.push(vscode.NotebookEdit.replaceCells(replaceRange, replaceCells));
+        }
+        if (insertIndex !== undefined && insertCells !== undefined) {
+            aryEdits.push(vscode.NotebookEdit.insertCells(insertIndex, insertCells));
+        }
+        if (deleteRange !== undefined) {
+            aryEdits.push(vscode.NotebookEdit.deleteCells(deleteRange));
+        }
+        if (metadata !== undefined) {
+            aryEdits.push(vscode.NotebookEdit.updateNotebookMetadata(metadata));
+        }
+
+        editor.set(note.uri, aryEdits);
+        return vscode.workspace.applyEdit(editor);
+    }
+
+    public async syncNote(note: vscode.NotebookDocument | undefined) {
+        if (note === undefined) {
+            return;
+        }
         if (!!!note.metadata || !!!note.metadata.id) {
             vscode.window.showWarningMessage("Unable to sync note as note id is not found");
             return;
         }
 
-        await this.instantUpdatePollingParagraphs();
         let noteId = note.metadata.id;
         let res = await this.getService()?.getInfo(noteId);
     
         if (res instanceof AxiosError) {
-            logDebug(res);
             vscode.window.showWarningMessage(
                 `Unable to sync note ${noteId}, ` +
                 res.response ? res.response?.data : `${res.code}: ${res.message}`);
         }
         else if (res?.status === 500) {
-            logDebug(res);
+            logDebug("error in syncNote", res);
             vscode.window.showErrorMessage(
                 `Unable to sync note: '${noteId}' doesn't exist on the server`);
         }
         else {
-            await this.updateNoteMetadata(note, res?.data.body);
+            this._globalMutex.runExclusive(async () => {
+                let serverNote: NoteData = res?.data.body;
+                let serverCells = serverNote.paragraphs
+                    ? serverNote.paragraphs.map(parseParagraphToCellData)
+                    : [];
+                let replaceRange = new vscode.NotebookRange(0, note.cellCount);
+
+                this._flagRegisterParagraphUpdate = false;
+                await this.editNote(
+                    note, replaceRange, serverCells,
+                    undefined, undefined, undefined,
+                    serverNote
+                );
+
+                for (let cell of note.getCells()) {
+                    if (cell.metadata.status !== "RUNNING") {
+                        continue;
+                    }
+    
+                    let execution = this.getExecutionByParagraphId(cell.metadata.id);
+                    execution && this.unregisterTrackExecution(execution);
+    
+                    let newExecution = this._controller.createNotebookCellExecution(cell);
+                    newExecution.token.onCancellationRequested(_ => {
+                        newExecution.clearOutput();
+                        newExecution.end(false, Date.now());
+                    });
+                    newExecution.start(Date.parse(cell.metadata.dateStarted) || Date.now());
+    
+                    this.registerTrackExecution(newExecution);
+                }
+                this._flagRegisterParagraphUpdate = true;
+            });
         }
     }
 
     public applyPolledNotebookEdits() {
-        for (let [cell, edits] of this._pollNotebookEdits) {
-            const editor = new vscode.WorkspaceEdit();
-            editor.set(cell.document.uri, edits);
-            vscode.workspace.applyEdit(editor);
-        }
-        this._pollNotebookEdits.clear();
+        this._globalMutex.runExclusive(async () => {
+            for (let [cell, edits] of this._mapNotebookEdits) {
+                let editor = new vscode.WorkspaceEdit();
+                editor.set(cell.document.uri, edits);
+                await vscode.workspace.applyEdit(editor);
+            }
+            this._mapNotebookEdits.clear();
+        });
     }
 
     public async updateParagraphText(cell: vscode.NotebookCell) {
@@ -334,11 +565,11 @@ export class ZeppelinKernel {
             if (res.response?.status === 404) {
                 vscode.window.showErrorMessage(`${res.code}: ${res.message}`);
             }
-            logDebug(res);
+            logDebug("error in updateParagraphText", res);
             throw res;
         }
 
-        await this.updateCellMetadata(cell, res?.data.body);
+        await this.pollUpdateCellMetadata(cell, res?.data.body);
     }
 
     public async updateParagraphConfig(cell: vscode.NotebookCell) {
@@ -361,11 +592,11 @@ export class ZeppelinKernel {
             if (res.response?.status === 404) {
                 vscode.window.showErrorMessage(`${res.code}: ${res.message}`);
             }
-            logDebug(res);
+            logDebug("error in updateParagraphConfig", res);
             throw res;
         }
 
-        await this.updateCellMetadata(cell, res?.data.body);
+        await this.pollUpdateCellMetadata(cell, res?.data.body);
     }
 
     public async updateParagraph(cell: vscode.NotebookCell) {
@@ -375,7 +606,9 @@ export class ZeppelinKernel {
                 this._service?.deleteParagraph(
                     cell.notebook.metadata.id, cell.metadata.id
                 );
-                this._pollUpdateParagraphs.delete(cell);
+                this._mapUpdateParagraph.delete(cell);
+                let execution = this.getExecutionByParagraphId(cell.metadata.id);
+                execution && this.unregisterTrackExecution(execution);
                 return;
             }
 
@@ -417,24 +650,28 @@ export class ZeppelinKernel {
         }
 
         // unregister cell from poll, as the update is either finished or failed now
-        this._pollUpdateParagraphs.delete(cell);
+        this._mapUpdateParagraph.delete(cell);
 
         if (cell.kind <= 1) {
             // need to call remote execution for markup paragraph languages
             // so remote notebook paragraph result could be generated
             // as markup languages are rendered locally
-            this._runParagraph(cell);
+            this._runParagraph(cell, false);
         }
     }
 
-    private async _runParagraph(cell: vscode.NotebookCell) {
+    private async _runParagraph(cell: vscode.NotebookCell, sync: boolean) {
         let res = await this._service?.runParagraph(
-            cell.notebook.metadata.id, cell.metadata.id, true
+            cell.notebook.metadata.id, cell.metadata.id, sync
         );
+        if (!sync) {
+            return res?.data;
+        }
+
         let paragraphResult = <ParagraphResult> res?.data.body;
 
         let cellOutput = parseParagraphResultToCellOutput(paragraphResult);
-        await this.updateCellMetadata(cell, {results: paragraphResult});
+        await this.pollUpdateCellMetadata(cell, {results: paragraphResult});
 
         return cellOutput;
     }
@@ -445,7 +682,7 @@ export class ZeppelinKernel {
         _controller: vscode.NotebookController
         ): void {
         for (let cell of cells) {
-			this._doExecution(cell);
+			this._doExecutionAsync(cell);
 		}
 	}
 
@@ -453,25 +690,22 @@ export class ZeppelinKernel {
         await this.instantUpdatePollingParagraphs();
 
         let res = await this.getService()?.stopAll(note.metadata.id);
-        this.getService()?.cancelConnect();
-
         let r = await this.syncNote(note);
 	}
 
-    private async _doExecution(cell: vscode.NotebookCell): Promise<void> {
+    private async _doExecutionSync(cell: vscode.NotebookCell): Promise<void> {
         if (!this.isActive()) {
             return;
         }
 
         const execution = this._controller.createNotebookCellExecution(cell);
-        execution.executionOrder = ++this._executionOrder;
 		execution.start(Date.now());
 
         try {
             execution.token.onCancellationRequested(_ => this.getService()?.cancelConnect());
             await this.updateParagraph(cell);
 
-            let cellOutput = await this._runParagraph(cell);
+            let cellOutput = await this._runParagraph(cell, true);
             if (cellOutput.length > 0) {
                 execution.replaceOutput(new vscode.NotebookCellOutput(cellOutput));
             }
@@ -479,6 +713,54 @@ export class ZeppelinKernel {
                 execution.clearOutput();
             }
             execution.end(true, Date.now());
+
+        } catch (err) {
+            let cellOutput: vscode.NotebookCellOutput;
+
+            if (err instanceof AxiosError && err.code === "ERR_CANCELED") {
+                execution.end(false, Date.now());
+            }
+            else {
+                cellOutput = new vscode.NotebookCellOutput([
+                    vscode.NotebookCellOutputItem.error({ 
+                        name: err instanceof Error && err.name || 'error', 
+                        message: err instanceof Error && err.message || JSON.stringify(err, undefined, 4)
+                    })
+                ]);
+                execution.replaceOutput(cellOutput);
+                execution.end(false, Date.now());
+            }
+        }
+    }
+
+    private async _doExecutionAsync(cell: vscode.NotebookCell): Promise<void> {
+        if (!this.isActive() || this.getExecutionByParagraphId(cell.metadata.id)) {
+            return;
+        }
+
+        const execution = this._controller.createNotebookCellExecution(cell);
+        execution.token.onCancellationRequested(_ => {
+            this.unregisterTrackExecution(execution);
+            execution.clearOutput();
+            execution.end(false, Date.now());
+        });
+        try {
+            let res = await this.getService()?.getParagraphInfo(
+                cell.notebook.metadata.id, cell.metadata.id);
+            let paragraph = res?.data.body ?? res?.data;
+
+            let startTime: number;
+            if (paragraph.status !== "RUNNING") {
+                this._runParagraph(cell, false);
+                startTime = Date.now();
+            }
+            else {
+                logDebug("_doExecutionAsync register running paragraph", paragraph);
+                startTime = Date.parse(paragraph.dateStarted) || Date.now();
+            }
+
+            execution.start(startTime);
+            this.registerTrackExecution(execution);
 
         } catch (err) {
             let cellOutput: vscode.NotebookCellOutput;

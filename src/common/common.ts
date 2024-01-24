@@ -37,7 +37,7 @@ export function formatURL(url: string): string {
 
 export function logDebug(item: string | any, ...optionalParams: any[]) {
     if (DEBUG_MODE) {
-        console.log(item, optionalParams);
+        console.log(`Zeppelin ${item}`, optionalParams);
     }
 }
 

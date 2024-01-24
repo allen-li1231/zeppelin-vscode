@@ -15,10 +15,6 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 	): Promise<vscode.NotebookData> {
 
 		var contents = new TextDecoder().decode(content);
-		let reEmpty = new RegExp('^[\s\n\t\r]*$');
-		if (reEmpty.test(contents)) {
-			logDebug(contents);
-		}
 
 		let raw: NoteData | undefined;
 		try {
@@ -28,7 +24,9 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 			throw err;
 		}
 
-		const cells = raw.paragraphs.map(parseParagraphToCellData);
+		const cells = raw.paragraphs
+						? raw.paragraphs.map(parseParagraphToCellData)
+						: [];
 
 		let note = new vscode.NotebookData(cells);
 		note.metadata = raw;
