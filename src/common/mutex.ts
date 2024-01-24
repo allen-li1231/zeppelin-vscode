@@ -26,6 +26,10 @@ export class Mutex {
      * Wait until the lock is acquired.
      * @returns A function that releases the acquired lock.
      */
+    isLocked() {
+        return this.isLocked;
+    }
+
     acquire() {
         return new Promise<ReleaseFunction>((resolve) => {
             this._queue.push({resolve});

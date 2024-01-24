@@ -5,6 +5,7 @@ import {
 	parseCellToParagraphData
 } from '../common/parser';
 import { NoteData } from '../common/dataStructure';
+// import { Mutex } from '../common/mutex';
 
 
 export class ZeppelinSerializer implements vscode.NotebookSerializer {
@@ -23,6 +24,7 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 			logDebug("error serializing note to JSON", err);
 			throw err;
 		}
+		// raw.mutex = new Mutex();
 
 		const cells = raw.paragraphs
 						? raw.paragraphs.map(parseParagraphToCellData)

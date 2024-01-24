@@ -9,7 +9,7 @@ import { EXTENSION_NAME,
     getProxy
 } from '../common/common';
 import { NoteData, ParagraphData, ParagraphResult } from '../common/dataStructure';
-import { showQuickPickURL, doLogin } from '../common/interaction';
+import { showQuickPickURL, doLogin, promptZeppelinServerURL } from '../common/interaction';
 import { parseParagraphToCellData, parseParagraphResultToCellOutput 
 } from '../common/parser';
 import { Mutex } from '../common/mutex';
@@ -676,17 +676,24 @@ export class ZeppelinKernel {
         return cellOutput;
     }
 
-    private _executeAll(
+    private async _executeAll(
         cells: vscode.NotebookCell[],
         _notebook: vscode.NotebookDocument,
         _controller: vscode.NotebookController
-        ): void {
+        ) {
+        if (!this.isActive()) {
+            promptZeppelinServerURL(this);
+        }
         for (let cell of cells) {
 			this._doExecutionAsync(cell);
 		}
 	}
 
     private async _interruptAll(note: vscode.NotebookDocument) {
+        if (!this.isActive()) {
+            return;
+        }
+
         await this.instantUpdatePollingParagraphs();
 
         let res = await this.getService()?.stopAll(note.metadata.id);

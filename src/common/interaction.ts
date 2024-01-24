@@ -4,7 +4,9 @@ import { reURL, logDebug } from './common';
 import * as vscode from 'vscode';
 import { ZeppelinKernel } from '../extension/notebookKernel';
 import { parseCellToParagraphData } from './parser';
+import { Mutex } from './mutex';
 
+let mutex = new Mutex();
 
 // function that calls quick-input box
 // for users to provide Zeppelin server URL and display name
@@ -291,19 +293,21 @@ export async function doLogin(
 
 // function that prompts user to connect to remote Zeppelin server
 export async function promptRemoteConnection() {
+	return mutex.runExclusive(async () => {
 	let selection = await vscode.window.showInformationMessage(
-		`Notebook under current workspace is read-only 
-		as it is not connected to Zeppelin server,
-		do you want to connect to server?`,
+		`Notebook under current workspace is not connected to 
+		any Zeppelin server, do you want to connect to server?`,
 		"Yes", "No"
 	);
 
 	return selection === 'Yes';
+	});
 }
 
 
 // function that prompts user to always connect to server under current workspace
 export async function promptAlwaysConnect() {
+	return mutex.runExclusive(async () => {
 	let selection = await vscode.window.showInformationMessage(
 		`Always connect to the same server for notebooks under current workspace?`,
 		"Yes", "No", "Never"
@@ -311,6 +315,7 @@ export async function promptAlwaysConnect() {
 	let config = vscode.workspace.getConfiguration('zeppelin');
 	config.update('alwaysConnectToTheLastServer', selection);
 	return selection;
+	});
 }
 
 
@@ -325,6 +330,7 @@ export async function promptCreateNotebook(
 		return false;
 	}
 
+	return mutex.runExclusive(async () => {
 	// take name in metadata, or note path base name as name of new note
 	var name = note.metadata.name ?? note.uri.path.replace(/\.[^.]+$/, '');
 	let baseName = name.split('/').pop();
@@ -417,42 +423,50 @@ export async function promptCreateNotebook(
 	quickPick.show();
 
 	return true;
+	});
 }
-
-
-// task after notebook is created or remote server is on.
-function unlockActiveEditor() {
-	// unlock file
-	vscode.commands.executeCommand(
-		"workbench.action.files.setActiveEditorWriteableInSession"
-	);
-
-	promptAlwaysConnect();
-};
 
 
 // function that prompt user to provide zeppelin server URL, 
 // will also ask for Zeppelin credential if last used credential is not valid
-export async function promptZeppelinServerURL(kernel: ZeppelinKernel) {
-	let note = vscode.window.activeNotebookEditor?.notebook;
-	if (note === undefined) {
-		return;
-	}
+export async function promptZeppelinServerURL(
+	kernel: ZeppelinKernel
+	) {
+	await showQuickPickURL(kernel.getContext(), async () => {
+		let baseURL = kernel.getContext().workspaceState.get(
+			'currentZeppelinServerURL', undefined
+		);
+		if (!baseURL) {
+			return;
+		}
 
-	// task when remote server is connectable.
-	kernel.checkInService(undefined, async () => {
-		if (await kernel.hasNote(note?.metadata.id)) {
-			unlockActiveEditor();
-		}
-		else {
-			// import/create identical note when there doesn't exist one.
-			promptCreateNotebook(kernel, note, unlockActiveEditor);
-		}
+		// task when remote server is connectable.
+		kernel.checkInService(baseURL, async () => {
+			let config = vscode.workspace.getConfiguration('zeppelin');
+			let selection = config.get('alwaysConnectToTheLastServer');
+			if (selection === null) {
+				promptAlwaysConnect();
+			}
+
+			let note = vscode.window.activeNotebookEditor?.notebook;
+			if (note === undefined) {
+				return;
+			}
+
+			if (!await kernel.hasNote(note?.metadata.id)) {
+				// import/create identical note when there doesn't exist one.
+				promptCreateNotebook(kernel, note,
+					selection === null
+					? promptAlwaysConnect
+					: undefined);
+			}
+		});
 	});
 }
 
 
 export async function promptZeppelinCredential(kernel: ZeppelinKernel) {
+	return mutex.runExclusive(async () => {
 	let note = vscode.window.activeNotebookEditor?.notebook;
 	if (note === undefined) {
 		return;
@@ -467,39 +481,15 @@ export async function promptZeppelinCredential(kernel: ZeppelinKernel) {
 
 	// task when remote server is connectable.
 	kernel.checkInService(baseURL, async () => {
-		if (await kernel.hasNote(note?.metadata.id)) {
-			unlockActiveEditor();
+		let config = vscode.workspace.getConfiguration('zeppelin');
+		let selection = config.get('alwaysConnectToTheLastServer');
+		if (selection === null) {
+			promptAlwaysConnect();
 		}
-		else {
+		if (await kernel.hasNote(note?.metadata.id)) {
 			// import/create identical note when there doesn't exist one.
-			promptCreateNotebook(kernel, note, unlockActiveEditor);
+			promptCreateNotebook(kernel, note);
 		}
 	});
-}
-
-
-// function that prompt user to unlock current Zeppelin notebook
-// user will be asked to provide Zeppelin URL and credential (if never provided)
-// then the extension will check if notebook exists on server
-// if not, will prompt user to create one
-// only when successfully logged in and notebook exists will it be unlocked
-export async function promptUnlockCurrentNotebook(kernel: ZeppelinKernel) {
-	let note = vscode.window.activeNotebookEditor?.notebook;
-	if (note === undefined) {
-		return;
-	}
-
-	let baseURL = kernel.getContext().workspaceState.get(
-		'currentZeppelinServerURL', undefined
-	);
-	// task when remote server is connectable.
-	kernel.checkInService(baseURL, async () => {
-		if (await kernel.hasNote(note?.metadata.id)) {
-			unlockActiveEditor();
-		}
-		else {
-			// import/create identical note when there doesn't exist one.
-			promptCreateNotebook(kernel, note, unlockActiveEditor);
-		}
 	});
 }

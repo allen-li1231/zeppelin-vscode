@@ -95,7 +95,7 @@
             "No",
             "Never"
           ],
-          "description": "Specify whether to always try connecting to last used Zeppelin server and unlock notebook subsequently."
+          "description": "Specify whether to always try connecting to last used Zeppelin server."
         },
         "zeppelin.autosave.toggleSync": {
           "order": 1,
@@ -183,11 +183,6 @@
       {
         "command": "zeppelin-vscode.setZeppelinCredential",
         "title": "Zeppelin: Set Zeppelin Credential (username and password)"
-      },
-      {
-        "command": "zeppelin-vscode.unlockCurrentNotebook",
-        "title": "Zeppelin: Unlock Current Notebook by Connecting to Server",
-        "enablement": "resourceExtname == .zpln && !activeEditorIsReadonly"
       }
     ],
     "menus": {
@@ -201,10 +196,6 @@
         },
         {
           "command": "zeppelin-vscode.setZeppelinCredential"
-        },
-        {
-          "command": "zeppelin-vscode.unlockCurrentNotebook",
-          "when": "resourceExtname == .zpln && !activeEditorIsReadonly"
         }
       ]
     }

@@ -49,13 +49,6 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(disposable);
 
 
-	disposable = vscode.commands.registerCommand(
-		'zeppelin-vscode.unlockCurrentNotebook',
-		_ => interact.promptUnlockCurrentNotebook(kernel)
-	);
-	context.subscriptions.push(disposable);
-
-
 	disposable = vscode.workspace.onDidOpenNotebookDocument(async note => {
 		if (!note.uri.fsPath.endsWith(NOTEBOOK_SUFFIX)) {
 			return;
@@ -82,18 +75,6 @@ export async function activate(context: vscode.ExtensionContext) {
 			willConnectRemote = await interact.promptRemoteConnection();
 		}
 
-		// task after notebook is created or remote server is on.
-		let unlockNote = () => {
-			// unlock file
-			// vscode.commands.executeCommand(
-			// 	"workbench.action.files.setActiveEditorWriteableInSession"
-			// );
-			if (selection === null) {
-				// ask if connect automatically from now on.
-				interact.promptAlwaysConnect();
-			}
-		};
-
 		if (willConnectRemote) {
 			let baseURL = context.workspaceState.get(
 				'currentZeppelinServerURL', undefined
@@ -101,12 +82,18 @@ export async function activate(context: vscode.ExtensionContext) {
 			kernel.checkInService(baseURL, async () => {
 				// task when remote server is connectable but the note is not on it.
 				if (await kernel.hasNote(note.metadata.id)) {
-					unlockNote();
+					if (selection === null) {
+						// ask if connect automatically from now on.
+						interact.promptAlwaysConnect();
+					}
 					kernel.syncNote(note);
 				}
 				else {
 					// import/create identical note when there doesn't exist one.
-					interact.promptCreateNotebook(kernel, note, unlockNote);
+					interact.promptCreateNotebook(kernel, note, 
+						selection === null
+						? interact.promptAlwaysConnect
+						: undefined);
 				}
 			});
 		}
@@ -207,18 +194,23 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(disposable);
 
 
-	disposable = vscode.window.onDidChangeActiveNotebookEditor(event => {
+	disposable = vscode.window.onDidChangeActiveNotebookEditor(async event => {
 		if (!event?.notebook.uri.fsPath.endsWith(NOTEBOOK_SUFFIX)
 			|| !kernel.isActive()) {
-		return;
+			return;
 		}
 
-		let config = vscode.workspace.getConfiguration('zeppelin');
-		let selection = config.get('autosave.syncActiveNotebook');
+		if (await kernel.hasNote(event?.notebook.metadata.id)) {
+			let config = vscode.workspace.getConfiguration('zeppelin');
+			let selection = config.get('autosave.syncActiveNotebook');
 
-		if (selection) {
-			logDebug("onDidChangeActiveNotebookEditor", event);
-			kernel.syncNote(event?.notebook);
+			if (selection) {
+				logDebug("onDidChangeActiveNotebookEditor", event);
+				kernel.syncNote(event?.notebook);
+			}
+		}
+		else {
+			interact.promptCreateNotebook(kernel, event?.notebook);
 		}
 	});
 	context.subscriptions.push(disposable);
