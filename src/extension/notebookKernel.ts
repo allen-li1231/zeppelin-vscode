@@ -13,6 +13,7 @@ import { showQuickPickURL, doLogin, promptZeppelinServerURL } from '../common/in
 import { parseParagraphToCellData, parseParagraphResultToCellOutput 
 } from '../common/parser';
 import { Mutex } from '../common/mutex';
+import _ = require('lodash');
 
 
 export class ZeppelinKernel {
@@ -106,6 +107,7 @@ export class ZeppelinKernel {
                 this._recurseTrackExecution();
             }
         }
+        logDebug("activate", this.isActive());
         return this.isActive();
     }
 
@@ -132,6 +134,7 @@ export class ZeppelinKernel {
         this._recurseTrackExecution = undefined;
 
         this._isActive = false;
+        logDebug("activate", this.isActive());
         return this.isActive();
     }
 
@@ -265,8 +268,12 @@ export class ZeppelinKernel {
     }
 
     public registerParagraphUpdate(cell: vscode.NotebookCell) {
-        if (this._flagRegisterParagraphUpdate
-            && !this._mapUpdateParagraph.has(cell)) {
+        if (!this._flagRegisterParagraphUpdate) {
+            logDebug("registerParagraphUpdate: cell not to be updated", cell);
+            return;
+        }
+
+        if (!this._mapUpdateParagraph.has(cell)) {
             this._mapUpdateParagraph.set(cell, Date.now());
         }
     }
@@ -318,12 +325,7 @@ export class ZeppelinKernel {
             }
 
             if (paragraph.status !== "RUNNING") {
-                execution.end(
-                    paragraph.status !== "ERROR",
-                    paragraph.dateFinished === undefined
-                        ? Date.now()
-                        : Date.parse(paragraph.dateFinished) || Date.now()
-                );
+                execution.end(paragraph.status !== "ERROR", Date.now());
             }
 
         } catch (err) {
@@ -523,11 +525,11 @@ export class ZeppelinKernel {
                     serverNote
                 );
 
-                for (let cell of note.getCells()) {
-                    if (cell.metadata.status !== "RUNNING") {
-                        continue;
+                for (let [cell, parsedCell] of _.zip(note.getCells(), serverCells)) {
+                    if (cell === undefined) {
+                        break;
                     }
-    
+
                     let execution = this.getExecutionByParagraphId(cell.metadata.id);
                     execution && this.unregisterTrackExecution(execution);
     
@@ -538,7 +540,16 @@ export class ZeppelinKernel {
                     });
                     newExecution.start(Date.parse(cell.metadata.dateStarted) || Date.now());
     
-                    this.registerTrackExecution(newExecution);
+                    if (cell.metadata.status !== "RUNNING" && parsedCell?.outputs) {
+                        newExecution.replaceOutput(parsedCell?.outputs);
+                        newExecution.end(
+                            cell.metadata.status !== "ERROR",
+                            Date.parse(cell.metadata.dateFinished) || Date.now()
+                        );
+                    }
+                    else {
+                        this.registerTrackExecution(newExecution);
+                    }
                 }
                 this._flagRegisterParagraphUpdate = true;
             });
@@ -683,7 +694,9 @@ export class ZeppelinKernel {
         ) {
         if (!this.isActive()) {
             promptZeppelinServerURL(this);
+            return;
         }
+
         for (let cell of cells) {
 			this._doExecutionAsync(cell);
 		}

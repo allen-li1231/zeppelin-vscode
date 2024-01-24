@@ -6,7 +6,6 @@ import { ZeppelinSerializer } from './notebookSerializer';
 import { ZeppelinKernel } from './notebookKernel';
 import { NOTEBOOK_SUFFIX, logDebug } from '../common/common';
 import _ = require('lodash');
-import { Mutex } from '../common/mutex';
 
 
 // This method is called when your extension is activated
@@ -53,6 +52,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		if (!note.uri.fsPath.endsWith(NOTEBOOK_SUFFIX)) {
 			return;
 		}
+		logDebug("onDidOpenNotebookDocument:", note);
 
 		// lock file before kernel is able to connected to server
 		// vscode.commands.executeCommand(
@@ -106,6 +106,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			|| !kernel.isActive()) {
 			return;
 		}
+		logDebug("onDidChangeNotebookDocument:", event.notebook);
 
 		// modify paragraph on remote
 		for (let cellChange of event.cellChanges) {

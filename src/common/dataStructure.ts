@@ -29,7 +29,7 @@ export interface NoteInfo {
 }
 
 export interface ParagraphData {
-    config: ParagraphConfig;
+    config?: ParagraphConfig;
     dateCreated?: string;
     dateUpdated?: string;
     dateFinished?: string;
@@ -50,11 +50,11 @@ export interface ParagraphConfig {
     lineNumbers?: boolean;
     colWidth?: number;
     editorMode?: string;
-    editorSetting: {
-        completionKey: string;
-        completionSupport: boolean;
-        editOnDblClick: boolean;
-        language: string;
+    editorSetting?: {
+        completionKey?: string;
+        completionSupport?: boolean;
+        editOnDblClick?: boolean;
+        language?: string;
     },
     enabled?: boolean;
     fontSize?: number;

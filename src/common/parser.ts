@@ -10,7 +10,7 @@ import {
 export function parseParagraphToCellData(
     paragraph: ParagraphData,
 ): vscode.NotebookCellData {
-    let lang: string = paragraph.config.editorSetting.language;
+    let lang = paragraph.config?.editorSetting?.language ?? '';
     // default cell kind is markup language
     let kind: number = mapLanguageKind.get(lang) ?? 1;
     // empty cell could have no text method, while NotebookCellData must have text value,
@@ -160,6 +160,13 @@ export function parseCellToParagraphData(
         : cell.document.languageId;
 
     if (paragraph.id !== undefined) {
+        if (paragraph.config === undefined) {
+            paragraph.config = {"editorSetting": {}};
+        }
+        if (paragraph.config.editorSetting === undefined) {
+            paragraph.config.editorSetting = {};
+        }
+
         paragraph.config.editorSetting.language = languageId;
     }
     else {
@@ -167,13 +174,14 @@ export function parseCellToParagraphData(
             .get("lineNumbers", vscode.TextEditorLineNumbersStyle.Off)
                 !== vscode.TextEditorLineNumbersStyle.Off;
         paragraph.config = {
-            "lineNumbers": paragraph.config.lineNumbers ?? lineNumbers,
+            "lineNumbers": paragraph.config?.lineNumbers ?? lineNumbers,
             "editorSetting": {
                 "language": languageId,
                 "editOnDblClick": false,
                 "completionKey": "TAB",
                 "completionSupport": cell.kind !== 1
-            } };
+            }
+        };
     }
 
     paragraph.results = cell.metadata?.results;
