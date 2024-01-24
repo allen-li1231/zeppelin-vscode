@@ -51,11 +51,17 @@ class BasicService {
       // create request session based on config
       this.session.interceptors.response.use(
             (response) => {
-                logDebug(response);
+                logDebug(
+                    `api: ${response.request.method} ${response.request.path}`,
+                    response.data
+                );
                 return response;
             },
             (error) => {
-                logDebug(error);
+                logDebug(
+                    `api error: ${error.request.method} ${error.request.path}`,
+                    error
+                );
                 if (error.code === "ERR_CANCELED") {
                     return error;
                 }

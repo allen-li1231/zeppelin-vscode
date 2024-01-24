@@ -349,7 +349,7 @@ export async function promptCreateNotebook(
 		// remove duplicated paths and sort the rests
 		visiblePaths = [...new Set(visiblePaths)].sort();
 	} catch (err) {
-		logDebug(err);
+		logDebug("error in promptCreateNotebook", err);
 		return false;
 	}
 
