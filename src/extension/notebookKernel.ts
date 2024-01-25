@@ -822,7 +822,7 @@ export class ZeppelinKernel {
             let paragraph = await this.getParagraphInfo(cell);
 
             let startTime: number;
-            if ((paragraph.status !== "RUNNING") || (cell.metadata.status !== "PENDING")) {
+            if ((paragraph.status !== "RUNNING") && (cell.metadata.status !== "PENDING")) {
                 this._runParagraph(cell, false);
                 startTime = Date.now();
             }
