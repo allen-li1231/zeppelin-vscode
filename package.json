@@ -121,14 +121,24 @@
           "default": 1,
           "description": "Set minimum save interval (in seconds) to Zeppelin server."
         },
-        "zeppelin.trackExecutionInterval": {
-          "order":  5,
+        "zeppelin.execution.concurrency": {
+          "order": 5,
+          "type": "string",
+          "default": "parallel",
+          "enum": ["parallel", "sequential"],
+          "enumDescriptions": [
+            "Run muliple cells simultaneously",
+            "Execute in order, new execution will be blocked before previous execution is finished"],
+          "description": "Set cell execution concurrency."
+        },
+        "zeppelin.execution.trackInterval": {
+          "order":  6,
           "type": "number",
           "default": 1,
           "description": "Set minimum interval (in seconds) to track execution."
         },
         "zeppelin.proxy.host": {
-          "order": 6,
+          "order": 7,
           "type": [
             "string"
           ],
@@ -137,7 +147,7 @@
           "description": "Set proxy host for connection with Zeppelin server."
         },
         "zeppelin.proxy.port": {
-          "order": 7,
+          "order": 8,
           "type": [
             "integer"
           ],
@@ -145,14 +155,6 @@
           "description": "Set proxy port for connection with Zeppelin server."
         },
         "zeppelin.proxy.credential.username": {
-          "order": 8,
-          "type": [
-            "string"
-          ],
-          "default": null,
-          "description": "Specifies proxy authentication for connection with Zeppelin server."
-        },
-        "zeppelin.proxy.credential.password": {
           "order": 9,
           "type": [
             "string"
@@ -160,8 +162,16 @@
           "default": null,
           "description": "Specifies proxy authentication for connection with Zeppelin server."
         },
-        "zeppelin.proxy.credential.protocol": {
+        "zeppelin.proxy.credential.password": {
           "order": 10,
+          "type": [
+            "string"
+          ],
+          "default": null,
+          "description": "Specifies proxy authentication for connection with Zeppelin server."
+        },
+        "zeppelin.proxy.credential.protocol": {
+          "order": 11,
           "type": [
             "string"
           ],

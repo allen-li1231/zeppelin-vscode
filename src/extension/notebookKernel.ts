@@ -91,7 +91,7 @@ export class ZeppelinKernel {
             // }
 
             if (this._recurseTrackExecution === undefined) {
-                let trackExecutionInterval = config.get('trackExecutionInterval', 5);
+                let trackExecutionInterval = config.get('execution.trackInterval', 5);
                 let recurseTracker = () => {
                     if (!this.isActive()) {
                         return;
@@ -336,7 +336,7 @@ export class ZeppelinKernel {
                 execution.clearOutput();
             }
 
-            if (paragraph.status !== "RUNNING") {
+            if ((paragraph.status !== "RUNNING") && (paragraph.status !== "PENDING")) {
                 logDebug(`trackExecution: unregister as not running`, execution);
                 this.unregisterTrackExecution(execution);
                 execution.end(
@@ -566,7 +566,8 @@ export class ZeppelinKernel {
                 });
                 newExecution.start(Date.parse(cell.metadata.dateStarted) || Date.now());
 
-                if (cell.metadata.status !== "RUNNING" && parsedCell?.outputs) {
+                if ((cell.metadata.status !== "RUNNING") && (cell.metadata.status !== "PENDING")
+                    && parsedCell?.outputs) {
                     newExecution.replaceOutput(parsedCell?.outputs);
                     newExecution.end(
                         cell.metadata.status !== "ERROR",
@@ -721,8 +722,15 @@ export class ZeppelinKernel {
             return;
         }
 
+        let config = vscode.workspace.getConfiguration('zeppelin');
+        let concurrency = config.get('execution.concurrency', 'parallel');
         for (let cell of cells) {
-			this._doExecutionAsync(cell);
+            if (concurrency === 'parallel') {
+                this._doExecutionAsync(cell);
+            }
+            else {
+                await this._doExecutionSync(cell);
+            }
 		}
 	}
 
@@ -738,7 +746,7 @@ export class ZeppelinKernel {
 	}
 
     private async _doExecutionSync(cell: vscode.NotebookCell): Promise<void> {
-        if (!this.isActive()) {
+        if (!this.isActive() || cell.index < 0) {
             return;
         }
 
@@ -760,8 +768,8 @@ export class ZeppelinKernel {
         try {
             await this.instantUpdatePollingParagraphs();
 
-            execution.start(Date.now());
             let cellOutput = await this._runParagraph(cell, true);
+            execution.start(Date.now());
             if (cellOutput.length > 0) {
                 execution.replaceOutput(new vscode.NotebookCellOutput(cellOutput));
             }
@@ -814,7 +822,7 @@ export class ZeppelinKernel {
             let paragraph = await this.getParagraphInfo(cell);
 
             let startTime: number;
-            if (paragraph.status !== "RUNNING") {
+            if ((paragraph.status !== "RUNNING") || (cell.metadata.status !== "PENDING")) {
                 this._runParagraph(cell, false);
                 startTime = Date.now();
             }
