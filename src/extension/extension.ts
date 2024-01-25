@@ -86,7 +86,7 @@ export async function activate(context: vscode.ExtensionContext) {
 						// ask if connect automatically from now on.
 						interact.promptAlwaysConnect();
 					}
-					kernel.syncNote(note);
+					//kernel.syncNote(note);
 				}
 				else {
 					// import/create identical note when there doesn't exist one.
@@ -106,7 +106,6 @@ export async function activate(context: vscode.ExtensionContext) {
 			|| !kernel.isActive()) {
 			return;
 		}
-		logDebug("onDidChangeNotebookDocument:", event.notebook);
 
 		// modify paragraph on remote
 		for (let cellChange of event.cellChanges) {
@@ -143,18 +142,20 @@ export async function activate(context: vscode.ExtensionContext) {
 	});
 	context.subscriptions.push(disposable);
 
+
 	disposable = vscode.workspace.onWillSaveNotebookDocument(event => {
 		if (!event.notebook.uri.fsPath.endsWith(NOTEBOOK_SUFFIX)
 			|| !kernel.isActive()) {
 			return;
 		}
 
-		kernel.applyPolledNotebookEdits();
 		if (event.notebook.isDirty) {
 			kernel.instantUpdatePollingParagraphs();
 		}
+		kernel.applyPolledNotebookEdits();
 	});
 	context.subscriptions.push(disposable);
+
 
 	disposable = vscode.window.onDidChangeTextEditorOptions(async event => {
 		if (!event.textEditor.document.uri.fsPath.endsWith(NOTEBOOK_SUFFIX)
@@ -163,10 +164,15 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 		let lineNumbers =
 			event.options.lineNumbers !== vscode.TextEditorLineNumbersStyle.Off;
+		
+		let notebook: vscode.NotebookDocument | undefined;
+		for (let note of vscode.workspace.notebookDocuments) {
+			if (note.uri === event.textEditor.document.uri) {
+				notebook = note;
+			}
+		}
 
-		let notebook = vscode.window.activeNotebookEditor?.notebook;
-		if (notebook === undefined
-			|| !notebook.uri.fsPath.endsWith(NOTEBOOK_SUFFIX)) {
+		if (notebook === undefined) {
 			return;
 		}
 
@@ -200,14 +206,14 @@ export async function activate(context: vscode.ExtensionContext) {
 			|| !kernel.isActive()) {
 			return;
 		}
+		logDebug("onDidChangeActiveNotebookEditor", event);
 
 		if (await kernel.hasNote(event?.notebook.metadata.id)) {
 			let config = vscode.workspace.getConfiguration('zeppelin');
 			let selection = config.get('autosave.syncActiveNotebook');
 
 			if (selection) {
-				logDebug("onDidChangeActiveNotebookEditor", event);
-				kernel.syncNote(event?.notebook);
+				await kernel.syncNote(event?.notebook);
 			}
 		}
 		else {
