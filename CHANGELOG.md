@@ -4,7 +4,7 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 
 ## [0.1.1] - 2023-7-18
 
-### Addded
+### Added
 - Settings related to specifying or selecting an existing Zeppelin server.
 - Useful commands in command palette.
 - Make notebook read-only when not connected to a server.
