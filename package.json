@@ -97,32 +97,26 @@
           ],
           "description": "Specify whether to always try connecting to last used Zeppelin server."
         },
-        "zeppelin.autosave.toggleSync": {
-          "order": 1,
-          "type": "boolean",
-          "default": true,
-          "description": "Specify whether to periodically sync notebook with Zeppelin server."
-        },
         "zeppelin.autosave.syncActiveNotebook": {
-          "order": 2,
+          "order": 1,
           "type": "boolean",
           "default": true,
           "description": "Specify whether to sync notebook with Zeppelin server when active notebook is changed."
         },
         "zeppelin.autosave.throttleTime": {
-          "order": 3,
+          "order": 2,
           "type": "number",
           "default": 1,
           "description": "Set paragraph update delay time (in seconds). Avoid too fast changes of cells causing response pressure on Zeppelin server."
         },
         "zeppelin.autosave.poolingInterval": {
-          "order": 4,
+          "order": 3,
           "type": "number",
           "default": 1,
           "description": "Set minimum save interval (in seconds) to Zeppelin server."
         },
         "zeppelin.execution.concurrency": {
-          "order": 5,
+          "order": 4,
           "type": "string",
           "default": "parallel",
           "enum": ["parallel", "sequential"],
@@ -132,13 +126,13 @@
           "description": "Set cell execution concurrency."
         },
         "zeppelin.execution.trackInterval": {
-          "order":  6,
+          "order":  5,
           "type": "number",
           "default": 1,
           "description": "Set minimum interval (in seconds) to track execution."
         },
         "zeppelin.proxy.host": {
-          "order": 7,
+          "order": 6,
           "type": [
             "string"
           ],
@@ -147,7 +141,7 @@
           "description": "Set proxy host for connection with Zeppelin server."
         },
         "zeppelin.proxy.port": {
-          "order": 8,
+          "order": 7,
           "type": [
             "integer"
           ],
@@ -155,7 +149,7 @@
           "description": "Set proxy port for connection with Zeppelin server."
         },
         "zeppelin.proxy.credential.username": {
-          "order": 9,
+          "order": 8,
           "type": [
             "string"
           ],
@@ -163,7 +157,7 @@
           "description": "Specifies proxy authentication for connection with Zeppelin server."
         },
         "zeppelin.proxy.credential.password": {
-          "order": 10,
+          "order": 9,
           "type": [
             "string"
           ],
@@ -171,7 +165,7 @@
           "description": "Specifies proxy authentication for connection with Zeppelin server."
         },
         "zeppelin.proxy.credential.protocol": {
-          "order": 11,
+          "order": 10,
           "type": [
             "string"
           ],
