@@ -51,16 +51,26 @@ class BasicService {
       // create request session based on config
       this.session.interceptors.response.use(
             (response) => {
-                logDebug(response);
+                logDebug(
+                    `api: ${response.request.method} ${response.request.path}`,
+                    response.data
+                );
                 return response;
             },
             (error) => {
-                logDebug(error);
+                logDebug(
+                    `api error: ${error.request.method} ${error.request.path}`,
+                    error
+                );
+                if (error.code === "ERR_CANCELED") {
+                    return error;
+                }
+
                 let url = error.request?.path;
 
                 if (!error.response) {
                     window.showErrorMessage(`Error calling ${url}: ${error.message}
-                        Possibly due to local network issue`);
+                        possibly due to local network issue`);
                 }
                 else if (error.response?.status === 401) {
                     window.showWarningMessage(
@@ -80,6 +90,20 @@ class BasicService {
                 return error;
             }
         );
+    }
+
+    resetCancelToken() {
+        this.cancelTokenSource = axios.CancelToken.source();
+        this.session.defaults.cancelToken = this.cancelTokenSource.token;
+    }
+
+    getCancelToken() {
+        return this.cancelTokenSource;
+    }
+
+    cancelConnect() {
+        this.getCancelToken().cancel();
+        this.resetCancelToken();
     }
 
     async login(username: string, password: string) {
@@ -259,7 +283,7 @@ export class NotebookService extends BasicService{
 
     getParagraphInfo(noteId: string, paragraphId: string) {
         return this.session.get(
-            `/api/notebook/${noteId}/${paragraphId}`
+            `/api/notebook/${noteId}/paragraph/${paragraphId}`
         );
     }
 

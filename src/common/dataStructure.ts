@@ -1,14 +1,17 @@
+import { Mutex } from "./mutex";
+
 // the Zeppelin note is basically a json file
 // containing note and paragraph information
 export interface NoteData {
 	angularObjects?: AngularObjects;
 	config?: NotebookConfig;
-	id: string;
+	id?: string;
 	info?: NoteInfo;
-    name: string;
+    name?: string;
     noteForms?: any;
     noteParams?: any;
-    paragraphs: ParagraphData[];
+    paragraphs?: ParagraphData[];
+    mutex?: Mutex;
 }
 
 export interface AngularObjects {
@@ -26,13 +29,15 @@ export interface NoteInfo {
 }
 
 export interface ParagraphData {
-    config: ParagraphConfig;
+    config?: ParagraphConfig;
     dateCreated?: string;
     dateUpdated?: string;
+    dateFinished?: string;
     errorMessage?: string;
     focus?: boolean,
-    id?: string;
+    id: string;
     jobName?: string;
+    progress?: Number;
     progressUpdateIntervalMs?: number;
     settings?: ParagraphSetting;
     results?: ParagraphResult;
@@ -45,11 +50,11 @@ export interface ParagraphConfig {
     lineNumbers?: boolean;
     colWidth?: number;
     editorMode?: string;
-    editorSetting: {
-        completionKey: string;
-        completionSupport: boolean;
-        editOnDblClick: boolean;
-        language: string;
+    editorSetting?: {
+        completionKey?: string;
+        completionSupport?: boolean;
+        editOnDblClick?: boolean;
+        language?: string;
     },
     enabled?: boolean;
     fontSize?: number;
@@ -63,7 +68,7 @@ export interface ParagraphSetting {
 
 export interface ParagraphResult {
     code: string;
-    msg: ParagraphResultMsg[]
+    msg?: ParagraphResultMsg[]
 }
 
 export interface ParagraphResultMsg {

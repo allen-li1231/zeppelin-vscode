@@ -5,6 +5,7 @@ import {
 	parseCellToParagraphData
 } from '../common/parser';
 import { NoteData } from '../common/dataStructure';
+// import { Mutex } from '../common/mutex';
 
 
 export class ZeppelinSerializer implements vscode.NotebookSerializer {
@@ -14,21 +15,27 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 		_token: vscode.CancellationToken
 	): Promise<vscode.NotebookData> {
 
+		let raw: NoteData;
+
 		var contents = new TextDecoder().decode(content);
 		let reEmpty = new RegExp('^[\s\n\t\r]*$');
 		if (reEmpty.test(contents)) {
 			logDebug(contents);
+			raw = {};
 		}
-
-		let raw: NoteData | undefined;
-		try {
-			raw = <NoteData>JSON.parse(contents);
-		} catch(err) {
-			logDebug("error serializing note to JSON", err);
-			throw err;
+		else {
+			try {
+				raw = <NoteData>JSON.parse(contents);
+			} catch(err) {
+				logDebug("error serializing note file to JSON", err);
+				throw err;
+			}
 		}
+		// raw.mutex = new Mutex();
 
-		const cells = raw.paragraphs.map(parseParagraphToCellData);
+		const cells = raw.paragraphs
+						? raw.paragraphs.map(parseParagraphToCellData)
+						: [];
 
 		let note = new vscode.NotebookData(cells);
 		note.metadata = raw;

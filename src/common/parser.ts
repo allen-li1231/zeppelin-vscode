@@ -10,7 +10,7 @@ import {
 export function parseParagraphToCellData(
     paragraph: ParagraphData,
 ): vscode.NotebookCellData {
-    let lang: string = paragraph.config.editorSetting.language;
+    let lang = paragraph.config?.editorSetting?.language ?? '';
     // default cell kind is markup language
     let kind: number = mapLanguageKind.get(lang) ?? 1;
     // empty cell could have no text method, while NotebookCellData must have text value,
@@ -36,11 +36,11 @@ export function parseParagraphResultToCellOutput(
     let encoder = new TextEncoder();
     let textOutput = '', htmlOutput = '', errorOutput = '';
     let imageOutputs: Uint8Array[] = [];
-    for (let msg of results['msg']) {
-        if (msg['type'] === 'HTML') {
+    for (let msg of results.msg ?? []) {
+        if (msg.type === 'HTML') {
             htmlOutput += msg.data;
         }
-        else if (msg['type'] === 'IMG') {
+        else if (msg.type === 'IMG') {
             let data = Uint8Array.from(atob(msg.data), c => c.charCodeAt(0));
             imageOutputs.push(data);
         }
@@ -160,19 +160,28 @@ export function parseCellToParagraphData(
         : cell.document.languageId;
 
     if (paragraph.id !== undefined) {
+        if (paragraph.config === undefined) {
+            paragraph.config = {"editorSetting": {}};
+        }
+        if (paragraph.config.editorSetting === undefined) {
+            paragraph.config.editorSetting = {};
+        }
+
         paragraph.config.editorSetting.language = languageId;
     }
     else {
-        let lineNumbers = vscode.workspace.getConfiguration("editor").get("lineNumbers")
-            !== vscode.TextEditorLineNumbersStyle.Off;
+        let lineNumbers = vscode.workspace.getConfiguration("editor")
+            .get("lineNumbers", vscode.TextEditorLineNumbersStyle.Off)
+                !== vscode.TextEditorLineNumbersStyle.Off;
         paragraph.config = {
-            "lineNumbers": paragraph.config.lineNumbers ?? lineNumbers,
+            "lineNumbers": paragraph.config?.lineNumbers ?? lineNumbers,
             "editorSetting": {
                 "language": languageId,
                 "editOnDblClick": false,
                 "completionKey": "TAB",
                 "completionSupport": cell.kind !== 1
-            } };
+            }
+        };
     }
 
     paragraph.results = cell.metadata?.results;

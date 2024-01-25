@@ -48,39 +48,21 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(disposable);
 
 
-	disposable = vscode.commands.registerCommand(
-		'zeppelin-vscode.unlockCurrentNotebook',
-		_ => interact.promptUnlockCurrentNotebook(kernel)
-	);
-	context.subscriptions.push(disposable);
-
-
-	disposable = vscode.workspace.onDidCreateFiles(event => {
-		let fs = require("fs");
-
-		for (let uri of event.files) {
-			if (uri.fsPath.endsWith(NOTEBOOK_SUFFIX)) {
-				fs.writeFileSync(uri.fsPath,  '{"paragraphs": []}');
-			}
-		}
-	});
-	context.subscriptions.push(disposable);
-
-
 	disposable = vscode.workspace.onDidOpenNotebookDocument(async note => {
 		if (!note.uri.fsPath.endsWith(NOTEBOOK_SUFFIX)) {
 			return;
 		}
+		logDebug("onDidOpenNotebookDocument:", note);
 
 		// lock file before kernel is able to connected to server
-		vscode.commands.executeCommand(
-			"workbench.action.files.setActiveEditorReadonlyInSession"
-		);
+		// vscode.commands.executeCommand(
+		// 	"workbench.action.files.setActiveEditorReadonlyInSession"
+		// );
 
 		// user selection could be undefined (user never determined),
 		// Yes, No or Never (user specified)
 		let config = vscode.workspace.getConfiguration('zeppelin');
-		let selection = config.get('alwaysConnectLastServer');
+		let selection = config.get('alwaysConnectToTheLastServer');
 		if (selection === 'Never') {
 			return;
 		}
@@ -93,18 +75,6 @@ export async function activate(context: vscode.ExtensionContext) {
 			willConnectRemote = await interact.promptRemoteConnection();
 		}
 
-		// task after notebook is created or remote server is on.
-		let unlockNote = () => {
-			// unlock file
-			vscode.commands.executeCommand(
-				"workbench.action.files.setActiveEditorWriteableInSession"
-			);
-			if (selection === null) {
-				// ask if connect automatically from now on.
-				interact.promptAlwaysConnect();
-			}
-		};
-
 		if (willConnectRemote) {
 			let baseURL = context.workspaceState.get(
 				'currentZeppelinServerURL', undefined
@@ -112,11 +82,18 @@ export async function activate(context: vscode.ExtensionContext) {
 			kernel.checkInService(baseURL, async () => {
 				// task when remote server is connectable but the note is not on it.
 				if (await kernel.hasNote(note.metadata.id)) {
-					unlockNote();
+					if (selection === null) {
+						// ask if connect automatically from now on.
+						interact.promptAlwaysConnect();
+					}
+					//kernel.syncNote(note);
 				}
 				else {
 					// import/create identical note when there doesn't exist one.
-					interact.promptCreateNotebook(kernel, note, unlockNote);
+					interact.promptCreateNotebook(kernel, note, 
+						selection === null
+						? interact.promptAlwaysConnect
+						: undefined);
 				}
 			});
 		}
@@ -133,6 +110,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		// modify paragraph on remote
 		for (let cellChange of event.cellChanges) {
 			if (cellChange.document !== undefined) {
+				logDebug("onDidChangeNotebookDocument: cellChange", cellChange);
 				kernel.registerParagraphUpdate(cellChange.cell);
 			}
 		}
@@ -145,21 +123,25 @@ export async function activate(context: vscode.ExtensionContext) {
 					_.zip(contentChange.addedCells, contentChange.removedCells)) {
 				if (cellAdded?.metadata.id !== undefined
 					&& cellAdded.metadata.id === cellRemoved?.metadata.id) {
+					logDebug("onDidChangeNotebookDocument: cellReplaced", cellAdded);
+					kernel.registerParagraphUpdate(cellAdded);
+				}
+				else {
+					// normal add/remove cell registering
+					if (cellAdded !== undefined) {
+						logDebug("onDidChangeNotebookDocument: cellAdded", cellAdded);
 						kernel.registerParagraphUpdate(cellAdded);
 					}
-					else {
-						// normal add/remove cell registering
-						if (cellAdded !== undefined) {
-							kernel.registerParagraphUpdate(cellAdded);
-						}
-						if (cellRemoved !== undefined) {
-							kernel.registerParagraphUpdate(cellRemoved);
-						}
+					if (cellRemoved !== undefined) {
+						logDebug("onDidChangeNotebookDocument: cellRemoved", cellRemoved);
+						kernel.registerParagraphUpdate(cellRemoved);
 					}
 				}
+			}
 		}
 	});
 	context.subscriptions.push(disposable);
+
 
 	disposable = vscode.workspace.onWillSaveNotebookDocument(event => {
 		if (!event.notebook.uri.fsPath.endsWith(NOTEBOOK_SUFFIX)
@@ -170,23 +152,29 @@ export async function activate(context: vscode.ExtensionContext) {
 		if (event.notebook.isDirty) {
 			kernel.instantUpdatePollingParagraphs();
 		}
+		kernel.applyPolledNotebookEdits();
 	});
 	context.subscriptions.push(disposable);
+
 
 	disposable = vscode.window.onDidChangeTextEditorOptions(async event => {
 		if (!event.textEditor.document.uri.fsPath.endsWith(NOTEBOOK_SUFFIX)
 			|| !kernel.isActive()) {
-		return;
-	}
-		let lineNumbers = 
-			event.options.lineNumbers !== vscode.TextEditorLineNumbersStyle.Off;
-
-		let notebook = vscode.window.activeNotebookEditor?.notebook;
-		if (notebook === undefined
-			|| !notebook.uri.fsPath.endsWith(NOTEBOOK_SUFFIX)) {
 			return;
 		}
+		let lineNumbers =
+			event.options.lineNumbers !== vscode.TextEditorLineNumbersStyle.Off;
+		
+		let notebook: vscode.NotebookDocument | undefined;
+		for (let note of vscode.workspace.notebookDocuments) {
+			if (note.uri === event.textEditor.document.uri) {
+				notebook = note;
+			}
+		}
 
+		if (notebook === undefined) {
+			return;
+		}
 
 		for (let cell of notebook.getCells()) {
 			if (cell.document !== event.textEditor.document) {
@@ -208,6 +196,28 @@ export async function activate(context: vscode.ExtensionContext) {
 			}
 			kernel.updateParagraphConfig(cell);
 			break;
+		}
+	});
+	context.subscriptions.push(disposable);
+
+
+	disposable = vscode.window.onDidChangeActiveNotebookEditor(async event => {
+		if (!event?.notebook.uri.fsPath.endsWith(NOTEBOOK_SUFFIX)
+			|| !kernel.isActive()) {
+			return;
+		}
+		logDebug("onDidChangeActiveNotebookEditor", event);
+
+		if (await kernel.hasNote(event?.notebook.metadata.id)) {
+			let config = vscode.workspace.getConfiguration('zeppelin');
+			let selection = config.get('autosave.syncActiveNotebook');
+
+			if (selection) {
+				await kernel.syncNote(event?.notebook);
+			}
+		}
+		else {
+			interact.promptCreateNotebook(kernel, event?.notebook);
 		}
 	});
 	context.subscriptions.push(disposable);

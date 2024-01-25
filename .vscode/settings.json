@@ -13,5 +13,5 @@
     "files.watcherExclude": {
         "**/target": true
     },
-    "zeppelin.alwaysConnectLastServer": "Yes"
+    "zeppelin.alwaysConnectToTheLastServer": "Yes"
 }
