@@ -15,14 +15,21 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 		_token: vscode.CancellationToken
 	): Promise<vscode.NotebookData> {
 
-		var contents = new TextDecoder().decode(content);
+		let raw: NoteData;
 
-		let raw: NoteData | undefined;
-		try {
-			raw = <NoteData>JSON.parse(contents);
-		} catch(err) {
-			logDebug("error serializing note to JSON", err);
-			throw err;
+		var contents = new TextDecoder().decode(content);
+		let reEmpty = new RegExp('^[\s\n\t\r]*$');
+		if (reEmpty.test(contents)) {
+			logDebug(contents);
+			raw = {};
+		}
+		else {
+			try {
+				raw = <NoteData>JSON.parse(contents);
+			} catch(err) {
+				logDebug("error serializing note file to JSON", err);
+				throw err;
+			}
 		}
 		// raw.mutex = new Mutex();
 

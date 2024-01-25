@@ -5,9 +5,9 @@ import { Mutex } from "./mutex";
 export interface NoteData {
 	angularObjects?: AngularObjects;
 	config?: NotebookConfig;
-	id: string;
+	id?: string;
 	info?: NoteInfo;
-    name: string;
+    name?: string;
     noteForms?: any;
     noteParams?: any;
     paragraphs?: ParagraphData[];
