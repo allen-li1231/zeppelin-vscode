@@ -68,7 +68,7 @@ export interface ParagraphSetting {
 
 export interface ParagraphResult {
     code: string;
-    msg: ParagraphResultMsg[]
+    msg?: ParagraphResultMsg[]
 }
 
 export interface ParagraphResultMsg {

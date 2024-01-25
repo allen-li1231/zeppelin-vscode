@@ -701,7 +701,11 @@ export class ZeppelinKernel {
             cell.notebook.metadata.id, cell.metadata.id, sync
         );
         if (!sync) {
-            return res?.data;
+            return res?.data ?? [];
+        }
+
+        if (!res?.data.body) {
+            return [];
         }
 
         let paragraphResult = <ParagraphResult> res?.data.body;
@@ -768,9 +772,9 @@ export class ZeppelinKernel {
         try {
             await this.instantUpdatePollingParagraphs();
 
-            let cellOutput = await this._runParagraph(cell, true);
             execution.start(Date.now());
-            if (cellOutput.length > 0) {
+            let cellOutput = await this._runParagraph(cell, true);
+            if (cellOutput && cellOutput.length > 0) {
                 execution.replaceOutput(new vscode.NotebookCellOutput(cellOutput));
             }
             else {
