@@ -1,4 +1,4 @@
-import { time } from "console";
+import { logDebug } from "./common";
 
 /**
  * A lock for synchronizing async operations.
@@ -17,9 +17,11 @@ export class Mutex {
 
     private _isLocked = false;
     private interval: number;
+    private _name: string;
 
-    constructor (interval?: number){
+    constructor (name?: string, interval?: number){
         this.interval = interval ?? 0;
+        this._name = name ?? '';
     }
 
     /**
@@ -27,7 +29,7 @@ export class Mutex {
      * @returns A function that releases the acquired lock.
      */
     isLocked() {
-        return this.isLocked;
+        return this._isLocked;
     }
 
     acquire() {
@@ -47,12 +49,11 @@ export class Mutex {
      */
     async runExclusive<T>(callback: () => Promise<T>) {
         const release = await this.acquire();
+        if (this.interval > 0) {
+            await timeout(this.interval);
+        }
         try {
-            let res = await callback();
-            if (this.interval > 0) {
-                await timeout(this.interval);
-            }
-            return res;
+            return await callback();
         } finally {
             release();
         }
@@ -79,6 +80,7 @@ export class Mutex {
         }
         // The resource is available.
         this._isLocked = true; // Lock it.
+        // logDebug(`mutex ${this._name} locked`);
         // and give access to the next operation
         // in the queue.
         nextEntry.resolve(this._buildRelease());
@@ -94,6 +96,7 @@ export class Mutex {
             // Each release function make
             // the resource available again
             this._isLocked = false;
+            // logDebug(`mutex ${this._name} released`);
             // and call dispatch.
             this._dispatch();
         };
