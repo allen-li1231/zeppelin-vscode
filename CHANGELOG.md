@@ -2,7 +2,7 @@
 
 All notable changes to the "zeppelin-vscode" extension will be documented in this file.
 
-## [0.1.1] - 2023-7-18
+## [0.1.1] - 2023-07-18
 
 ### Added
 - Settings related to specifying or selecting an existing Zeppelin server.
@@ -22,7 +22,7 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 - Refactor serialization and deserializaion code to increase reusability.
 
 
-## [0.1.2] - 2023-7-19
+## [0.1.2] - 2023-07-19
 
 ### Added
 - Configurability to automatically connect to last-used server without asking user.
@@ -40,7 +40,7 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 - Unused npm package in package.json.
 
 
-## [0.1.3] - 2023-7-21
+## [0.1.3] - 2023-07-21
 
 ### Added
 - Kernel now can be selected by clicking on current kernel, and display names of list of kernels become user-friendly.
@@ -50,13 +50,13 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 - Bug that causes first-time opening a notebook doesn't trigger login procedure after user has provided Zeppelin server URL.
 
 
-## [0.1.4] - 2023-7-25
+## [0.1.4] - 2023-07-25
 
 ### Fixed
 - Bug that causes changing server credentials doesn't trigger a new login.
 
 
-## [0.1.5] - 2023-9-21
+## [0.1.5] - 2023-09-21
 
 ### Added
 - Line number toggling command, and automatically synced to server (still buggy when toggling all cells' line numbers, the problem lies in VSCode api provided)
@@ -85,3 +85,21 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 
 ### Fixed
 - Prompting Zeppelin credentials not working properly.
+
+
+
+## [0.2.0] - 2024-01-25
+
+### Added
+- Notebook cells now can run in parallel, and user can toggle run mode, either in parallel or sequential, in settings.
+- Previously local notebook changes will be periodically updated to server, but not vice versa. Now notebook can be updated to its server version whenever it is opened or corresponding window is activated.
+
+### Fixed
+- [Missing proxy credential protocol setting](https://github.com/allen-li1231/zeppelin-vscode/commit/fa5ad8ea58ba24a1eaec41c570aa0d9027a79973)
+- [Bug that causes code interrupt to fail the extension](https://github.com/allen-li1231/zeppelin-vscode/commit/692d1576e2318e177051d3f1e92ee3512bc8e007).
+- [Bug that causes extension to fail when interrupting note](https://github.com/allen-li1231/zeppelin-vscode/commit/96cda9e66ba079711458cafcb5528ec482a52c7b).
+- [Bug that causes tracking on cell execution to be falsely ended when paragraph run status is pending](https://github.com/allen-li1231/zeppelin-vscode/commit/f61c9e9b493e2ec7d307780ad7d3aef4daf7a54a).
+- [Bug that causes error output when execution an empty cell](https://github.com/allen-li1231/zeppelin-vscode/commit/8ad8d3b0b97c4b7f0b63f84c6dc97eddcc88684d)
+
+### Changed
+- [Remove locking zpln files as it causes misunderstanding and potentially causes problem when multiple notebooks are opened](https://github.com/allen-li1231/zeppelin-vscode/commit/b214b94301bfcf1699eb3f7fc6adfc31c0dcd29e)
