@@ -58,14 +58,14 @@ class BasicService {
                 return response;
             },
             (error) => {
+                if (!error || error.code === "ERR_CANCELED") {
+                    return error;
+                }
+
                 logDebug(
                     `api error: ${error.request.method} ${error.request.path}`,
                     error
                 );
-                if (error.code === "ERR_CANCELED") {
-                    return error;
-                }
-
                 let url = error.request?.path;
 
                 if (!error.response) {
