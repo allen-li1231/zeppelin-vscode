@@ -27,6 +27,7 @@ export class ZeppelinKernel {
     private readonly _controller: vscode.NotebookController;
     private _isActive = false;
     private _globalMutex = new Mutex("_globalMutex");
+    private _executeMutex = new Mutex("_executeMutex");
 
     // private _timerSyncNote?: NodeJS.Timer;
     private _timerUpdateCell?: NodeJS.Timer;
@@ -730,10 +731,17 @@ export class ZeppelinKernel {
         let concurrency = config.get('execution.concurrency', 'parallel');
         for (let cell of cells) {
             if (concurrency === 'parallel') {
+                logDebug("execute", cell);
                 this._doExecutionAsync(cell);
             }
-            else if (!await this._doExecutionSync(cell)) {
-                    break;
+            else {
+                let isSuccess = await this._executeMutex.runExclusive(async () => {
+                    logDebug("execute", cell);
+                    return await this._doExecutionSync(cell);
+                });
+                if (!isSuccess) {
+                    return;
+                }
             }
 		}
 	}
