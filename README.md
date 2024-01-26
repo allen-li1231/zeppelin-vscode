@@ -17,8 +17,5 @@ Currently the extension development does not consider notebook permission, versi
   your local notebook will be updated to the server version whenever it is opened or activated.
 * More configurations can be accessed by searching for 'zeppelin' in setting or command palette.
 
-## Contribution
-__The extension is currently under personal development. If you would like to develop with me, please fire an issue.__
-
 ## Feedback
 __Desperately needed! Please do report bugs or advise any improvement by firing issues.__
