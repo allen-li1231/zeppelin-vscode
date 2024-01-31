@@ -364,7 +364,7 @@ export async function promptCreateNotebook(
 	// remove suffix
 	quickPick.value = name;
 	quickPick.title = `Specify Path to Save a
-		 New "${name}" to Zeppelin Server`;
+		 New Notebook "${name}" to Zeppelin Server`;
 	quickPick.ignoreFocusOut = true;
 	quickPick.items = visiblePaths.map(value => { return { label: value }; });
 
