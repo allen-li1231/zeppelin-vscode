@@ -4,7 +4,7 @@ import {
 	parseParagraphToCellData,
 	parseCellToParagraphData
 } from '../common/parser';
-import { NoteData } from '../common/dataStructure';
+import { NoteData } from '../common/types';
 // import { Mutex } from '../common/mutex';
 
 

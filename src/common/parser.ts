@@ -4,7 +4,7 @@ import {
     ParagraphData,
 	ParagraphResult,
 	ParagraphResultMsg
-} from '../common/dataStructure';
+} from './types';
 
 
 export function parseParagraphToCellData(

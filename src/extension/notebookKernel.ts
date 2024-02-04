@@ -8,11 +8,12 @@ import { EXTENSION_NAME,
     logDebug,
     getProxy
 } from '../common/common';
-import { NoteData, ParagraphData, ParagraphResult } from '../common/dataStructure';
+import { NoteData, ParagraphData, ParagraphResult } from '../common/types';
 import { showQuickPickURL, doLogin, promptZeppelinServerURL } from '../common/interaction';
 import { parseParagraphToCellData, parseParagraphResultToCellOutput 
 } from '../common/parser';
-import { Mutex } from '../common/mutex';
+import { Mutex } from '../component/mutex';
+// import ForProgress from '../component/ForProgress/ForProgress';
 import _ = require('lodash');
 
 

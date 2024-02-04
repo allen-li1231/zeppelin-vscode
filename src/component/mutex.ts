@@ -1,4 +1,4 @@
-import { logDebug } from "./common";
+import { logDebug } from "../common/common";
 
 /**
  * A lock for synchronizing async operations.

@@ -4,7 +4,7 @@ import { reURL, logDebug } from './common';
 import * as vscode from 'vscode';
 import { ZeppelinKernel } from '../extension/notebookKernel';
 import { parseCellToParagraphData } from './parser';
-import { Mutex } from './mutex';
+import { Mutex } from '../component/mutex';
 
 let mutex = new Mutex();
 
