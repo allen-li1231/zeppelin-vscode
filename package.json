@@ -119,14 +119,18 @@
           "order": 4,
           "type": "string",
           "default": "parallel",
-          "enum": ["parallel", "sequential"],
+          "enum": [
+            "parallel",
+            "sequential"
+          ],
           "enumDescriptions": [
             "Run muliple cells simultaneously",
-            "Execute in order, new execution will be blocked before previous execution is finished"],
+            "Execute in order, new execution will be blocked before previous execution is finished"
+          ],
           "description": "Set cell execution concurrency."
         },
         "zeppelin.execution.trackInterval": {
-          "order":  5,
+          "order": 5,
           "type": "number",
           "default": 1,
           "description": "Set minimum interval (in seconds) to track execution."
@@ -233,5 +237,9 @@
     "typescript": "^5.0.4",
     "webpack": "^5.88.2",
     "webpack-cli": "^5.1.4"
+  },
+  "dependencies": {
+    "ansi-escapes": "^6.2.0",
+    "string-width": "^7.1.0"
   }
 }

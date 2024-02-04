@@ -41,7 +41,7 @@ export const defaultTokenDefinitions: ProgressTokenDefinitions = {
   // Since we know the exact width of the desired output, we return it
   // in the width function.
   elapsed: {
-    render: (state: ProgressState, allowed: number): string => {
+    render: (state: ProgressState): string => {
       let seconds = (state.elapsedTime / 1000) % 60;
       let minutes = Math.floor((state.elapsedTime / 1000 / 60) % 60);
       let hours = Math.floor((state.elapsedTime / 1000 / 60 / 60));
@@ -52,7 +52,7 @@ export const defaultTokenDefinitions: ProgressTokenDefinitions = {
   // the percent token displays the amount of the process that has been
   // completed as a percentage.  It shows 2 decimal places of precision.
   percent: {
-    render: (state: ProgressState, allowed: number): string => {
+    render: (state: ProgressState): string => {
       return (state.percentComplete * 100).toFixed(2) + '%';
     },
     width: () => 7
@@ -60,13 +60,13 @@ export const defaultTokenDefinitions: ProgressTokenDefinitions = {
   // The spinner token simply displays an ascii 'wheel' that constantly
   // spins as the process is occurring.
   spinner: {
-    render: (state: ProgressState, allowed: number): string => {
+    render: (): string => {
       const frames: string[] = [
         '-',
         '\\',
         '|',
         '/'
-      ]
+      ];
 
       return frames[Math.floor((Date.now() % 500) / 125)];
     },

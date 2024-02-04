@@ -29,7 +29,7 @@ export function parseParagraphToCellData(
 }
 
 export function parseParagraphResultToCellOutput(
-    results: ParagraphResult
+    results: ParagraphResult, progressbarText?: string
 ) {
     let outputs: vscode.NotebookCellOutputItem[] = [];
 
@@ -85,10 +85,10 @@ export function parseParagraphResultToCellOutput(
         );
     }
 
-    if (textOutput.length > 0) {
+    if (progressbarText || textOutput.length > 0) {
         outputs.push(
             new vscode.NotebookCellOutputItem(
-                encoder.encode(textOutput),
+                encoder.encode((progressbarText ?? '') + textOutput),
                 'text/plain'
             )
         );

@@ -13,8 +13,10 @@ import { showQuickPickURL, doLogin, promptZeppelinServerURL } from '../common/in
 import { parseParagraphToCellData, parseParagraphResultToCellOutput 
 } from '../common/parser';
 import { Mutex } from '../component/mutex';
+import { Progress } from '../component/superProgress/super-progress';
 // import ForProgress from '../component/ForProgress/ForProgress';
 import _ = require('lodash');
+import { TextEncoder } from 'util';
 
 
 export class ZeppelinKernel {
@@ -34,7 +36,7 @@ export class ZeppelinKernel {
     private _timerUpdateCell?: NodeJS.Timer;
     private _recurseTrackExecution?: Function;
     private _mapTrackExecution = new Map<
-        string, [vscode.NotebookCellExecution, number]
+        string, [vscode.NotebookCellExecution, number, Progress]
     >();
     private _mapNotebookEdits = new Map<vscode.NotebookCell, vscode.NotebookEdit[]>();
     private _mapUpdateParagraph = new Map<vscode.NotebookCell, number>();
@@ -319,7 +321,7 @@ export class ZeppelinKernel {
         });
     }
 
-    public async trackExecution(execution: vscode.NotebookCellExecution) {
+    public async trackExecution(execution: vscode.NotebookCellExecution, progressbar: Progress) {
         try {
             let paragraph = await this.getParagraphInfo(execution.cell);
 
@@ -330,12 +332,18 @@ export class ZeppelinKernel {
                 return;
             }
 
+            const progress = paragraph.status === "RUNNING" ? paragraph.progress : 100;
+            const pbText = await progressbar.renderProgress(progress);
             if (paragraph.results) {
-                let cellOutput = parseParagraphResultToCellOutput(paragraph.results);
+                const cellOutput = parseParagraphResultToCellOutput(paragraph.results, pbText);
                 execution.replaceOutput(new vscode.NotebookCellOutput(cellOutput));
             }
-            else {
+            else if (paragraph.status === "PENDING") {
                 execution.clearOutput();
+            }
+            else {
+                const pbOutput = vscode.NotebookCellOutputItem.stdout(pbText);
+                execution.replaceOutput(new vscode.NotebookCellOutput([pbOutput]));
             }
 
             if ((paragraph.status !== "RUNNING") && (paragraph.status !== "PENDING")) {
@@ -367,10 +375,10 @@ export class ZeppelinKernel {
         let interval: number = config.get('trackExecutionInterval', 5);
         let aryExecution = [];
 
-        for (let [_, [execution, requestTime]] of this._mapTrackExecution) {
+        for (let [_, [execution, requestTime, progressbar]] of this._mapTrackExecution) {
             logDebug("_doTrackAllExecution: tracking", execution, Date.now() - requestTime);
             if (interval * 1000 < Date.now() - requestTime) {
-                aryExecution.push(this.trackExecution(execution));
+                aryExecution.push(this.trackExecution(execution, progressbar));
             }
         }
 
@@ -379,7 +387,7 @@ export class ZeppelinKernel {
 
     public registerTrackExecution(execution: vscode.NotebookCellExecution) {
         this._mapTrackExecution.set(
-            execution.cell.metadata.id, [execution, Date.now()]
+            execution.cell.metadata.id, [execution, Date.now(), Progress.create(57)]
         );
     }
 

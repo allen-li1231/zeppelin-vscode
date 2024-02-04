@@ -1,8 +1,8 @@
 import { defaultTokenDefinitions } from './default-tokens';
 import { Writable, Transform } from 'stream';
 import { EOL } from 'os';
-const stringWidth = require('string-width');
-const ansiEscapes = require('ansi-escapes');
+import stringWidth from 'string-width';
+import ansiEscapes from 'ansi-escapes';
 
 export interface ProgressOptions {
   total?: number;
@@ -38,12 +38,12 @@ export class Progress extends Transform {
     tokens?: ProgressTokenDefinitions,
     state?: ProgressState): Progress => {
 
-    let o: ProgressOptions = { ...Progress.defaultProgressOptions, ...options }
+    let o: ProgressOptions = { ...Progress.defaultProgressOptions, ...options };
     o.pattern = o.pattern!;
     o.total = o.total!;
     o.renderInterval = o.renderInterval!;
 
-    let t: ProgressTokenDefinitions = { ...defaultTokenDefinitions, ...tokens }
+    let t: ProgressTokenDefinitions = { ...defaultTokenDefinitions, ...tokens };
     let s: ProgressState = {
       elapsedTime: 0,
       remainingTime: 0,
@@ -63,13 +63,13 @@ export class Progress extends Transform {
     }
 
     return new Progress(width, o, t, s);
-  }
+  };
 
   public static defaultProgressOptions: ProgressOptions = {
     total: 100,
-    pattern: `[{spinner}] {bar} | Elapsed: {elapsed} | {percent}`,
+    pattern: `{bar}| {percent} | Elapsed: {elapsed}`,
     renderInterval: 33
-  }
+  };
 
   private constructor(
     public width: number,
@@ -82,7 +82,6 @@ export class Progress extends Transform {
   }
 
   _transform(data: string | Buffer,
-    encoding: string,
     callback: Function): any | undefined {
     this.update(data.length)
       .then(() => this.render())
@@ -117,8 +116,23 @@ export class Progress extends Transform {
     }
   }
 
+  public async renderProgress(progress: number): Promise<string> {
+    await this.setTick(progress);
+    const pbStrings = await this.render();
+    return pbStrings.join(EOL) + EOL;
+  }
+
   public async update(ticks: number = 1): Promise<void> {
     this.state.currentTicks += ticks;                                               // ticks
+    this.state.percentComplete = this.state.currentTicks / this.state.totalTicks;   // raw decimal
+    this.state.elapsedTime = Date.now() - this.state.startTime;                     // ms
+    this.state.ticksLeft = this.state.totalTicks - this.state.currentTicks;         // ticks
+    this.state.rateTicks = this.state.currentTicks / this.state.elapsedTime;        // ticks/ms
+    this.state.remainingTime = this.state.ticksLeft / this.state.rateTicks;      // ms
+  }
+
+  public async setTick(tick: number = 1): Promise<void> {
+    this.state.currentTicks = tick;                                               // ticks
     this.state.percentComplete = this.state.currentTicks / this.state.totalTicks;   // raw decimal
     this.state.elapsedTime = Date.now() - this.state.startTime;                     // ms
     this.state.ticksLeft = this.state.totalTicks - this.state.currentTicks;         // ticks
