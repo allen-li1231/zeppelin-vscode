@@ -1,6 +1,6 @@
 # Zeppelin Extension for Visual Studio Code
 
-A [Visual Studio Code](https://code.visualstudio.com/) extension that provides basic notebook support for [Zeppelin Notebooks](https://zeppelin.apache.org/). This is _**NOT a Zeppelin Server or language kernel**_--you must have an Zeppelin Server 0.8.0 or afterwards for notebooks to run properly in VS Code.
+A [Visual Studio Code](https://code.visualstudio.com/) extension that provides basic notebook support for language kernels in [Zeppelin Notebooks](https://zeppelin.apache.org/). This is _**NOT a Zeppelin Server or language kernel**_--you must have a Zeppelin Server 0.8.0 or afterwards for notebooks to run properly in VS Code.
 Currently the extension development does not consider notebook permission, version control and cron job. If you believe these are important, please fire an issue.
 
 ## Features
