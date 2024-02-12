@@ -4,7 +4,7 @@ import { logDebug, formatURL, reCookies } from './common';
 import {
     ParagraphData,
     ParagraphConfig
-} from './dataStructure';
+} from './types';
 import axios, {
     AxiosInstance,
     AxiosRequestConfig,

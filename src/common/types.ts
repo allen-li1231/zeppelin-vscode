@@ -1,4 +1,4 @@
-import { Mutex } from "./mutex";
+import { Mutex } from "../component/mutex";
 
 // the Zeppelin note is basically a json file
 // containing note and paragraph information
