@@ -16,7 +16,6 @@ import { Mutex } from '../component/mutex';
 import { Progress } from '../component/superProgress/super-progress';
 // import ForProgress from '../component/ForProgress/ForProgress';
 import _ = require('lodash');
-import { TextEncoder } from 'util';
 
 
 export class ZeppelinKernel {
@@ -334,6 +333,7 @@ export class ZeppelinKernel {
 
             const progress = paragraph.status === "RUNNING" ? paragraph.progress : 100;
             const pbText = await progressbar.renderProgress(progress);
+            execution.setProgress(progress);
             if (paragraph.results) {
                 const cellOutput = parseParagraphResultToCellOutput(paragraph.results, pbText);
                 execution.replaceOutput(new vscode.NotebookCellOutput(cellOutput));
@@ -817,6 +817,7 @@ export class ZeppelinKernel {
         }
 
         const execution = this._controller.createNotebookCellExecution(cell);
+        execution.setProgress(0);
         execution.token.onCancellationRequested(async _ => {
             await this.stopParagraph(execution.cell);
         });
