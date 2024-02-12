@@ -16,10 +16,10 @@ Currently the extension development does not consider notebook permission, versi
 
 More configurations can be accessed by searching for 'zeppelin' in setting or command palette.
 
-> Tips:
+> :bell:Tips:
 >* Internally local changes to the notebook are updated to the Zeppelin server in every second,
   and local notebook will be updated to the server the moment it is opened or activated.
->* If you cannot see the progress bar, it is in the text output, you can manually toggle output type by clicking "..." on the left side of output.
+>* If you cannot see the progress bar, it is in the text output, you can manually toggle output type by clicking "..." button at the left side of output.
 
 ## Feedback
 __Desperately needed! Please do report bugs or advise any improvements by firing issues.__
