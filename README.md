@@ -13,9 +13,13 @@ Currently the extension development does not consider notebook permission, versi
 * Download Zeppelin notebook file (either .json or .zpln) from Zeppelin web server.
 * Rename file suffix into ".zpln" if it is ".json".
 * Open it using VS Code, during first cell run you will be prompted to provide server url and credential.
-* More configurations can be accessed by searching for 'zeppelin' in setting or command palette.
-Internally local changes to the notebook are updated to the Zeppelin server in every second,
+
+More configurations can be accessed by searching for 'zeppelin' in setting or command palette.
+
+> Tips:
+>* Internally local changes to the notebook are updated to the Zeppelin server in every second,
   and local notebook will be updated to the server the moment it is opened or activated.
+>* If you cannot see the progress bar, it is in the text output, you can manually toggle output type by clicking "..." on the left side of output.
 
 ## Feedback
 __Desperately needed! Please do report bugs or advise any improvements by firing issues.__
