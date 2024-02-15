@@ -333,7 +333,7 @@ export class ZeppelinKernel {
 
             const progress = paragraph.status === "RUNNING" ? paragraph.progress : 100;
             const pbText = await progressbar.renderProgress(progress);
-            execution.setProgress(progress);
+            // execution.setProgress(progress);
             if (paragraph.results) {
                 const cellOutput = parseParagraphResultToCellOutput(paragraph.results, pbText);
                 execution.replaceOutput(new vscode.NotebookCellOutput(cellOutput));
@@ -817,7 +817,6 @@ export class ZeppelinKernel {
         }
 
         const execution = this._controller.createNotebookCellExecution(cell);
-        execution.setProgress(0);
         execution.token.onCancellationRequested(async _ => {
             await this.stopParagraph(execution.cell);
         });
@@ -837,6 +836,7 @@ export class ZeppelinKernel {
             }
 
             execution.start(startTime);
+            // execution.setProgress(10);
             this.registerTrackExecution(execution);
 
         } catch (err) {
