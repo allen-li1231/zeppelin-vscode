@@ -190,10 +190,10 @@ export function parseCellToParagraphData(
 
 
 // NEEDED Declaration to silence errors
-declare class TextDecoder {
+export declare class TextDecoder {
 	decode(data: Uint8Array): string;
 }
 
-declare class TextEncoder {
+export declare class TextEncoder {
 	encode(data: string): Uint8Array;
 }
