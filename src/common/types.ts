@@ -37,7 +37,7 @@ export interface ParagraphData {
     focus?: boolean,
     id: string;
     jobName?: string;
-    progress?: Number;
+    progress?: number;
     progressUpdateIntervalMs?: number;
     settings?: ParagraphSetting;
     results?: ParagraphResult;

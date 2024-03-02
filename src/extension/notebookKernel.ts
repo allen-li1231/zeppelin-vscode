@@ -4,13 +4,13 @@ import { AxiosError } from 'axios';
 import { NotebookService } from '../common/api';
 import { EXTENSION_NAME,
     SUPPORTEDLANGUAGE,
-    getVersion,
     logDebug,
-    getProxy
+    getProxy,
+    getVersion
 } from '../common/common';
 import { NoteData, ParagraphData, ParagraphResult } from '../common/types';
 import { showQuickPickURL, doLogin, promptZeppelinServerURL } from '../common/interaction';
-import { parseParagraphToCellData, parseParagraphResultToCellOutput 
+import { parseParagraphToCellData, parseParagraphResultToCellOutput, TextEncoder
 } from '../common/parser';
 import { Mutex } from '../component/mutex';
 import { Progress } from '../component/superProgress/super-progress';
@@ -273,7 +273,14 @@ export class ZeppelinKernel {
     ) {
         let res = await this.getService()?.getParagraphInfo(
             cell.notebook.metadata.id, cell.metadata.id);
-        let paragraph = res?.data.body ?? res?.data;
+        if (res instanceof AxiosError) {
+            vscode.window.showWarningMessage(
+                `Unable to get paragraph info ${cell.metadata.id} in note '${cell.notebook.metadata.name}'`
+            );
+            throw res;
+        }
+
+        let paragraph: ParagraphData = res?.data.body ?? res?.data;
         this.pollUpdateCellMetadata(cell, paragraph);
         return paragraph;
     }
@@ -321,42 +328,9 @@ export class ZeppelinKernel {
     }
 
     public async trackExecution(execution: vscode.NotebookCellExecution, progressbar: Progress) {
+        let paragraph: ParagraphData;
         try {
-            let paragraph = await this.getParagraphInfo(execution.cell);
-
-            if (execution.cell.index < 0) {
-                logDebug(`trackExecution: unregister as cell deleted`, execution);
-                this.unregisterTrackExecution(execution);
-                execution.end(undefined);
-                return;
-            }
-
-            const progress = paragraph.status === "RUNNING" ? paragraph.progress : 100;
-            const pbText = await progressbar.renderProgress(progress);
-            // execution.setProgress(progress);
-            if (paragraph.results) {
-                const cellOutput = parseParagraphResultToCellOutput(paragraph.results, pbText);
-                execution.replaceOutput(new vscode.NotebookCellOutput(cellOutput));
-            }
-            else if (paragraph.status === "PENDING") {
-                execution.clearOutput();
-            }
-            else {
-                const pbOutput = vscode.NotebookCellOutputItem.stdout(pbText);
-                execution.replaceOutput(new vscode.NotebookCellOutput([pbOutput]));
-            }
-
-            if ((paragraph.status !== "RUNNING") && (paragraph.status !== "PENDING")) {
-                logDebug(`trackExecution: unregister as not running`, execution);
-                this.unregisterTrackExecution(execution);
-                execution.end(
-                    paragraph.status !== "ERROR", Date.now()
-                    // paragraph.dateFinished
-                    //     ? Date.parse(paragraph.dateFinished)
-                    //     : Date.now()
-                );
-            }
-
+            paragraph = await this.getParagraphInfo(execution.cell);
         } catch (err) {
             logDebug("error in trackExecution:", err);
             let cellOutput = new vscode.NotebookCellOutput([
@@ -367,6 +341,40 @@ export class ZeppelinKernel {
             ]);
             execution.replaceOutput(cellOutput);
             execution.end(false, Date.now());
+            return;
+        }
+
+        if (execution.cell.index < 0) {
+            logDebug(`trackExecution: unregister as cell deleted`, execution);
+            this.unregisterTrackExecution(execution);
+            execution.end(undefined);
+            return;
+        }
+
+        const progress = paragraph.status === "RUNNING" ? paragraph.progress : 100;
+        const pbText = await progressbar.renderProgress(progress ?? 0);
+        // execution.setProgress(progress);
+        if (paragraph.results) {
+            const cellOutput = parseParagraphResultToCellOutput(paragraph.results, pbText);
+            execution.replaceOutput(new vscode.NotebookCellOutput(cellOutput));
+        }
+        else if (paragraph.status === "PENDING") {
+            execution.clearOutput();
+        }
+        else {
+            const pbOutput = vscode.NotebookCellOutputItem.stdout(pbText);
+            execution.replaceOutput(new vscode.NotebookCellOutput([pbOutput]));
+        }
+
+        if ((paragraph.status !== "RUNNING") && (paragraph.status !== "PENDING")) {
+            logDebug(`trackExecution: unregister as not running`, execution);
+            this.unregisterTrackExecution(execution);
+            execution.end(
+                paragraph.status !== "ERROR", Date.now()
+                // paragraph.dateFinished
+                //     ? Date.parse(paragraph.dateFinished)
+                //     : Date.now()
+            );
         }
     }
 
