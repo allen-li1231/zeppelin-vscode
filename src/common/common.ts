@@ -7,11 +7,11 @@ export const EXTENSION_NAME = 'zeppelin-notebook';
 export const NOTEBOOK_SUFFIX = '.zpln';
 
 export const SUPPORTEDLANGUAGE = [
-    'alluxio', 'beam', 'bigquery', 'cassandra', 'elasticsearch', 'flink',
-    'geode', 'groovy', 'hazelcastjet', 'hbase', 'hive', 'ignite', 'ignite',
-    'influxdb', 'java', 'kotlin', 'ksql', 'kylin', 'mahout', 'markdown',
-    'mongodb', 'neo4j', 'pig', 'python', 'r', 'sap', 'scala', 'scalding',
-    'scio', 'shell', 'spark', 'sparql', 'sql'];
+    'alluxio', 'beam', 'cypher', 'sql-bigquery', 'cassandra', 'es', 'flink-sql',
+    'geode', 'groovy', 'gsp', 'hazelcastjet', 'hbase', 'hive-sql', 'hql', 'ignite',
+    'influxdb', 'java', 'javascript', 'kotlin', 'ksql', 'kylin', 'mahout', 'markdown',
+    'pig', 'plaintext', 'python', 'r', 'sap', 'scala', 'scalding',
+    'scio', 'shellscript', 'spark', 'sql'];
 
 export const mapLanguageKind = new Map<string, number>();
 for (let lang of SUPPORTEDLANGUAGE) {
