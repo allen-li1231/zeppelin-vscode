@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 import * as interact from '../common/interaction';
 import { ZeppelinSerializer } from './notebookSerializer';
 import { ZeppelinKernel } from './notebookKernel';
-import { NOTEBOOK_SUFFIX, logDebug } from '../common/common';
+import { EXTENSION_NAME, NOTEBOOK_SUFFIX, logDebug } from '../common/common';
 import _ = require('lodash');
 
 
@@ -20,7 +20,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 
 	let disposable = vscode.workspace.registerNotebookSerializer(
-		'zeppelin-notebook', new ZeppelinSerializer()
+		EXTENSION_NAME, new ZeppelinSerializer()
 	);
 	context.subscriptions.push(disposable);
 
@@ -164,7 +164,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 		let lineNumbers =
 			event.options.lineNumbers !== vscode.TextEditorLineNumbersStyle.Off;
-		
+
 		let notebook: vscode.NotebookDocument | undefined;
 		for (let note of vscode.workspace.notebookDocuments) {
 			if (note.uri === event.textEditor.document.uri) {
