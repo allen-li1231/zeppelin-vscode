@@ -270,7 +270,7 @@ export async function doLogin(
 				vscode.window.showErrorMessage(res.response.data);
 			}
 		}
-		// test if server has configured shiro for multi-users,
+		// test if server has configured Shiro for multi-users,
 		// server will respond 'UnavailableSecurityManagerException' if not.
 		else if (res.response.data.exception 
 				=== 'UnavailableSecurityManagerException'
@@ -492,4 +492,51 @@ export async function promptZeppelinCredential(kernel: ZeppelinKernel) {
 		}
 	});
 	});
+}
+
+
+// function that prompts user to restart a interpreter
+export async function showRestartInterpreter(
+	kernel: ZeppelinKernel, interpreterId: string | undefined) {
+	if (!kernel.isActive()) {
+		return;
+	}
+
+	if (interpreterId === undefined) {
+		interpreterId = await vscode.window.showInputBox({
+			title: 'Please specify a interpreter:'
+		});
+
+	}
+	if (interpreterId === undefined || interpreterId.length === 0) {
+		return;
+	}
+
+	let selection = await vscode.window.showInformationMessage(
+		`Please confirm to restart interpreter: ${interpreterId}`,
+		"Yes", "No"
+	);
+	
+	if (selection === undefined || selection === "No") {
+		return;
+	}
+	let res = await kernel.getService()?.restartInterpreter(interpreterId);
+	if (res === undefined) {
+		return;
+	}
+	if (res instanceof AxiosError) {
+		if (!res.response) {
+			// local network issue
+			vscode.window.showErrorMessage(`Failed to restart interpreter '${interpreterId}'`);
+		}
+		else {
+			vscode.window.showErrorMessage(res.response.data);
+		}
+	}
+	else if (res.status !== 200) {
+		vscode.window.showWarningMessage(res.statusText);
+	}
+	else {
+		vscode.window.showInformationMessage(`${interpreterId} restarted.`);
+	}
 }

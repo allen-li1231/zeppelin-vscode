@@ -203,6 +203,10 @@
       {
         "command": "zeppelin-vscode.setZeppelinCredential",
         "title": "Zeppelin: Set Zeppelin Credential (username and password)"
+      },
+      {
+        "command": "zeppelin-vscode.restartInterpreter",
+        "title": "Zeppelin: restart a interpreter"
       }
     ],
     "menus": {
@@ -216,6 +220,10 @@
         },
         {
           "command": "zeppelin-vscode.setZeppelinCredential"
+        },
+        {
+          "command": "zeppelin-vscode.restartInterpreter",
+          "when": "resourceExtname == .zpln || resourceExtname == .ipynb"
         }
       ]
     }

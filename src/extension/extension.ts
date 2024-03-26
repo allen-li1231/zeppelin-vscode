@@ -2,6 +2,7 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import * as interact from '../common/interaction';
+import { CellStatusProvider} from '../component/cellStatusBar';
 import { ZeppelinSerializer } from './notebookSerializer';
 import { ZeppelinKernel } from './notebookKernel';
 import { EXTENSION_NAME, NOTEBOOK_SUFFIX, logDebug } from '../common/common';
@@ -24,6 +25,10 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(disposable);
 
+	let cellStatusBar = new CellStatusProvider(kernel);
+	disposable = vscode.notebooks.registerNotebookCellStatusBarItemProvider(
+		EXTENSION_NAME, cellStatusBar
+	);
 
 	disposable = vscode.commands.registerCommand(
 		'zeppelin-vscode.setZeppelinServerURL',
@@ -44,6 +49,13 @@ export async function activate(context: vscode.ExtensionContext) {
 		_ => interact.promptCreateNotebook(
 			kernel, vscode.window.activeNotebookEditor?.notebook
 		)
+	);
+	context.subscriptions.push(disposable);
+
+
+	disposable = vscode.commands.registerCommand(
+		'zeppelin-vscode.restartInterpreter',
+		_.partial(interact.showRestartInterpreter, kernel)
 	);
 	context.subscriptions.push(disposable);
 
