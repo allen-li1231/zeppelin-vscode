@@ -10,7 +10,7 @@ import { EXTENSION_NAME,
 } from '../common/common';
 import { NoteData, ParagraphData, ParagraphResult } from '../common/types';
 import { showQuickPickURL, doLogin, promptZeppelinServerURL } from '../common/interaction';
-import { parseParagraphToCellData, parseParagraphResultToCellOutput, TextEncoder
+import { parseParagraphToCellData, parseParagraphResultToCellOutput
 } from '../common/parser';
 import { Mutex } from '../component/mutex';
 import { Progress } from '../component/superProgress/super-progress';
