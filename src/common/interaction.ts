@@ -506,15 +506,17 @@ export async function showRestartInterpreter(
 		interpreterId = await vscode.window.showInputBox({
 			title: 'Please specify a interpreter:'
 		});
-
 	}
-	if (interpreterId === undefined || interpreterId.length === 0) {
+	if (interpreterId === undefined || interpreterId.trim().length === 0) {
 		return;
 	}
+	interpreterId = interpreterId.trim();
+	let rootIdx = interpreterId.indexOf('.');
+	interpreterId = rootIdx > 0 ? interpreterId.slice(0, rootIdx) : interpreterId;
 
 	let selection = await vscode.window.showInformationMessage(
 		`Please confirm to restart interpreter: ${interpreterId}`,
-		"Yes", "No"
+		"No", "Yes"
 	);
 	
 	if (selection === undefined || selection === "No") {
@@ -537,6 +539,6 @@ export async function showRestartInterpreter(
 		vscode.window.showWarningMessage(res.statusText);
 	}
 	else {
-		vscode.window.showInformationMessage(`${interpreterId} restarted.`);
+		vscode.window.showInformationMessage(`Interpreter '${interpreterId}' restarted.`);
 	}
 }
