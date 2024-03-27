@@ -515,7 +515,7 @@ export async function showRestartInterpreter(
 	interpreterId = rootIdx > 0 ? interpreterId.slice(0, rootIdx) : interpreterId;
 
 	let selection = await vscode.window.showInformationMessage(
-		`Please confirm to restart interpreter: ${interpreterId}`,
+		`Please confirm to restart interpreter "${interpreterId}"`,
 		"No", "Yes"
 	);
 	
@@ -529,7 +529,7 @@ export async function showRestartInterpreter(
 	if (res instanceof AxiosError) {
 		if (!res.response) {
 			// local network issue
-			vscode.window.showErrorMessage(`Failed to restart interpreter '${interpreterId}'`);
+			vscode.window.showErrorMessage(`Failed to restart interpreter "${interpreterId}"`);
 		}
 		else {
 			vscode.window.showErrorMessage(res.response.data);
@@ -539,6 +539,6 @@ export async function showRestartInterpreter(
 		vscode.window.showWarningMessage(res.statusText);
 	}
 	else {
-		vscode.window.showInformationMessage(`Interpreter '${interpreterId}' restarted.`);
+		vscode.window.showInformationMessage(`Interpreter "${interpreterId}" restarted.`);
 	}
 }
