@@ -2,9 +2,10 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import * as interact from '../common/interaction';
+import { CellStatusProvider} from '../component/cellStatusBar';
 import { ZeppelinSerializer } from './notebookSerializer';
 import { ZeppelinKernel } from './notebookKernel';
-import { NOTEBOOK_SUFFIX, logDebug } from '../common/common';
+import { EXTENSION_NAME, NOTEBOOK_SUFFIX, logDebug } from '../common/common';
 import _ = require('lodash');
 
 
@@ -20,10 +21,15 @@ export async function activate(context: vscode.ExtensionContext) {
 
 
 	let disposable = vscode.workspace.registerNotebookSerializer(
-		'zeppelin-notebook', new ZeppelinSerializer()
+		EXTENSION_NAME, new ZeppelinSerializer()
 	);
 	context.subscriptions.push(disposable);
 
+	let cellStatusBar = new CellStatusProvider(kernel);
+	disposable = vscode.notebooks.registerNotebookCellStatusBarItemProvider(
+		EXTENSION_NAME, cellStatusBar
+	);
+	kernel.cellStatusBar = cellStatusBar;
 
 	disposable = vscode.commands.registerCommand(
 		'zeppelin-vscode.setZeppelinServerURL',
@@ -44,6 +50,13 @@ export async function activate(context: vscode.ExtensionContext) {
 		_ => interact.promptCreateNotebook(
 			kernel, vscode.window.activeNotebookEditor?.notebook
 		)
+	);
+	context.subscriptions.push(disposable);
+
+
+	disposable = vscode.commands.registerCommand(
+		'zeppelin-vscode.restartInterpreter',
+		_.partial(interact.showRestartInterpreter, kernel)
 	);
 	context.subscriptions.push(disposable);
 
@@ -164,7 +177,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 		let lineNumbers =
 			event.options.lineNumbers !== vscode.TextEditorLineNumbersStyle.Off;
-		
+
 		let notebook: vscode.NotebookDocument | undefined;
 		for (let note of vscode.workspace.notebookDocuments) {
 			if (note.uri === event.textEditor.document.uri) {
@@ -208,7 +221,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 		logDebug("onDidChangeActiveNotebookEditor", event);
 
-		if (await kernel.hasNote(event?.notebook.metadata.id)) {
+		if (await kernel.doesNotebookExist(event?.notebook)) {
 			let config = vscode.workspace.getConfiguration('zeppelin');
 			let selection = config.get('autosave.syncActiveNotebook');
 

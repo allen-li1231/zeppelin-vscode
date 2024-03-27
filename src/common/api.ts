@@ -77,7 +77,12 @@ class BasicService {
                         `You do not have permission to access '${url}'`
                     );
                 }
-                else if (error.response?.status !== 403) {
+                else if ((error.response?.status === 404)
+                    && error.request.path.startsWith('/api/interpreter/setting')) {
+                    logDebug(`interpreter '${error.request.path.slice(25)}' ignored`);
+                }
+                else if (error.response?.status !== 403
+                        && error.response.data.exception !== 'UnavailableSecurityManagerException') {
                     // simplify credential error
                     window.showErrorMessage(`${error.message}: 
                         ${!!error.response.data.message
@@ -139,7 +144,7 @@ class BasicService {
 }
 
 
-export class NotebookService extends BasicService{
+export class NotebookService extends BasicService {
 
     constructor(
         baseUrl: string,
@@ -164,7 +169,7 @@ export class NotebookService extends BasicService{
 
     deleteNote(noteId: string) {
         return this.session.delete(
-            `/api/notebook/${noteId}`
+            `/api/notebook/${encodeURIComponent(noteId)}`
         );
     }
 
@@ -177,51 +182,51 @@ export class NotebookService extends BasicService{
 
     cloneNote(noteId: string, newNoteName: string) {
         return this.session.post(
-            `/api/notebook/${noteId}`,
+            `/api/notebook/${encodeURIComponent(noteId)}`,
             { name: newNoteName }
         );
     }
 
     exportNote(noteId: string, newNoteName: string) {
         return this.session.post(
-            `/api/notebook/${noteId}`,
+            `/api/notebook/${encodeURIComponent(noteId)}`,
             { name: newNoteName }
         );
     }
 
     getAllStatus(noteId: string) {
         return this.session.get(
-            `/api/notebook/job/${noteId}`
+            `/api/notebook/job/${encodeURIComponent(noteId)}`
         );
     }
 
     getInfo(noteId: string) {
         return this.session.get(
-            '/api/notebook/' + noteId
+            `/api/notebook/${encodeURIComponent(noteId)}`
         );
     }
 
     runAll(noteId: string) {
         return this.session.post(
-            `/api/notebook/job/${noteId}`
+            `/api/notebook/job/${encodeURIComponent(noteId)}`
         );
     }
 
     stopAll(noteId: string) {
         return this.session.delete(
-            `/api/notebook/job/${noteId}`
+            `/api/notebook/job/${encodeURIComponent(noteId)}`
         );
     }
 
     clearAllResult(noteId: string) {
         return this.session.put(
-            `/api/notebook/${noteId}/clear`
+            `/api/notebook/${encodeURIComponent(noteId)}/clear`
         );
     }
 
     addCron(noteId: string, cron: string, releaseResource: boolean = false) {
         return this.session.post(
-            `/api/notebook/cron/${noteId}`,
+            `/api/notebook/cron/${encodeURIComponent(noteId)}`,
             { cron: cron, releaseResource: releaseResource}
         );
     }
@@ -239,7 +244,7 @@ export class NotebookService extends BasicService{
 
     getPermission(noteId: string) {
         return this.session.get(
-            `/api/notebook/${noteId}/permissions`
+            `/api/notebook/${encodeURIComponent(noteId)}/permissions`
         );
     }
 
@@ -251,7 +256,7 @@ export class NotebookService extends BasicService{
         writers: string[]
     ) {
         return this.session.post(
-            `/api/notebook/cron/${noteId}`,
+            `/api/notebook/cron/${encodeURIComponent(noteId)}`,
             {
                 readers: readers,
                 owners: owners,
@@ -276,20 +281,20 @@ export class NotebookService extends BasicService{
                 data.config = config;
             }
             return this.session.post(
-                `/api/notebook/${noteId}/paragraph`,
+                `/api/notebook/${encodeURIComponent(noteId)}/paragraph`,
                 data
             );
     }
 
     getParagraphInfo(noteId: string, paragraphId: string) {
         return this.session.get(
-            `/api/notebook/${noteId}/paragraph/${paragraphId}`
+            `/api/notebook/${encodeURIComponent(noteId)}/paragraph/${encodeURIComponent(paragraphId)}`
         );
     }
 
     getParagraphStatus(noteId: string, paragraphId: string) {
         return this.session.get(
-            `/api/notebook/job/${noteId}/${paragraphId}`
+            `/api/notebook/job/${encodeURIComponent(noteId)}/${encodeURIComponent(paragraphId)}`
         );
     }
 
@@ -308,27 +313,27 @@ export class NotebookService extends BasicService{
         }
 
         return this.session.put(
-            `/api/notebook/${noteId}/paragraph/${paragraphId}`,
+            `/api/notebook/${encodeURIComponent(noteId)}/paragraph/${encodeURIComponent(paragraphId)}`,
             data
         );
     }
 
     updateParagraphConfig(noteId: string, paragraphId: string, config: ParagraphConfig) {
         return this.session.put(
-            `/api/notebook/${noteId}/paragraph/${paragraphId}/config`,
+            `/api/notebook/${encodeURIComponent(noteId)}/paragraph/${encodeURIComponent(paragraphId)}/config`,
             config
         );
     }
 
     moveParagraphToIndex(noteId: string, paragraphId: string, index: number) {
         return this.session.post(
-            `/api/notebook/${noteId}/paragraph/${paragraphId}/move/` + index.toString()
+            `/api/notebook/${encodeURIComponent(noteId)}/paragraph/${encodeURIComponent(paragraphId)}/move/` + index.toString()
         );
     }
 
     deleteParagraph(noteId: string, paragraphId: string) {
         return this.session.delete(
-            `/api/notebook/${noteId}/paragraph/${paragraphId}`
+            `/api/notebook/${encodeURIComponent(noteId)}/paragraph/${encodeURIComponent(paragraphId)}`
         );
     }
 
@@ -336,10 +341,10 @@ export class NotebookService extends BasicService{
         // let t = await this.listNotes();
         let url;
         if (sync) {
-            url = `/api/notebook/run/${noteId}/${paragraphId}`;
+            url = `/api/notebook/run/${encodeURIComponent(noteId)}/${encodeURIComponent(paragraphId)}`;
         }
         else {
-            url = `/api/notebook/job/${noteId}/${paragraphId}`;
+            url = `/api/notebook/job/${encodeURIComponent(noteId)}/${encodeURIComponent(paragraphId)}`;
         }
 
         let res;
@@ -362,10 +367,23 @@ export class NotebookService extends BasicService{
 
     stopParagraph(noteId: string, paragraphId: string) {
         return this.session.delete(
-            `/api/notebook/job/${noteId}/${paragraphId}`
+            `/api/notebook/job/${encodeURIComponent(noteId)}/${encodeURIComponent(paragraphId)}`
+        );
+    }
+
+    getInterpreterSetting(interpreterId: string) {
+        return this.session.get(
+            `/api/interpreter/setting/${encodeURIComponent(interpreterId)}`
+        );
+    }
+
+    restartInterpreter(interpreterId: string) {
+        return this.session.put(
+            `/api/interpreter/setting/restart/${encodeURIComponent(interpreterId)}`
         );
     }
 }
+
 
 interface CreateParagraphData {
     text: string,

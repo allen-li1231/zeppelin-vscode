@@ -2,7 +2,7 @@
   "name": "zeppelin-vscode",
   "displayName": "Zeppelin Notebook",
   "description": "Apache Zeppelin Notebook Extension for VS Code",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "publisher": "AllenLi1231",
   "author": {
     "name": "Allen Li"
@@ -39,30 +39,36 @@
   "activationEvents": [
     "onLanguage:alluxio",
     "onLanguage:beam",
-    "onLanguage:bigquery",
+    "onLanguage:cypher",
+    "onLanguage:sql-bigquery",
     "onLanguage:cassandra",
-    "onLanguage:elasticsearch",
-    "onLanguage:flink",
+    "onLanguage:es",
+    "onLanguage:flink-sql",
     "onLanguage:geode",
     "onLanguage:groovy",
+    "onLanguage:gsp",
     "onLanguage:hazelcastjet",
     "onLanguage:hbase",
-    "onLanguage:hive",
+    "onLanguage:hive-sql",
+    "onLanguage:hql",
     "onLanguage:ignite",
     "onLanguage:influxdb",
     "onLanguage:java",
+    "onLanguage:javascript",
     "onLanguage:kotlin",
     "onLanguage:kylin",
+    "onLanguage:ksql",
     "onLanguage:hahout",
     "onLanguage:markdown",
-    "onLanguage:neo4j",
     "onLanguage:pig",
+    "onLanguage:plaintext",
     "onLanguage:python",
+    "onLanguage:r",
     "onLanguage:sap",
     "onLanguage:scala",
     "onLanguage:scalding",
     "onLanguage:scio",
-    "onLanguage:shell",
+    "onLanguage:shellscript",
     "onLanguage:sql",
     "onLanguage:spark",
     "onLanguage:sparql",
@@ -106,13 +112,13 @@
         "zeppelin.autosave.throttleTime": {
           "order": 2,
           "type": "number",
-          "default": 1,
+          "default": 3,
           "description": "Set paragraph update delay time (in seconds). Avoid too fast changes of cells causing response pressure on Zeppelin server."
         },
         "zeppelin.autosave.poolingInterval": {
           "order": 3,
           "type": "number",
-          "default": 1,
+          "default": 3,
           "description": "Set minimum save interval (in seconds) to Zeppelin server."
         },
         "zeppelin.execution.concurrency": {
@@ -135,8 +141,14 @@
           "default": 1,
           "description": "Set minimum interval (in seconds) to track execution."
         },
-        "zeppelin.proxy.host": {
+        "zeppelin.interpreter.trackInterval": {
           "order": 6,
+          "type": "number",
+          "default": 5,
+          "description": "Set minimum interval (in seconds) to track interpreter status."
+        },
+        "zeppelin.proxy.host": {
+          "order": 7,
           "type": [
             "string"
           ],
@@ -145,7 +157,7 @@
           "description": "Set proxy host for connection with Zeppelin server."
         },
         "zeppelin.proxy.port": {
-          "order": 7,
+          "order": 8,
           "type": [
             "integer"
           ],
@@ -153,14 +165,6 @@
           "description": "Set proxy port for connection with Zeppelin server."
         },
         "zeppelin.proxy.credential.username": {
-          "order": 8,
-          "type": [
-            "string"
-          ],
-          "default": null,
-          "description": "Specifies proxy authentication for connection with Zeppelin server."
-        },
-        "zeppelin.proxy.credential.password": {
           "order": 9,
           "type": [
             "string"
@@ -168,8 +172,16 @@
           "default": null,
           "description": "Specifies proxy authentication for connection with Zeppelin server."
         },
-        "zeppelin.proxy.credential.protocol": {
+        "zeppelin.proxy.credential.password": {
           "order": 10,
+          "type": [
+            "string"
+          ],
+          "default": null,
+          "description": "Specifies proxy authentication for connection with Zeppelin server."
+        },
+        "zeppelin.proxy.credential.protocol": {
+          "order": 11,
           "type": [
             "string"
           ],
@@ -191,6 +203,10 @@
       {
         "command": "zeppelin-vscode.setZeppelinCredential",
         "title": "Zeppelin: Set Zeppelin Credential (username and password)"
+      },
+      {
+        "command": "zeppelin-vscode.restartInterpreter",
+        "title": "Zeppelin: restart a interpreter"
       }
     ],
     "menus": {
@@ -204,6 +220,10 @@
         },
         {
           "command": "zeppelin-vscode.setZeppelinCredential"
+        },
+        {
+          "command": "zeppelin-vscode.restartInterpreter",
+          "when": "resourceExtname == .zpln || resourceExtname == .ipynb"
         }
       ]
     }
