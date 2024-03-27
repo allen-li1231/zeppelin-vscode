@@ -29,6 +29,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	disposable = vscode.notebooks.registerNotebookCellStatusBarItemProvider(
 		EXTENSION_NAME, cellStatusBar
 	);
+	kernel.cellStatusBar = cellStatusBar;
 
 	disposable = vscode.commands.registerCommand(
 		'zeppelin-vscode.setZeppelinServerURL',
@@ -220,7 +221,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 		logDebug("onDidChangeActiveNotebookEditor", event);
 
-		if (await kernel.hasNote(event?.notebook.metadata.id)) {
+		if (await kernel.doesNotebookExist(event?.notebook)) {
 			let config = vscode.workspace.getConfiguration('zeppelin');
 			let selection = config.get('autosave.syncActiveNotebook');
 
