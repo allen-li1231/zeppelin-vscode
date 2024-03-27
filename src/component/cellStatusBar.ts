@@ -1,13 +1,25 @@
 import * as vscode from 'vscode';
 import { ZeppelinKernel } from '../extension/notebookKernel';
 import { reInterpreter } from '../common/common';
+import { Mutex } from './mutex';
+
 
 export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvider {
     private _mapInterpreterStatus = new Map<string, [number, string]>();
+    private _setCell = new Set<vscode.NotebookCell>();
     private readonly _kernel: ZeppelinKernel;
+    private readonly _cellStatusUpdateMutex = new Mutex("_cellStatusUpdate");
+    private _timerUpdateCellStatus: NodeJS.Timer;
 
     constructor(kernel: ZeppelinKernel) {
         this._kernel = kernel;
+
+        const trackInterval = vscode.workspace.getConfiguration('zeppelin')
+            .get('interpreter.trackInterval', 5);
+        this._timerUpdateCellStatus = setInterval(
+            this.doUpdateAllInterpreterStatus.bind(this),
+            trackInterval * 1000
+        );
     }
 
     onDidChangeCellStatusBarItems?: vscode.Event<void> | undefined;
@@ -21,13 +33,12 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
             return items;
         }
 
-        let interpreterIds = cell.document.getText().match(reInterpreter);
-        if (interpreterIds === null || interpreterIds.length === 0) {
+        this._setCell.add(cell);
+        let interpreterId = this._parseCellInterpreter(cell);
+        if (interpreterId === undefined) {
             return items;
         }
-        this.getInterpreterStatus(cell);
 
-        let interpreterId = interpreterIds[1];
         let res = this._mapInterpreterStatus.get(interpreterId);
         if (res === undefined) {
             return items;
@@ -41,10 +52,22 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
             command: 'zeppelin-vscode.restartInterpreter',
             arguments: [interpreterId],
         };
-        item.tooltip = `interpreter status (click to restart)`;
+        item.tooltip = `Interpreter status (click to restart)`;
         items.push(item);
 
         return items;
+    }
+
+    private _parseCellInterpreter(cell: vscode.NotebookCell) {
+        let interpreterIds = cell.document.getText().match(reInterpreter);
+        if (interpreterIds === null || interpreterIds.length === 0) {
+            return undefined;
+        }
+
+        let interpreterId = interpreterIds[1];
+        let rootIdx = interpreterId.indexOf('.');
+        interpreterId = rootIdx > 0 ? interpreterId.slice(0, rootIdx) : interpreterId;
+        return interpreterId;
     }
 
     private async _updateInterpreterStatus(interpreterId: string) {
@@ -58,28 +81,36 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
         return status;
     }
 
-    public async getInterpreterStatus(cell: vscode.NotebookCell) {
+    public async doUpdateAllInterpreterStatus() {
+        return this._cellStatusUpdateMutex.runExclusive(async () => {
+            // It is safe to add elements or remove elements to a set while iterating it.
+            // Supported in JavaScript 2015 (ES6)
+            this._mapInterpreterStatus.clear();
+            for (let cell of this._setCell) {
+                if (cell.document.isClosed || cell.notebook.isClosed) {
+                    this._setCell.delete(cell);
+                    continue;
+                }
+                let interpreterId = this._parseCellInterpreter(cell);
+                if (interpreterId === undefined) {
+                    continue;
+                }
+
+                if (!this._mapInterpreterStatus.has(interpreterId)) {
+                    await this._updateInterpreterStatus(interpreterId);
+                }
+            }
+        });
+    }
+
+    public async untrackCell(cell: vscode.NotebookCell) {
         if (cell.kind === vscode.NotebookCellKind.Markup) {
-            return undefined;
+            return false;
         }
+        return this._setCell.delete(cell);
+    }
 
-        let interpreterIds = cell.document.getText().match(reInterpreter);
-        if (interpreterIds === null || interpreterIds.length === 0) {
-            return undefined;
-        }
-
-        let interpreterId = interpreterIds[1];
-        let res = this._mapInterpreterStatus.get(interpreterId);
-        if (res === undefined) {
-            return await this._updateInterpreterStatus(interpreterId);
-        }
-
-        let [lastUpdateDate, status] = res;
-        const trackInterval = vscode.workspace.getConfiguration('zeppelin')
-            .get('interpreter.trackInterval', 5);
-        if (Date.now() - lastUpdateDate > trackInterval * 1000) {
-            return await this._updateInterpreterStatus(interpreterId);
-        }
-        return status;
+    public dispose() {
+        clearInterval(this._timerUpdateCellStatus);
     }
 }

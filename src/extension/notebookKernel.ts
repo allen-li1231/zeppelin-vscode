@@ -8,6 +8,7 @@ import { EXTENSION_NAME,
     getProxy,
     getVersion
 } from '../common/common';
+import { CellStatusProvider } from '../component/cellStatusBar';
 import { NoteData, ParagraphData, ParagraphResult } from '../common/types';
 import { showQuickPickURL, doLogin, promptZeppelinServerURL } from '../common/interaction';
 import { parseParagraphToCellData, parseParagraphResultToCellOutput
@@ -40,6 +41,8 @@ export class ZeppelinKernel {
     private _mapNotebookEdits = new Map<vscode.NotebookCell, vscode.NotebookEdit[]>();
     private _mapUpdateParagraph = new Map<vscode.NotebookCell, number>();
     private _flagRegisterParagraphUpdate = true;
+
+    public cellStatusBar: CellStatusProvider | undefined = undefined;
 
 	constructor(context: vscode.ExtensionContext, service?: NotebookService) {
         // if (isInteractive) {
@@ -75,11 +78,14 @@ export class ZeppelinKernel {
 
             let config = vscode.workspace.getConfiguration('zeppelin');
             if (this._timerUpdateCell === undefined) {
-                let poolingInterval = config.get('autosave.poolingInterval', 1);
+                let poolingInterval = config.get('autosave.poolingInterval', 3);
     
-                this._timerUpdateCell = setInterval(
-                    this._doUpdatePollingParagraphs.bind(this), poolingInterval * 1000
-                );
+                this._timerUpdateCell = setInterval(async () => {
+                    // sync server and local
+                    await this._doUpdatePollingParagraphs.bind(this)();
+                    await this._doUpdateVisibleCells.bind(this)();
+                },
+                poolingInterval * 1000);
             }
 
             // if (this._timerSyncNote === undefined) {
@@ -94,7 +100,7 @@ export class ZeppelinKernel {
             // }
 
             if (this._recurseTrackExecution === undefined) {
-                let trackExecutionInterval = config.get('execution.trackInterval', 5);
+                let trackExecutionInterval = config.get('execution.trackInterval', 1);
                 let recurseTracker = () => {
                     if (!this.isActive()) {
                         return;
@@ -317,13 +323,55 @@ export class ZeppelinKernel {
     private _doUpdatePollingParagraphs() {
         return this._globalMutex.runExclusive(async () => {
             let config = vscode.workspace.getConfiguration('zeppelin');
-            let throttleTime: number = config.get('autosave.throttleTime', 1);
+            let throttleTime: number = config.get('autosave.throttleTime', 3);
 
             for (let [cell, requestTime] of this._mapUpdateParagraph) {
                 if (throttleTime * 1000 < Date.now() - requestTime) {
                     await this.updateParagraph(cell);
                 }
             }
+        });
+    }
+
+    private _doUpdateVisibleCells() {
+        return this._globalMutex.runExclusive(async () => {
+            let activeNotebook = vscode.window.activeNotebookEditor;
+            if (activeNotebook === undefined
+                || activeNotebook.notebook.cellCount === 0
+                || !await this.doesNotebookExist(activeNotebook.notebook)) {
+                return;
+            }
+
+            logDebug("_doUpdateVisibleCells: updating", activeNotebook.visibleRanges);
+            this._flagRegisterParagraphUpdate = false;
+
+            for (let range of activeNotebook.visibleRanges) {
+                if (range.isEmpty) {
+                    continue;
+                }
+
+                for (let i = range.start; i < range.end; i ++) {
+                    let cell = activeNotebook?.notebook.cellAt(i);
+                    let execution = this.getExecutionByParagraphId(cell.metadata.id);
+                    if (cell === undefined 
+                        || execution !== undefined
+                        || i >= activeNotebook.selection?.start
+                        && i < activeNotebook.selection?.end) {
+                        continue;
+                    }
+                    try {
+                        let paragraph = await this.getParagraphInfo(cell);
+                        let parsedCell = parseParagraphToCellData(paragraph);
+                        if (parsedCell.metadata !== undefined) {
+                            this.updateCellMetadata(cell, parsedCell.metadata);
+                        }
+                    }
+                    catch (err) {
+                        logDebug("error in _doUpdateVisibleCells:" + err);
+                    }
+                }
+            }
+            this._flagRegisterParagraphUpdate = true;
         });
     }
 
@@ -657,6 +705,7 @@ export class ZeppelinKernel {
         try {
             // index = -1: cell has been deleted from notebook
             if (cell.index === -1) {
+                this.cellStatusBar?.untrackCell(cell);
                 this._service?.deleteParagraph(
                     cell.notebook.metadata.id, cell.metadata.id
                 );
