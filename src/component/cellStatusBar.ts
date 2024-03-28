@@ -38,7 +38,7 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
         // status === string: normal status
         // status === undefined: cannot reach remote server
         // status === number: remote server responds with problem
-        if (!(typeof cell.metadata.status === 'string')) {
+        if (typeof cell.metadata.status !== 'string') {
             if (cell.metadata.status === 404) {
                 const item = new vscode.NotebookCellStatusBarItem(
                     '$(warning)',
@@ -46,7 +46,7 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
                 );
                 item.command = <vscode.Command> {
                     title: '$(warning)',
-                    command: 'zeppelin-vscode.createParagraph',
+                    command: 'zeppelin-vscode.createMissingParagraph',
                     arguments: [cell],
                 };
                 item.tooltip = `Remote paragraph doesn't exist (click to create)`;

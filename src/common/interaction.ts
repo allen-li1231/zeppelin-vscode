@@ -495,9 +495,40 @@ export async function promptZeppelinCredential(kernel: ZeppelinKernel) {
 }
 
 
+// function that prompts user to create a missing paragraph
+export async function promptCreateParagraph(
+	kernel: ZeppelinKernel, cell: vscode.NotebookCell
+) {
+	if (typeof cell.metadata.status === "string") {
+		return;
+	}
+
+	let selection = await vscode.window.showInformationMessage(
+		`The remote paragraph of the cell doesn't exist. 
+Do you wish to create the paragraph?`,
+		"Yes", "No"
+	);
+
+	if (selection === undefined || selection === "No") {
+		return;
+	}
+
+	try {
+		logDebug("promptCreateParagraph", cell);
+		await kernel.createParagraph(cell);
+		await kernel.updateByReplaceCell(cell);
+	}
+	catch (err) {
+		logDebug("promptCreateParagraph abort");
+		return;
+	}
+}
+
+
 // function that prompts user to restart a interpreter
-export async function showRestartInterpreter(
-	kernel: ZeppelinKernel, interpreterId: string | undefined) {
+export async function promptRestartInterpreter(
+	kernel: ZeppelinKernel, interpreterId: string | undefined
+) {
 	if (!kernel.isActive()) {
 		return;
 	}
@@ -518,7 +549,7 @@ export async function showRestartInterpreter(
 		`Please confirm to restart interpreter "${interpreterId}"`,
 		"No", "Yes"
 	);
-	
+
 	if (selection === undefined || selection === "No") {
 		return;
 	}

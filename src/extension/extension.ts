@@ -56,14 +56,14 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	disposable = vscode.commands.registerCommand(
 		'zeppelin-vscode.restartInterpreter',
-		_.partial(interact.showRestartInterpreter, kernel)
+		_.partial(interact.promptRestartInterpreter, kernel)
 	);
 	context.subscriptions.push(disposable);
 
 
 	disposable = vscode.commands.registerCommand(
-		'zeppelin-vscode.createParagraph',
-		kernel.createParagraph.bind(kernel)
+		'zeppelin-vscode.createMissingParagraph',
+		_.partial(interact.promptCreateParagraph, kernel)
 	);
 	context.subscriptions.push(disposable);
 
