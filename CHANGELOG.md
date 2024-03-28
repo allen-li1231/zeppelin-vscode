@@ -87,7 +87,6 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 - Prompting Zeppelin credentials not working properly.
 
 
-
 ## [0.2.0] - 2024-01-25
 
 ### Added
@@ -103,3 +102,36 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 
 ### Changed
 - [Remove locking zpln files as it causes misunderstanding and potentially causes problem when multiple notebooks are opened](https://github.com/allen-li1231/zeppelin-vscode/commit/b214b94301bfcf1699eb3f7fc6adfc31c0dcd29e)
+
+
+## [0.2.1] - 2024-01-26
+
+### Fixed
+- [Bug that causes multiple executions not properly interrupted.](https://github.com/allen-li1231/zeppelin-vscode/commit/8245c17ac6a332c12fd4aac2c093bd4518227baf)
+- [Bug that causes sequential executions run in parallel when they are submitted one by one.](https://github.com/allen-li1231/zeppelin-vscode/commit/f2ebf6966ed7ab853ccf3d1cbc05111eb3de4bf7)
+
+
+## [0.2.3] - 2024-02-12
+
+### Added:
+* Cell level progressbar, resolved issue #4 with pull request #5.
+
+
+## [0.2.4] - 2024-02-14
+
+### Fix:
+* Removed dirty code that causes cell execution to fail
+
+
+## [0.2.5] - 2024-03-27
+
+### Add:
+* [Interpreter status and restart button on cell status bar](https://github.com/allen-li1231/zeppelin-vscode/commit/ac9ffd3691682ae8ed118b521d9b2913af53adf0)
+
+### Fix:
+* [Supported language abbreviation mismatch](https://github.com/allen-li1231/zeppelin-vscode/commit/bfa0ec808c9114efd435bfbdcddde9134e40df6f)
+### Change:
+* [Slightly slow down the speed to sync with the server](https://github.com/allen-li1231/zeppelin-vscode/commit/35dcd183ba99dad0cc8d231e62bbedfb694783a6)
+
+### Enhancement:
+* [Simplify zeppelin warning on no credentials](https://github.com/allen-li1231/zeppelin-vscode/commit/9781550748a2d51e3c5ff94481074efa838e4f23)
