@@ -532,7 +532,7 @@ export async function showRestartInterpreter(
 			vscode.window.showErrorMessage(`Failed to restart interpreter "${interpreterId}"`);
 		}
 		else {
-			vscode.window.showErrorMessage(res.response.data);
+			vscode.window.showErrorMessage(`Failed to restart interpreter "${interpreterId}: ${res.response.data}"`);
 		}
 	}
 	else if (res.status !== 200) {
