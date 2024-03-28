@@ -2,7 +2,7 @@
   "name": "zeppelin-vscode",
   "displayName": "Zeppelin Notebook",
   "description": "Apache Zeppelin Notebook Extension for VS Code",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "publisher": "AllenLi1231",
   "author": {
     "name": "Allen Li"
@@ -37,7 +37,6 @@
     "Visualization"
   ],
   "activationEvents": [
-    "onLanguage:alluxio",
     "onLanguage:beam",
     "onLanguage:cypher",
     "onLanguage:sql-bigquery",
@@ -55,10 +54,14 @@
     "onLanguage:influxdb",
     "onLanguage:java",
     "onLanguage:javascript",
+    "onLanguage:json",
+    "onLanguage:jsonl",
+    "onLanguage:jsonc",
     "onLanguage:kotlin",
     "onLanguage:kylin",
     "onLanguage:ksql",
-    "onLanguage:hahout",
+    "onLanguage:lua",
+    "onLanguage:mahout",
     "onLanguage:markdown",
     "onLanguage:pig",
     "onLanguage:plaintext",
@@ -72,6 +75,7 @@
     "onLanguage:sql",
     "onLanguage:spark",
     "onLanguage:sparql",
+    "onLanguage:xml",
     "onNotebook:zeppelin-notebook"
   ],
   "contributes": {
@@ -118,7 +122,7 @@
         "zeppelin.autosave.poolingInterval": {
           "order": 3,
           "type": "number",
-          "default": 3,
+          "default": 5,
           "description": "Set minimum save interval (in seconds) to Zeppelin server."
         },
         "zeppelin.execution.concurrency": {

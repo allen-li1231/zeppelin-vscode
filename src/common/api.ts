@@ -77,9 +77,8 @@ class BasicService {
                         `You do not have permission to access '${url}'`
                     );
                 }
-                else if ((error.response?.status === 404)
-                    && error.request.path.startsWith('/api/interpreter/setting')) {
-                    logDebug(`interpreter '${error.request.path.slice(25)}' ignored`);
+                else if (error.response?.status === 404) {
+                    logDebug(`Resource '${error.request.path}' not found`);
                 }
                 else if (error.response?.status !== 403
                         && error.response.data.exception !== 'UnavailableSecurityManagerException') {

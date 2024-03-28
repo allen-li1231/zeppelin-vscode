@@ -1,5 +1,10 @@
 import * as vscode from 'vscode';
-import { mapLanguageKind, logDebug } from '../common/common';
+import {
+    mapLanguage,
+    mapLanguageKind,
+    mapZeppelinLanguage,
+    logDebug
+} from '../common/common';
 import {
     ParagraphData,
 	ParagraphResult,
@@ -11,8 +16,9 @@ export function parseParagraphToCellData(
     paragraph: ParagraphData,
 ): vscode.NotebookCellData {
     let lang = paragraph.config?.editorSetting?.language ?? '';
+    lang = mapLanguage.get(lang) ?? "plaintext";
     // default cell kind is markup language
-    let kind: number = mapLanguageKind.get(lang) ?? 1;
+    let kind: number = mapLanguageKind.get(lang) ?? vscode.NotebookCellKind.Code;
     // empty cell could have no text method, while NotebookCellData must have text value,
     // thus we give it an empty string.
     let text = paragraph.text ?? '';
@@ -156,8 +162,8 @@ export function parseCellToParagraphData(
         : cell.document.getText();
 
     let languageId = cell instanceof vscode.NotebookCellData
-        ? cell.languageId
-        : cell.document.languageId;
+        ? mapZeppelinLanguage.get(cell.languageId) ?? "plain_text"
+        : mapZeppelinLanguage.get(cell.document.languageId) ?? "plain_text";
 
     if (paragraph.id !== undefined) {
         if (paragraph.config === undefined) {
@@ -175,6 +181,7 @@ export function parseCellToParagraphData(
                 !== vscode.TextEditorLineNumbersStyle.Off;
         paragraph.config = {
             "lineNumbers": paragraph.config?.lineNumbers ?? lineNumbers,
+            "editorMode": `ace/mode/${languageId}`,
             "editorSetting": {
                 "language": languageId,
                 "editOnDblClick": false,

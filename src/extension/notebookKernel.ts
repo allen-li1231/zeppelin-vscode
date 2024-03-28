@@ -4,6 +4,7 @@ import { AxiosError } from 'axios';
 import { NotebookService } from '../common/api';
 import { EXTENSION_NAME,
     SUPPORTEDLANGUAGE,
+    mapZeppelinLanguage,
     logDebug,
     getProxy,
     getVersion
@@ -78,7 +79,7 @@ export class ZeppelinKernel {
 
             let config = vscode.workspace.getConfiguration('zeppelin');
             if (this._timerUpdateCell === undefined) {
-                let poolingInterval = config.get('autosave.poolingInterval', 3);
+                let poolingInterval = config.get('autosave.poolingInterval', 5);
     
                 this._timerUpdateCell = setInterval(async () => {
                     // sync server and local
@@ -280,7 +281,7 @@ export class ZeppelinKernel {
         let res = await this.getService()?.getParagraphInfo(
             cell.notebook.metadata.id, cell.metadata.id);
         if (res instanceof AxiosError) {
-            vscode.window.showWarningMessage(
+            logDebug(
                 `Unable to get paragraph info ${cell.metadata.id} in note '${cell.notebook.metadata.name}'`
             );
             throw res;
@@ -363,11 +364,17 @@ export class ZeppelinKernel {
                         let paragraph = await this.getParagraphInfo(cell);
                         let parsedCell = parseParagraphToCellData(paragraph);
                         if (parsedCell.metadata !== undefined) {
-                            this.updateCellMetadata(cell, parsedCell.metadata);
+                            await this.updateCellMetadata(cell, parsedCell.metadata);
                         }
                     }
                     catch (err) {
+                        let status = err instanceof AxiosError ? err.response?.status : undefined;
+                        if (status === cell.metadata.status) {
+                            // ignore the same error
+                            continue;
+                        }
                         logDebug("error in _doUpdateVisibleCells:" + err);
+                        await this.updateCellMetadata(cell, {"status": status});
                     }
                 }
             }
@@ -376,6 +383,11 @@ export class ZeppelinKernel {
     }
 
     public async trackExecution(execution: vscode.NotebookCellExecution, progressbar: Progress) {
+        if (execution.cell.index < 0) {
+            logDebug(`trackExecution: unregister as cell deleted`, execution);
+            this.unregisterTrackExecution(execution);
+            return;
+        }
         let paragraph: ParagraphData;
         try {
             paragraph = await this.getParagraphInfo(execution.cell);
@@ -389,13 +401,6 @@ export class ZeppelinKernel {
             ]);
             execution.replaceOutput(cellOutput);
             execution.end(false, Date.now());
-            return;
-        }
-
-        if (execution.cell.index < 0) {
-            logDebug(`trackExecution: unregister as cell deleted`, execution);
-            this.unregisterTrackExecution(execution);
-            execution.end(undefined);
             return;
         }
 
@@ -507,6 +512,23 @@ export class ZeppelinKernel {
         editor.set(note.uri, [edit]);
         
         return vscode.workspace.applyEdit(editor);
+    }
+
+    public async updateByReplaceCell(
+        cell: vscode.NotebookCell
+    ) {
+        return this._globalMutex.runExclusive(async () => {
+            let paragraph = await this.getParagraphInfo(cell);
+            let parsedCell = parseParagraphToCellData(paragraph);
+            let replaceRange = new vscode.NotebookRange(cell.index, cell.index + 1);
+
+            this._flagRegisterParagraphUpdate = false;
+            let res = await this.replaceNoteCells(
+                cell.notebook, replaceRange, [parsedCell]
+            );
+            this._flagRegisterParagraphUpdate = false;
+            return res;
+        });
     }
 
     public async updateCellMetadata(
@@ -658,16 +680,47 @@ export class ZeppelinKernel {
         this._mapNotebookEdits.clear();
     }
 
+    public async createParagraph(cell: vscode.NotebookCell) {
+        let text = cell.document.getText();
+        let lineNumbers = vscode.workspace.getConfiguration("editor")
+            .get("lineNumbers", vscode.TextEditorLineNumbersStyle.Off);
+
+		let lang = mapZeppelinLanguage.get(cell.document.languageId) ?? "plain_text";
+        let config = {
+            "lineNumbers": lineNumbers !== vscode.TextEditorLineNumbersStyle.Off,
+            "editorMode": `ace/mode/${lang}`,
+            "editorSetting": {
+                "language": lang,
+                "editOnDblClick": false,
+                "completionKey": "TAB",
+                "completionSupport": cell.kind !== 1
+            }
+        };
+
+        let res = await this._service?.createParagraph(
+            cell.notebook.metadata.id, text, cell.index, '', config);
+        if (res instanceof AxiosError) {
+            vscode.window.showWarningMessage(`Create paragraph failed with message: ${res.message}`);
+            throw res;
+        }
+
+        await this.updateCellMetadata(
+            cell,
+            {
+                id: res?.data.body,
+                config
+            }
+        );
+    }
+
     public async updateParagraphText(cell: vscode.NotebookCell) {
         let text = cell.document.getText();
         let res = await this._service?.updateParagraphText(
             cell.notebook.metadata.id, cell.metadata.id, text
         );
         if (res instanceof AxiosError) {
-            if (res.response?.status === 404) {
-                vscode.window.showErrorMessage(`${res.code}: ${res.message}`);
-            }
             logDebug("error in updateParagraphText", res);
+            await this.updateCellMetadata(cell, {"status": res.response?.status});
             throw res;
         }
 
@@ -678,10 +731,13 @@ export class ZeppelinKernel {
         var lineNumbers = vscode.workspace.getConfiguration("editor")
             .get("lineNumbers", vscode.TextEditorLineNumbersStyle.Off)
             !== vscode.TextEditorLineNumbersStyle.Off;
+
+        let lang = mapZeppelinLanguage.get(cell.document.languageId) ?? "plain_text";
         let config = {
             "lineNumbers": cell.metadata?.config.lineNumbers ?? lineNumbers,
+            "editorMode": `ace/mode/${lang}`,
             "editorSetting": {
-                "language": cell.document.languageId,
+                "language": lang,
                 "editOnDblClick": false,
                 "completionKey": "TAB",
                 "completionSupport": cell.kind !== 1
@@ -691,10 +747,8 @@ export class ZeppelinKernel {
             cell.notebook.metadata.id, cell.metadata.id, config
         );
         if (res instanceof AxiosError) {
-            if (res.response?.status === 404) {
-                vscode.window.showErrorMessage(`${res.code}: ${res.message}`);
-            }
             logDebug("error in updateParagraphConfig", res);
+            await this.updateCellMetadata(cell, {"status": res.response?.status});
             throw res;
         }
 
@@ -715,32 +769,7 @@ export class ZeppelinKernel {
 
             // create corresponding paragraph when a cell is newly created
             if (cell.metadata.id === undefined) {
-                let text = cell.document.getText();
-                let lineNumbers = vscode.workspace.getConfiguration("editor")
-                    .get("lineNumbers", vscode.TextEditorLineNumbersStyle.Off);
-                let config = {
-                    "lineNumbers": lineNumbers !== vscode.TextEditorLineNumbersStyle.Off,
-                    "editorSetting": {
-                        "language": cell.document.languageId,
-                        "editOnDblClick": false,
-                        "completionKey": "TAB",
-                        "completionSupport": cell.kind !== 1
-                    }
-                };
-
-                let res = await this._service?.createParagraph(
-                    cell.notebook.metadata.id, text, cell.index, '', config);
-                if (res instanceof AxiosError) {
-                    throw res;
-                }
-
-                await this.updateCellMetadata(
-                    cell,
-                    {
-                        id: res?.data.body,
-                        config
-                    }
-                );
+                await this.createParagraph(cell);
             }
             else {
                 logDebug("updateParagraph: updateParagraphConfig");
@@ -748,19 +777,19 @@ export class ZeppelinKernel {
                 logDebug("updateParagraph: updateParagraphText");
                 res = await this.updateParagraphText(cell);
             }
+
+            if (cell.kind <= 1) {
+                // need to call remote execution for markup paragraph languages
+                // so remote notebook paragraph result could be generated
+                // as markup languages are rendered locally
+                this._runParagraph(cell, false);
+            }
         } catch (err) {
             logDebug("error in updateParagraph", err);
         }
 
         // unregister cell from poll, as the update is either finished or failed now
         this._mapUpdateParagraph.delete(cell);
-
-        if (cell.kind <= 1) {
-            // need to call remote execution for markup paragraph languages
-            // so remote notebook paragraph result could be generated
-            // as markup languages are rendered locally
-            this._runParagraph(cell, false);
-        }
     }
 
     private async _runParagraph(cell: vscode.NotebookCell, sync: boolean) {

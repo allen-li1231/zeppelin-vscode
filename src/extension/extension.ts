@@ -5,7 +5,7 @@ import * as interact from '../common/interaction';
 import { CellStatusProvider} from '../component/cellStatusBar';
 import { ZeppelinSerializer } from './notebookSerializer';
 import { ZeppelinKernel } from './notebookKernel';
-import { EXTENSION_NAME, NOTEBOOK_SUFFIX, logDebug } from '../common/common';
+import { EXTENSION_NAME, NOTEBOOK_SUFFIX, mapZeppelinLanguage, logDebug } from '../common/common';
 import _ = require('lodash');
 
 
@@ -56,7 +56,14 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	disposable = vscode.commands.registerCommand(
 		'zeppelin-vscode.restartInterpreter',
-		_.partial(interact.showRestartInterpreter, kernel)
+		_.partial(interact.promptRestartInterpreter, kernel)
+	);
+	context.subscriptions.push(disposable);
+
+
+	disposable = vscode.commands.registerCommand(
+		'zeppelin-vscode.createMissingParagraph',
+		_.partial(interact.promptCreateParagraph, kernel)
 	);
 	context.subscriptions.push(disposable);
 
@@ -193,11 +200,13 @@ export async function activate(context: vscode.ExtensionContext) {
 			if (cell.document !== event.textEditor.document) {
 				continue;
 			}
+			let lang = mapZeppelinLanguage.get(cell.document.languageId) ?? "plain_text";
 			let res: boolean = await kernel.updateCellMetadata(cell, {
 				config: {
 					"lineNumbers": lineNumbers,
+					"editorMode": `ace/mode/${lang}`,
 					"editorSetting": {
-						"language": cell.document.languageId,
+						"language": lang,
 						"editOnDblClick": false,
 						"completionKey": "TAB",
 						"completionSupport": cell.kind !== 1

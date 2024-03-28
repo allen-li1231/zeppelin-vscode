@@ -27,13 +27,47 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
     provideCellStatusBarItems(cell: vscode.NotebookCell):
         vscode.ProviderResult<vscode.NotebookCellStatusBarItem | vscode.NotebookCellStatusBarItem[]> {
 
-        const items: vscode.NotebookCellStatusBarItem[] = [];
 
         if (!this._kernel.isActive() || cell.kind === vscode.NotebookCellKind.Markup) {
-            return items;
+            return [];
         }
 
         this._setCell.add(cell);
+        const items: vscode.NotebookCellStatusBarItem[] = [];
+
+        // status === string: normal status
+        // status === undefined: cannot reach remote server
+        // status === number: remote server responds with problem
+        if (typeof cell.metadata.status !== 'string') {
+            if (cell.metadata.status === 404) {
+                const item = new vscode.NotebookCellStatusBarItem(
+                    '$(warning)',
+                    vscode.NotebookCellStatusBarAlignment.Right,
+                );
+                item.command = <vscode.Command> {
+                    title: '$(warning)',
+                    command: 'zeppelin-vscode.createMissingParagraph',
+                    arguments: [cell],
+                };
+                item.tooltip = `Remote paragraph doesn't exist (click to create)`;
+                items.push(item);
+            }
+            else {
+                const item = new vscode.NotebookCellStatusBarItem(
+                    '$(debug-disconnect)',
+                    vscode.NotebookCellStatusBarAlignment.Right,
+                );
+                if (cell.metadata.status === undefined) {
+                    item.tooltip = `Pending to sync`;
+                }
+                else{
+                    item.tooltip = `Pending to sync (${cell.metadata.status})`;
+                }
+                return [item];
+            }
+
+        }
+
         let interpreterId = this._parseCellInterpreter(cell);
         if (interpreterId === undefined) {
             return items;
@@ -91,6 +125,7 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
                     this._setCell.delete(cell);
                     continue;
                 }
+
                 let interpreterId = this._parseCellInterpreter(cell);
                 if (interpreterId === undefined) {
                     continue;
