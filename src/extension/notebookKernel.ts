@@ -393,6 +393,7 @@ export class ZeppelinKernel {
             paragraph = await this.getParagraphInfo(execution.cell);
         } catch (err) {
             logDebug("error in trackExecution:", err);
+            this.unregisterTrackExecution(execution);
             let cellOutput = new vscode.NotebookCellOutput([
                 vscode.NotebookCellOutputItem.error({
                     name: err instanceof Error && err.name || 'error', 
