@@ -1,18 +1,20 @@
 import * as vscode from 'vscode';
+import { AxiosError } from 'axios';
 import { ZeppelinKernel } from '../extension/notebookKernel';
-import { reInterpreter } from '../common/common';
+import { reInterpreter, logDebug } from '../common/common';
 import { Mutex } from './mutex';
+import { parseParagraphToCellData } from '../common/parser';
 
 
 export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvider {
     private _mapInterpreterStatus = new Map<string, [number, string]>();
     private _setCell = new Set<vscode.NotebookCell>();
-    private readonly _kernel: ZeppelinKernel;
+    public kernel: ZeppelinKernel;
     private readonly _cellStatusUpdateMutex = new Mutex("_cellStatusUpdate");
     private _timerUpdateCellStatus: NodeJS.Timer;
 
     constructor(kernel: ZeppelinKernel) {
-        this._kernel = kernel;
+        this.kernel = kernel;
 
         const trackInterval = vscode.workspace.getConfiguration('zeppelin')
             .get('interpreter.trackInterval', 5);
@@ -27,11 +29,10 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
     provideCellStatusBarItems(cell: vscode.NotebookCell):
         vscode.ProviderResult<vscode.NotebookCellStatusBarItem | vscode.NotebookCellStatusBarItem[]> {
 
-
-        if (!this._kernel.isActive() || cell.kind === vscode.NotebookCellKind.Markup) {
+        if (!this.kernel.isActive() || cell.kind === vscode.NotebookCellKind.Markup) {
             return [];
         }
-
+        logDebug("before update CellStatusBar");
         this._setCell.add(cell);
         const items: vscode.NotebookCellStatusBarItem[] = [];
 
@@ -105,7 +106,7 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
     }
 
     private async _updateInterpreterStatus(interpreterId: string) {
-        const res = await this._kernel.getService()?.getInterpreterSetting(interpreterId);
+        const res = await this.kernel.getService()?.getInterpreterSetting(interpreterId);
         if (res === undefined || res.data === undefined || res.data.status !== 'OK') {
             return undefined;
         }
@@ -143,6 +144,54 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
             return false;
         }
         return this._setCell.delete(cell);
+    }
+
+    public async doUpdateVisibleCells() {
+        const activeNotebook = vscode.window.activeNotebookEditor;
+        if (activeNotebook === undefined
+            || activeNotebook.notebook.cellCount === 0
+            || !await this.kernel.doesNotebookExist(activeNotebook.notebook)) {
+            return;
+        }
+        return this.kernel.editWithoutParagraphUpdate(async () => {
+            logDebug("_doUpdateVisibleCells: updating", activeNotebook.visibleRanges);
+
+            for (let range of activeNotebook.visibleRanges) {
+                if (range.isEmpty) {
+                    continue;
+                }
+
+                for (let i = range.start; i < range.end; i ++) {
+                    let cell = activeNotebook?.notebook.cellAt(i);
+                    let execution = this.kernel.getExecutionByParagraphId(cell.metadata.id);
+                    if (cell === undefined 
+                        || execution !== undefined
+                        || i >= activeNotebook.selection?.start
+                        && i < activeNotebook.selection?.end) {
+                        continue;
+                    }
+                    try {
+                        let paragraph = await this.kernel.getParagraphInfo(cell);
+                        let parsedCell = parseParagraphToCellData(paragraph);
+                        if (parsedCell.metadata !== undefined) {
+                            // trigger cell status bar update
+                            await this.kernel.updateCellMetadata(cell, parsedCell.metadata);
+                            logDebug("_doUpdateVisibleCells: after update paragraphs");
+                        }
+                    }
+                    catch (err) {
+                        let status = err instanceof AxiosError ? err.response?.status : undefined;
+                        if (status === cell.metadata.status) {
+                            // ignore the same error
+                            continue;
+                        }
+                        logDebug("error in _doUpdateVisibleCells:" + err);
+                        // trigger cell status bar update
+                        await this.kernel.updateCellMetadata(cell, {"status": status});
+                    }
+                }
+            }
+        });
     }
 
     public dispose() {

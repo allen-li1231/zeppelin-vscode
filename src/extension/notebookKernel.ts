@@ -88,7 +88,7 @@ export class ZeppelinKernel {
                 this._timerUpdateCell = setInterval(async () => {
                     // sync server and local
                     await this._doUpdatePollingParagraphs.bind(this)();
-                    await this._doUpdateVisibleCells.bind(this)();
+                    await this.cellStatusBar?.doUpdateVisibleCells();
                 },
                 poolingInterval * 1000);
             }
@@ -325,6 +325,15 @@ export class ZeppelinKernel {
         });
     }
 
+    public async editWithoutParagraphUpdate(func: () => Promise<void>) {
+        return this._globalMutex.runExclusive(async () => {
+            this._flagRegisterParagraphUpdate = false;
+            let res = func();
+            this._flagRegisterParagraphUpdate = true;
+            return res;
+        });
+    }
+
     private _doUpdatePollingParagraphs() {
         return this._globalMutex.runExclusive(async () => {
             let config = vscode.workspace.getConfiguration('zeppelin');
@@ -335,54 +344,6 @@ export class ZeppelinKernel {
                     await this.updateParagraph(cell);
                 }
             }
-        });
-    }
-
-    private _doUpdateVisibleCells() {
-        return this._globalMutex.runExclusive(async () => {
-            let activeNotebook = vscode.window.activeNotebookEditor;
-            if (activeNotebook === undefined
-                || activeNotebook.notebook.cellCount === 0
-                || !await this.doesNotebookExist(activeNotebook.notebook)) {
-                return;
-            }
-
-            logDebug("_doUpdateVisibleCells: updating", activeNotebook.visibleRanges);
-            this._flagRegisterParagraphUpdate = false;
-
-            for (let range of activeNotebook.visibleRanges) {
-                if (range.isEmpty) {
-                    continue;
-                }
-
-                for (let i = range.start; i < range.end; i ++) {
-                    let cell = activeNotebook?.notebook.cellAt(i);
-                    let execution = this.getExecutionByParagraphId(cell.metadata.id);
-                    if (cell === undefined 
-                        || execution !== undefined
-                        || i >= activeNotebook.selection?.start
-                        && i < activeNotebook.selection?.end) {
-                        continue;
-                    }
-                    try {
-                        let paragraph = await this.getParagraphInfo(cell);
-                        let parsedCell = parseParagraphToCellData(paragraph);
-                        if (parsedCell.metadata !== undefined) {
-                            await this.updateCellMetadata(cell, parsedCell.metadata);
-                        }
-                    }
-                    catch (err) {
-                        let status = err instanceof AxiosError ? err.response?.status : undefined;
-                        if (status === cell.metadata.status) {
-                            // ignore the same error
-                            continue;
-                        }
-                        logDebug("error in _doUpdateVisibleCells:" + err);
-                        await this.updateCellMetadata(cell, {"status": status});
-                    }
-                }
-            }
-            this._flagRegisterParagraphUpdate = true;
         });
     }
 
@@ -626,15 +587,13 @@ export class ZeppelinKernel {
             return;
         }
 
-        await this._globalMutex.runExclusive(async () => {
-            logDebug("syncNote start");
-            let serverNote: NoteData = res?.data.body;
-            let serverCells = serverNote.paragraphs
-                ? serverNote.paragraphs.map(parseParagraphToCellData)
-                : [];
-            let replaceRange = new vscode.NotebookRange(0, note.cellCount);
-
-            this._flagRegisterParagraphUpdate = false;
+        logDebug("syncNote start");
+        let serverNote: NoteData = res?.data.body;
+        let serverCells = serverNote.paragraphs
+            ? serverNote.paragraphs.map(parseParagraphToCellData)
+            : [];
+        let replaceRange = new vscode.NotebookRange(0, note.cellCount);
+        await this.editWithoutParagraphUpdate(async () => {
             await this.editNote(
                 note, replaceRange, serverCells,
                 undefined, undefined, undefined,
@@ -671,7 +630,6 @@ export class ZeppelinKernel {
                     this.registerTrackExecution(newExecution);
                 }
             }
-            this._flagRegisterParagraphUpdate = true;
             logDebug("syncNote end");
         });
     }
