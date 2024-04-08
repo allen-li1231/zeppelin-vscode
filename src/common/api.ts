@@ -113,7 +113,10 @@ class BasicService {
     async login(username: string, password: string) {
         let res = await this.session.post(
             '/api/login',
-            { userName: username, password: password },
+            {
+                userName: encodeURIComponent(username),
+                password: encodeURIComponent(password)
+            },
             {
                 withCredentials: true,
                 headers: {
