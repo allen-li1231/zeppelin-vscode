@@ -114,45 +114,45 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 ## [0.2.3] - 2024-02-12
 
 ### Added:
-* Cell level progressbar, resolved issue #4 with pull request #5.
+- Cell level progressbar, resolved issue #4 with pull request #5.
 
 
 ## [0.2.4] - 2024-02-14
 
 ### Fix:
-* Removed dirty code that causes cell execution to fail.
+- Removed dirty code that causes cell execution to fail.
 
 
 ## [0.2.5] - 2024-03-27
 
 ### Added:
-* [Interpreter status and restart button on cell status bar.](https://github.com/allen-li1231/zeppelin-vscode/commit/ac9ffd3691682ae8ed118b521d9b2913af53adf0)
+- [Interpreter status and restart button on cell status bar.](https://github.com/allen-li1231/zeppelin-vscode/commit/ac9ffd3691682ae8ed118b521d9b2913af53adf0)
 
 ### Fixed:
-* [Supported language abbreviation mismatch.](https://github.com/allen-li1231/zeppelin-vscode/commit/bfa0ec808c9114efd435bfbdcddde9134e40df6f)
+- [Supported language abbreviation mismatch.](https://github.com/allen-li1231/zeppelin-vscode/commit/bfa0ec808c9114efd435bfbdcddde9134e40df6f)
 ### Changed:
-* [Slightly slow down the speed to sync with the server.](https://github.com/allen-li1231/zeppelin-vscode/commit/35dcd183ba99dad0cc8d231e62bbedfb694783a6)
+- [Slightly slow down the speed to sync with the server.](https://github.com/allen-li1231/zeppelin-vscode/commit/35dcd183ba99dad0cc8d231e62bbedfb694783a6)
 
 ### Enhancement:
-* [Simplify zeppelin warning on no credentials.](https://github.com/allen-li1231/zeppelin-vscode/commit/9781550748a2d51e3c5ff94481074efa838e4f23)
+- [Simplify zeppelin warning on no credentials.](https://github.com/allen-li1231/zeppelin-vscode/commit/9781550748a2d51e3c5ff94481074efa838e4f23)
 
 
 ## [0.2.6] - 2024-03-28
 
 ### Added:
-Cell sync indicator at the cell status bar.
+- Cell sync indicator at the cell status bar.
 
 ### Fixed:
-[Problem in language support that causes languages not understood by serializer.](https://github.com/allen-li1231/zeppelin-vscode/commit/6da028c0316a8796d7350760f93b857f690ef299)
-[Bug that causes extension to fail when deleting an executing cell.](https://github.com/allen-li1231/zeppelin-vscode/commit/f3a45b1e8072bcaae2a10c93a8bcc936d31f2a73)
-[Sync problem when creating a paragraph for a cell that does not exist on remote.](https://github.com/allen-li1231/zeppelin-vscode/commit/d484b5ae445deb04d1aa4c156385f801b7384914) 
+- [Problem in language support that causes languages not understood by serializer.](https://github.com/allen-li1231/zeppelin-vscode/commit/6da028c0316a8796d7350760f93b857f690ef299)
+- [Bug that causes extension to fail when deleting an executing cell.](https://github.com/allen-li1231/zeppelin-vscode/commit/f3a45b1e8072bcaae2a10c93a8bcc936d31f2a73)
+- [Sync problem when creating a paragraph for a cell that does not exist on remote.](https://github.com/allen-li1231/zeppelin-vscode/commit/d484b5ae445deb04d1aa4c156385f801b7384914) 
 
 ### Changed
-* [Remove 404 window error message, put the same message to cell status bar.](https://github.com/allen-li1231/zeppelin-vscode/commit/bad221c8e79bf8600e26f0ab16ec6e66a65f7d31)
+- [Remove 404 window error message, put the same message to cell status bar.](https://github.com/allen-li1231/zeppelin-vscode/commit/bad221c8e79bf8600e26f0ab16ec6e66a65f7d31)
 
 
 ## [0.2.7] - 2024-03-29
 
 ### Fixed:
-* Fatal error when cell executions gets called end before started.
-* Fatal sync error when remote running paragraph gets deleted.
+- Fatal error when cell executions gets called end before started.
+- Fatal sync error when remote running paragraph gets deleted.
