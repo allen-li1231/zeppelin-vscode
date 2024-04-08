@@ -608,7 +608,10 @@ export class ZeppelinKernel {
                 let execution = this.getExecutionByParagraphId(cell.metadata.id);
                 if (execution !== undefined) {
                     this.unregisterTrackExecution(execution);
-                    execution.end(undefined);
+                    try{
+                        execution.end(undefined);
+                    }
+                    catch (err) {}
                 }
 
                 let newExecution = this._controller.createNotebookCellExecution(cell);
