@@ -156,3 +156,10 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 ### Fixed:
 - Fatal error when cell executions gets called end before started.
 - Fatal sync error when remote running paragraph gets deleted.
+
+
+## [0.2.8] - 2024-04-09
+
+### Fixed:
+- #11 
+- [Execution ending error when notebook is repeatedly opened quickly](https://github.com/allen-li1231/zeppelin-vscode/commit/08b032b1e9c92934a177d1da4403f65c65361f30)
