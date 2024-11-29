@@ -163,3 +163,9 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 ### Fixed:
 - #11 
 - [Execution ending error when notebook is repeatedly opened quickly](https://github.com/allen-li1231/zeppelin-vscode/commit/08b032b1e9c92934a177d1da4403f65c65361f30)
+
+## [0.2.9] - 2024-11-29
+
+### Fixed:
+- [Misalignment of cell index through moving/copying/cutting and pasting cell.](https://github.com/allen-li1231/zeppelin-vscode/commit/198b53e936b7909567c048aec3b4cbfcfc8d45c8)
+- [Inappropriate create new file prompt when comparing file history in git](https://github.com/allen-li1231/zeppelin-vscode/commit/969b39776209ee55ef3cdefe96bd169836405110)
