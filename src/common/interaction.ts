@@ -363,8 +363,8 @@ export async function promptCreateNotebook(
 	const quickPick = vscode.window.createQuickPick();
 	// remove suffix
 	quickPick.value = name;
-	quickPick.title = `Specify Path to Save a
-		 New Notebook "${name}" to Zeppelin Server`;
+	quickPick.title = `Specify path to save
+		 new notebook "${name}" to Zeppelin server`;
 	quickPick.ignoreFocusOut = true;
 	quickPick.items = visiblePaths.map(value => { return { label: value }; });
 
