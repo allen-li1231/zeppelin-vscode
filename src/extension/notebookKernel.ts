@@ -279,6 +279,30 @@ export class ZeppelinKernel {
         return this.isActive() && await this.hasNote(note?.metadata?.id);
     }
 
+    public async getNoteInfo(
+        note: vscode.NotebookDocument
+    ) {
+        let noteId = note.metadata.id;
+        let res = await this.getService()?.getInfo(noteId);
+    
+        if (res instanceof AxiosError) {
+            vscode.window.showWarningMessage(
+                `Unable to get info for note ${noteId}, ` +
+                res.response ? res.response?.data : `${res.code}: ${res.message}`
+            );
+            return;
+        }
+        else if (res?.status === 500 || res?.status === 404) {
+            logDebug("error in getNoteInfo", res);
+            vscode.window.showErrorMessage(
+                `Unable to get note info: '${noteId}' doesn't exist on the server`);
+            return;
+        }
+
+        let serverNote: NoteData = res?.data.body;
+        return serverNote;
+    }
+
     public async getParagraphInfo(
         cell: vscode.NotebookCell
     ) {
@@ -570,28 +594,17 @@ export class ZeppelinKernel {
             return;
         }
 
-        let noteId = note.metadata.id;
-        let res = await this.getService()?.getInfo(noteId);
-    
-        if (res instanceof AxiosError) {
-            vscode.window.showWarningMessage(
-                `Unable to sync note ${noteId}, ` +
-                res.response ? res.response?.data : `${res.code}: ${res.message}`
-            );
-            return;
-        }
-        else if (res?.status === 500 || res?.status === 404) {
-            logDebug("error in syncNote", res);
-            vscode.window.showErrorMessage(
-                `Unable to sync note: '${noteId}' doesn't exist on the server`);
+        logDebug("syncNote start");
+        let serverNote = await this.getNoteInfo(note);
+        if (serverNote === undefined) {
+            logDebug("syncNote failed");
             return;
         }
 
-        logDebug("syncNote start");
-        let serverNote: NoteData = res?.data.body;
         let serverCells = serverNote.paragraphs
             ? serverNote.paragraphs.map(parseParagraphToCellData)
             : [];
+
         let replaceRange = new vscode.NotebookRange(0, note.cellCount);
         await this.editWithoutParagraphUpdate(async () => {
             await this.editNote(
@@ -724,7 +737,8 @@ export class ZeppelinKernel {
     public async updateParagraph(cell: vscode.NotebookCell) {
         try {
             // index = -1: cell has been deleted from notebook
-            if (cell.index === -1) {
+            if (cell.index === -1)
+            {
                 this.cellStatusBar?.untrackCell(cell);
                 this._service?.deleteParagraph(
                     cell.notebook.metadata.id, cell.metadata.id
@@ -734,23 +748,38 @@ export class ZeppelinKernel {
             }
 
             // create corresponding paragraph when a cell is newly created
-            if (cell.metadata.id === undefined) {
+            if (cell.metadata.id === undefined)
+            {
                 await this.createParagraph(cell);
             }
-            else {
+            // check if cell index has changed
+            else if (cell.index !== 
+                cell.notebook.metadata.paragraphs.findIndex(
+                    (paragraph: ParagraphData) => paragraph.id === cell.metadata.id
+                ))
+            {
+                // cell index has changed, update to server
+                await this.getService()?.moveParagraphToIndex(
+                    cell.notebook.metadata.id, cell.metadata.id, cell.index
+                );
+            }
+            else
+            {
                 logDebug("updateParagraph: updateParagraphConfig");
                 let res = await this.updateParagraphConfig(cell);
                 logDebug("updateParagraph: updateParagraphText");
                 res = await this.updateParagraphText(cell);
             }
 
-            if (cell.kind <= 1) {
+            if (cell.kind <= 1)
+            {
                 // need to call remote execution for markup paragraph languages
                 // so remote notebook paragraph result could be generated
                 // as markup languages are rendered locally
                 this._runParagraph(cell, false);
             }
-        } catch (err) {
+        } catch (err)
+        {
             logDebug("error in updateParagraph", err);
         }
 
