@@ -69,7 +69,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
 
 	disposable = vscode.workspace.onDidOpenNotebookDocument(async note => {
-		if (!note.uri.fsPath.endsWith(NOTEBOOK_SUFFIX)) {
+		if (!note.uri.fsPath.endsWith(NOTEBOOK_SUFFIX) 
+			|| note.uri.scheme === 'git') {
 			return;
 		}
 		logDebug("onDidOpenNotebookDocument:", note);
