@@ -24,6 +24,7 @@ Currently the extension development does not consider notebook permission, versi
 * Internally local changes to the notebook are updated to the Zeppelin server in every 3 seconds (by default),
   and local notebook file will be completely replaced by the server version __every time it is opened or activated__. You may disable this in settings.
 * If you cannot see the progress bar, it is in the text output, you can toggle output type by clicking "..." button at the left side of the cell output.
+* Please avoid modifying a running cell (i.e., editing, moving cell, cut/copy and paste cell. Deleting is allowed) as Zeppelin doesn't support this while VSCode does. If you accidentally did this, close and reopen the notebook to ensure the notebook is synced.
 * The interaction with local git is still under development, use with caution!
 
 ## Feedback
