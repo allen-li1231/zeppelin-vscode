@@ -169,6 +169,12 @@ export class ZeppelinKernel {
 
         let service = new NotebookService(baseURL, userAgent, getProxy());
 
+        let config = vscode.workspace.getConfiguration('zeppelin');
+        let caPath: string | undefined = config.get('https.CA-Certification');
+        let keyPath: string | undefined = config.get('https.KeyPath');
+        let passphase: string | undefined = config.get('https.passphase');
+        service.setHttpsAgent(caPath, keyPath, passphase);
+
         this._service = service;
         return service;
     }
