@@ -5,6 +5,8 @@ import {
     ParagraphData,
     ParagraphConfig
 } from './types';
+import * as fs from 'fs';
+import * as https from 'https';
 import axios, {
     AxiosInstance,
     AxiosRequestConfig,
@@ -94,6 +96,29 @@ class BasicService {
                 return error;
             }
         );
+    }
+
+    setHttpsAgent(
+        CAPath: string | undefined,
+        keyPath: string | undefined,
+        passphrase: string | undefined,
+        rejectUnauthorized: boolean = false
+    ) {
+        const httpsAgent = new https.Agent({
+        rejectUnauthorized: rejectUnauthorized,
+        });
+
+        if (!!CAPath) {
+            httpsAgent.options.ca = fs.readFileSync(CAPath);
+        }
+        if (!!keyPath) {
+            httpsAgent.options.key = fs.readFileSync(keyPath);
+        }
+        if (!!passphrase) {
+            httpsAgent.options.passphrase = passphrase;
+        }
+
+        this.session.defaults.httpsAgent = httpsAgent;
     }
 
     resetCancelToken() {
