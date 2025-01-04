@@ -173,7 +173,8 @@ export class ZeppelinKernel {
         let caPath: string | undefined = config.get('https.CA-Certification');
         let keyPath: string | undefined = config.get('https.KeyPath');
         let passphase: string | undefined = config.get('https.passphase');
-        service.setHttpsAgent(caPath, keyPath, passphase);
+        let rejectUnauthorized = config.get('https.rejectUnauthorized', false);
+        service.setHttpsAgent(caPath, keyPath, passphase, rejectUnauthorized);
 
         this._service = service;
         return service;
