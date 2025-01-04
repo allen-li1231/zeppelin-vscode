@@ -113,36 +113,36 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 
 ## [0.2.3] - 2024-02-12
 
-### Added:
+### Added
 - Cell level progressbar, resolved issue #4 with pull request #5.
 
 
 ## [0.2.4] - 2024-02-14
 
-### Fix:
+### Fixed
 - Removed dirty code that causes cell execution to fail.
 
 
 ## [0.2.5] - 2024-03-27
 
-### Added:
+### Added
 - [Interpreter status and restart button on cell status bar.](https://github.com/allen-li1231/zeppelin-vscode/commit/ac9ffd3691682ae8ed118b521d9b2913af53adf0)
 
-### Fixed:
+### Fixed
 - [Supported language abbreviation mismatch.](https://github.com/allen-li1231/zeppelin-vscode/commit/bfa0ec808c9114efd435bfbdcddde9134e40df6f)
-### Changed:
+### Changed
 - [Slightly slow down the speed to sync with the server.](https://github.com/allen-li1231/zeppelin-vscode/commit/35dcd183ba99dad0cc8d231e62bbedfb694783a6)
 
-### Enhancement:
+### Enhancement
 - [Simplify zeppelin warning on no credentials.](https://github.com/allen-li1231/zeppelin-vscode/commit/9781550748a2d51e3c5ff94481074efa838e4f23)
 
 
 ## [0.2.6] - 2024-03-28
 
-### Added:
+### Added
 - Cell sync indicator at the cell status bar.
 
-### Fixed:
+### Fixed
 - [Problem in language support that causes languages not understood by serializer.](https://github.com/allen-li1231/zeppelin-vscode/commit/6da028c0316a8796d7350760f93b857f690ef299)
 - [Bug that causes extension to fail when deleting an executing cell.](https://github.com/allen-li1231/zeppelin-vscode/commit/f3a45b1e8072bcaae2a10c93a8bcc936d31f2a73)
 - [Sync problem when creating a paragraph for a cell that does not exist on remote.](https://github.com/allen-li1231/zeppelin-vscode/commit/d484b5ae445deb04d1aa4c156385f801b7384914) 
@@ -153,21 +153,21 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 
 ## [0.2.7] - 2024-03-29
 
-### Fixed:
+### Fixed
 - Fatal error when cell executions gets called end before started.
 - Fatal sync error when remote running paragraph gets deleted.
 
 
 ## [0.2.8] - 2024-04-09
 
-### Fixed:
+### Fixed
 - #11 
 - [Execution ending error when notebook is repeatedly opened quickly](https://github.com/allen-li1231/zeppelin-vscode/commit/08b032b1e9c92934a177d1da4403f65c65361f30)
 
 
 ## [0.2.9] - 2024-11-29
 
-### Fixed:
+### Fixed
 - [Misalignment of cell index through moving/copying/cutting and pasting cell.](https://github.com/allen-li1231/zeppelin-vscode/commit/198b53e936b7909567c048aec3b4cbfcfc8d45c8)
 - [Inappropriate create new file prompt when comparing file history in git](https://github.com/allen-li1231/zeppelin-vscode/commit/969b39776209ee55ef3cdefe96bd169836405110)
 
@@ -175,3 +175,8 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 ## [0.2.10] - 2025-01-03
 ### Added
 [HTTP Agent Configuration support](https://github.com/allen-li1231/zeppelin-vscode/commit/f44dd57b0606cd1b5b654e31c9bdf7e059b86269) for resolving #15 .
+
+
+## [0.2.11] - 2025-01-04
+### Fixed
+[Add missed parameter (rejectUnauthorized) in https agent](https://github.com/allen-li1231/zeppelin-vscode/commit/6acebf2f56ab10d208b3d34dcb4c09bab3f368d0).
