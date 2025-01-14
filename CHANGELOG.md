@@ -180,3 +180,8 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 ## [0.2.11] - 2025-01-04
 ### Fixed
 [Add missed parameter (rejectUnauthorized) in https agent](https://github.com/allen-li1231/zeppelin-vscode/commit/6acebf2f56ab10d208b3d34dcb4c09bab3f368d0).
+
+## [0.2.12] - 2025-01-14
+### Fixed
+Wrong password even if provided correctly for [#15].
+Zeppelin credentials not prompted as expected when Zeppelin notebook is not opened.

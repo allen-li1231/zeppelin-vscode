@@ -139,8 +139,8 @@ class BasicService {
         let res = await this.session.post(
             '/api/login',
             {
-                userName: encodeURIComponent(username),
-                password: encodeURIComponent(password)
+                userName: username,
+                password: password
             },
             {
                 withCredentials: true,
