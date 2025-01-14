@@ -468,16 +468,19 @@ export async function promptZeppelinServerURL(
 export async function promptZeppelinCredential(kernel: ZeppelinKernel) {
 	return mutex.runExclusive(async () => {
 	let note = vscode.window.activeNotebookEditor?.notebook;
-	if (note === undefined) {
-		return;
-	}
-
 	let baseURL = kernel.getContext().workspaceState.get(
 		'currentZeppelinServerURL', undefined
 	);
+
+	if (note === undefined) {
+		kernel.deactivate();
+		await kernel.getContext().secrets.delete('zeppelinUsername');
+		kernel.checkInService(baseURL);
+		return;
+	}
+
 	// remove username so login procedure could be triggered
 	await kernel.getContext().secrets.delete('zeppelinUsername');
-	kernel.deactivate();
 
 	// task when remote server is connectable.
 	kernel.checkInService(baseURL, async () => {
