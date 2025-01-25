@@ -95,9 +95,13 @@ export function logDebug(item: string | any, ...optionalParams: any[]) {
 }
 
 export function getProxy() {
-    let proxy: AxiosProxyConfig | undefined = undefined;
-
     let config = workspace.getConfiguration('zeppelin');
+
+    if (!config.get('proxy.loadEnvironmentVariable')) {
+        return false;
+    }
+
+    let proxy: AxiosProxyConfig | undefined = undefined;
     if (!!config.get('proxy.host') && !!config.get('proxy.port')) {
         proxy = {
             host: config.get('proxy.host', ''),

@@ -111,7 +111,7 @@
           "order": 1,
           "type": "boolean",
           "default": true,
-          "description": "Specify whether to sync notebook with Zeppelin server when active notebook is changed."
+          "description": "Sync notebook with Zeppelin server when current active notebook is changed."
         },
         "zeppelin.autosave.throttleTime": {
           "order": 2,
@@ -151,61 +151,63 @@
           "default": 5,
           "description": "Set minimum interval (in seconds) to track interpreter status."
         },
-        "zeppelin.proxy.host": {
+        "zeppelin.proxy.loadEnvironmentVariable": {
           "order": 7,
-          "type": "string",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Load proxy settings via `http_proxy`, `https_proxy` and `no_proxy` environment variables (Require reloading window to apply)."
+        },
+        "zeppelin.proxy.host": {
+          "order": 8,
+          "type": ["string", "null"],
           "format": "uri",
           "default": null,
           "description": "Set proxy host for connection with Zeppelin server."
         },
         "zeppelin.proxy.port": {
-          "order": 8,
-          "type": "integer",
+          "order": 9,
+          "type": ["integer", "null"],
           "default": null,
           "description": "Set proxy port for connection with Zeppelin server."
         },
         "zeppelin.proxy.credential.username": {
-          "order": 9,
-          "type": "string",
+          "order": 10,
+          "type": ["string", "null"],
           "default": null,
           "description": "Specifies proxy authentication for connection with Zeppelin server."
         },
         "zeppelin.proxy.credential.password": {
-          "order": 10,
-          "type": [
-            "string"
-          ],
+          "order": 11,
+          "type": ["string", "null"],
           "default": null,
           "description": "Specifies proxy authentication for connection with Zeppelin server."
         },
         "zeppelin.proxy.credential.protocol": {
-          "order": 11,
-          "type": "string",
+          "order": 12,
+          "type": ["string", "null"],
           "default": null,
           "description": "Specifies the proxy protocol for connection with Zeppelin server."
         },
         "zeppelin.https.CA-Certification": {
-          "order": 12,
-          "type": "string",
+          "order": 13,
+          "type": ["string", "null"],
           "default": null,
           "description": "Configure a trustworthy private CA cert file path. A complete cert chain is in .pem or .crt format. You must include all certs in the chain up to the trust root."
         },
         "zeppelin.https.KeyPath": {
-          "order": 13,
-          "type": "string",
+          "order": 14,
+          "type": ["string", "null"],
           "default": null,
           "description": "Configure a trustworthy private key path."
         },
         "zeppelin.https.passphase": {
-          "order": 14,
-          "type": [
-            "string"
-          ],
+          "order": 15,
+          "type": ["string", "null"],
           "default": null,
-          "description": "Configure key's corresponding passphase."
+          "description": "Configure private key's corresponding passphase."
         },
         "zeppelin.https.rejectUnauthorized": {
-          "order": 15,
+          "order": 16,
           "type": "boolean",
           "default": true,
           "description": "Enable client verification. Note that this is otherwise unsafe when accessing a public endpoint."
