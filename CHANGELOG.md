@@ -173,15 +173,28 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 
 
 ## [0.2.10] - 2025-01-03
+
 ### Added
 [HTTP Agent Configuration support](https://github.com/allen-li1231/zeppelin-vscode/commit/f44dd57b0606cd1b5b654e31c9bdf7e059b86269) for resolving #15 .
 
 
 ## [0.2.11] - 2025-01-04
+
 ### Fixed
 [Add missed parameter (rejectUnauthorized) in https agent](https://github.com/allen-li1231/zeppelin-vscode/commit/6acebf2f56ab10d208b3d34dcb4c09bab3f368d0).
 
+
 ## [0.2.12] - 2025-01-14
+
 ### Fixed
 Wrong password even if provided correctly for [#15].
 Zeppelin credentials not prompted as expected when Zeppelin notebook is not opened.
+
+
+## [0.2.13] - 2025-01-26
+
+### Added
+* In response to #19, [allow disabling automatically loading proxy settings from `http_proxy`, `https_proxy` and `no_proxy` environment variables in extension setting for #19 ](https://github.com/allen-li1231/zeppelin-vscode/commit/c549652dd4c6a52d9d2ed4c64af5b092374bf100).
+
+### Enhancement
+* Move some settings with default values into `settings.json` file to silent warnings.
