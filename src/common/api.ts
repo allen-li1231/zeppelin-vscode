@@ -25,7 +25,7 @@ class BasicService {
     constructor(
         baseURL: string,
         userAgent: string,
-        proxy: AxiosProxyConfig | undefined = undefined
+        proxy: AxiosProxyConfig | false | undefined = undefined
     ) {
         this.baseURL = formatURL(baseURL);
 
@@ -176,7 +176,7 @@ export class NotebookService extends BasicService {
     constructor(
         baseUrl: string,
         userAgent: string,
-        proxy: AxiosProxyConfig | undefined = undefined,
+        proxy: AxiosProxyConfig | false | undefined = undefined,
     ) {
         super(baseUrl, userAgent, proxy);
     }
