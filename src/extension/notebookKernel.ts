@@ -769,6 +769,10 @@ export class ZeppelinKernel {
                 await this.getService()?.moveParagraphToIndex(
                     cell.notebook.metadata.id, cell.metadata.id, cell.index
                 );
+                await this.updateNoteMetadata(
+                    cell.notebook,
+                    await this.getNoteInfo(cell.notebook) ?? {}
+                );
             }
             else
             {
