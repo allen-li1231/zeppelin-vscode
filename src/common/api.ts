@@ -40,7 +40,7 @@ class BasicService {
             responseEncoding: 'utf8'
       };
 
-      if (proxy) {
+      if (proxy !== undefined) {
         config.proxy = proxy;
       }
 
