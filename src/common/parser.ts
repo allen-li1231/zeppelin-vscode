@@ -69,9 +69,7 @@ export function parseParagraphResultToCellOutput(
 
     if (errorOutput.length > 0) {
         outputs.push(
-            vscode.NotebookCellOutputItem.error({ 
-                name: 'ERROR',
-                message: errorOutput})
+            vscode.NotebookCellOutputItem.stderr(errorOutput)
         );
     }
 
@@ -131,6 +129,9 @@ export function parseCellOutputsToParagraphResult(
                         msgType = 'HTML';
                     case 'application/vnd.code.notebook.stdout': 
                         code = 'SUCCESS';
+                        msgType = 'TEXT';
+                    case 'application/vnd.code.notebook.stderr': 
+                        code = 'ERROR';
                         msgType = 'TEXT';
                     case 'application/vnd.code.notebook.error': 
                         code = 'ERROR';
