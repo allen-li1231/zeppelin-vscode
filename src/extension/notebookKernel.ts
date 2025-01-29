@@ -871,6 +871,8 @@ export class ZeppelinKernel {
             return false;
         }
 
+        await this.instantUpdatePollingParagraphs();
+
         if (cell.metadata.status === 404) {
             promptCreateParagraph(this, cell);
             return;
@@ -883,7 +885,6 @@ export class ZeppelinKernel {
             execution.clearOutput();
         });
 
-        await this.instantUpdatePollingParagraphs();
         execution.start(Date.now());
 
         try {
@@ -922,6 +923,8 @@ export class ZeppelinKernel {
             return;
         }
 
+        await this.instantUpdatePollingParagraphs();
+
         if (cell.metadata.status === 404) {
             promptCreateParagraph(this, cell);
             return;
@@ -932,7 +935,6 @@ export class ZeppelinKernel {
             await this.stopParagraph(execution.cell);
         });
         try {
-            await this.instantUpdatePollingParagraphs();
             let paragraph = await this.getParagraphInfo(cell);
 
             if ((paragraph.status !== "RUNNING") && (cell.metadata.status !== "PENDING")) {
