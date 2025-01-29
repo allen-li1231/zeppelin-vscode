@@ -751,6 +751,10 @@ export class ZeppelinKernel {
                     cell.notebook.metadata.id, cell.metadata.id
                 );
                 this._mapUpdateParagraph.delete(cell);
+                await this.updateNoteMetadata(
+                    cell.notebook,
+                    await this.getNoteInfo(cell.notebook) ?? {}
+                );
                 return;
             }
 
@@ -758,6 +762,10 @@ export class ZeppelinKernel {
             if (cell.metadata.id === undefined)
             {
                 await this.createParagraph(cell);
+                await this.updateNoteMetadata(
+                    cell.notebook,
+                    await this.getNoteInfo(cell.notebook) ?? {}
+                );
             }
             // check if cell index has changed
             else if (cell.index !== 
