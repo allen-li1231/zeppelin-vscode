@@ -198,3 +198,13 @@ Zeppelin credentials not prompted as expected when Zeppelin notebook is not open
 
 ### Enhancement
 * Move some settings with default values into `settings.json` file to silent warnings.
+
+
+## [0.2.14] - 2025-01-29
+
+### Fixed
+* [Loading environment variables behavior not following the setting](https://github.com/allen-li1231/zeppelin-vscode/commit/21ee17c5ad1dbd56c9bacd40866b53f03b1e65b5) in response to #19.
+* [Newly added cell's text not being synced at all.](https://github.com/allen-li1231/zeppelin-vscode/commit/9c0c96843b35e8aaca3d0616072383f6aa78736a)
+* [Previously removed cell causing the out-of-bound error.](https://github.com/allen-li1231/zeppelin-vscode/commit/b2de5349908103ce1c5c4e70554b033795007a64)
+* [Make cell error outputs use stderr output](https://github.com/allen-li1231/zeppelin-vscode/commit/95e834b6f2068aaa8e58f5a9a71fe48872e573e4)  in response to #21.
+* [Make instant cell update earlier to silent prompting creating paragraph.](https://github.com/allen-li1231/zeppelin-vscode/commit/9ed56667449441229cf55b4baa9226ee87f43e90)
