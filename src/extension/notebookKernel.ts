@@ -620,6 +620,13 @@ export class ZeppelinKernel {
             ? serverNote.paragraphs.map(parseParagraphToCellData)
             : [];
 
+        // need to unregister updates of cells to be deleted from syncing
+        await this._updateMutex.runExclusive(async () => {
+            for (let cell of note.getCells()) {
+                this.unregisterParagraphUpdate(cell);
+            }
+        });
+
         let replaceRange = new vscode.NotebookRange(0, note.cellCount);
         await this.editWithoutParagraphUpdate(async () => {
             await this.editNote(
