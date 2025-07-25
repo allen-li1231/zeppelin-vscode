@@ -34,7 +34,8 @@ export class ZeppelinKernel {
     private _service?: NotebookService;
     private readonly _controller: vscode.NotebookController;
     private _isActive = false;
-    private _globalMutex = new Mutex("_globalMutex");
+    private _updateMutex = new Mutex("_updateMutex");
+    private _editMutex = new Mutex("_editMutex");
     private _executeMutex = new Mutex("_executeMutex");
 
     // private _timerSyncNote?: NodeJS.Timer;
@@ -345,8 +346,15 @@ export class ZeppelinKernel {
         }
     }
 
+    public unregisterParagraphUpdate(cell: vscode.NotebookCell) {
+        if (!this._mapUpdateParagraph.has(cell)) {
+            return this._mapUpdateParagraph.delete(cell);
+        }
+        return false;
+    }
+
     public instantUpdatePollingParagraphs() {
-        return this._globalMutex.runExclusive(async () => {
+        return this._updateMutex.runExclusive(async () => {
             logDebug("instantUpdatePollingParagraphs", this._mapUpdateParagraph);
 
             for (let cell of this._mapUpdateParagraph.keys()) {
@@ -357,7 +365,7 @@ export class ZeppelinKernel {
     }
 
     public async editWithoutParagraphUpdate(func: () => Promise<void>) {
-        return this._globalMutex.runExclusive(async () => {
+        return this._editMutex.runExclusive(async () => {
             this._flagRegisterParagraphUpdate = false;
             let res = func();
             this._flagRegisterParagraphUpdate = true;
@@ -366,7 +374,7 @@ export class ZeppelinKernel {
     }
 
     private _doUpdatePollingParagraphs() {
-        return this._globalMutex.runExclusive(async () => {
+        return this._updateMutex.runExclusive(async () => {
             let config = vscode.workspace.getConfiguration('zeppelin');
             let throttleTime: number = config.get('autosave.throttleTime', 3);
 
@@ -514,7 +522,7 @@ export class ZeppelinKernel {
     public async updateByReplaceCell(
         cell: vscode.NotebookCell
     ) {
-        return this._globalMutex.runExclusive(async () => {
+        return this._editMutex.runExclusive(async () => {
             let paragraph = await this.getParagraphInfo(cell);
             let parsedCell = parseParagraphToCellData(paragraph);
             let replaceRange = new vscode.NotebookRange(cell.index, cell.index + 1);
@@ -592,7 +600,7 @@ export class ZeppelinKernel {
         return vscode.workspace.applyEdit(editor);
     }
 
-    public async syncNote(note: vscode.NotebookDocument | undefined) {
+    public async _syncNote(note: vscode.NotebookDocument | undefined) {
         if (note === undefined) {
             return;
         }
@@ -642,7 +650,7 @@ export class ZeppelinKernel {
                 newExecution.start(Date.parse(cell.metadata.dateStarted) || Date.now());
 
                 if ((cell.metadata.status !== "RUNNING") && (cell.metadata.status !== "PENDING")
-                    && parsedCell?.outputs) {
+                    && parsedCell?.outputs !== undefined) {
                     newExecution.replaceOutput(parsedCell?.outputs);
                     newExecution.end(
                         cell.metadata.status !== "ERROR",
@@ -655,6 +663,10 @@ export class ZeppelinKernel {
             }
             logDebug("syncNote end");
         });
+    }
+
+    public async syncNote(note: vscode.NotebookDocument | undefined) {
+        return this._updateMutex.runExclusive(async () => this._syncNote(note));
     }
 
     public async applyPolledNotebookEdits() {
