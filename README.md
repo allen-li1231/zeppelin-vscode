@@ -15,10 +15,10 @@ Currently the extension development does not consider notebook permission, versi
 * Open it using VS Code, during first cell run you will be prompted to provide server url and credential.
 
 ## How to Use
-* Want to create a notebook (.zpln file) that doesn't exist on the server? Just open it and specify the saving path as prompted.
-* Zeppelin credential settings can be accessed by searching for 'zeppelin' in setting or command palette.
+* Want to create a notebook (.zpln file) that doesn't exist on the server? Just create and open it locally and specify the saving path as prompted.
+* Zeppelin credential and network settings can be accessed by searching for 'zeppelin' in setting or command palette.
 * Once the interpreter is typed in the cell (e.g., %python), its status is shown at the button right portion of the cell, you may restart the kernel by clicking on it.
-* In Zeppelin web UI, code languages are determined by magic command, while in VSCode you need to manually select the language mode in the bottom right corner of the cell. If you cannot find the desired language in the list, please search and install the extension that supports as language server from extension marketplace.
+* In Zeppelin web UI, code languages are determined by magic command, while in VSCode you need to manually select the language mode in the bottom right corner of the cell. If you cannot find the desired language in the list, please search and install the extension that supports as language server from VSCode extension marketplace.
 
 ### :bell:Tips
 * Internally local changes to the notebook are updated to the Zeppelin server in every 3 seconds (by default),
