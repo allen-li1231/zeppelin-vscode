@@ -235,7 +235,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			let config = vscode.workspace.getConfiguration('zeppelin');
 			let selection = config.get('autosave.syncActiveNotebook');
 
-			if (selection) {
+			if (selection && !kernel.isNoteSyncing(event?.notebook)) {
 				await kernel.syncNote(event?.notebook);
 			}
 		}
@@ -247,4 +247,6 @@ export async function activate(context: vscode.ExtensionContext) {
 }
 
 // This method is called when your extension is deactivated
-export function deactivate() {}
+export function deactivate() {
+	logDebug("deactivate");
+}

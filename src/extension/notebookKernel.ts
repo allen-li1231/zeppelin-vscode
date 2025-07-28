@@ -41,6 +41,9 @@ export class ZeppelinKernel {
     // private _timerSyncNote?: NodeJS.Timer;
     private _timerUpdateCell?: NodeJS.Timer;
     private _recurseTrackExecution?: Function;
+    private _mapSyncNote = new Map<
+        vscode.NotebookDocument, number
+    >();
     private _mapTrackExecution = new Map<
         string, [vscode.NotebookCellExecution, number, Progress]
     >();
@@ -358,16 +361,18 @@ export class ZeppelinKernel {
     }
 
     public async instantUpdatePollingParagraphs() {
-        for (let cell of this._mapUpdateParagraph.keys()) {
-            await this.updateParagraph(cell);
-        }
+        return this._updateMutex.runExclusive(async () => {
+            for (let cell of this._mapUpdateParagraph.keys()) {
+                await this.updateParagraph(cell);
+            }
+        });
         // return Promise.all(notebookCells.map(this.updateParagraph.bind(this)));
     }
 
     public async editWithoutParagraphUpdate(func: () => Promise<void>) {
         return this._editMutex.runExclusive(async () => {
             this._flagRegisterParagraphUpdate = false;
-            let res = func();
+            let res = await func();
             this._flagRegisterParagraphUpdate = true;
             return res;
         });
@@ -379,7 +384,11 @@ export class ZeppelinKernel {
 
         return this._updateMutex.runExclusive(async () => {
             for (let [cell, requestTime] of this._mapUpdateParagraph) {
-                if (throttleTime * 1000 < Date.now() - requestTime) {
+                if (!this.isNoteSyncing(cell.notebook)   // disregard syncing cells
+                    && throttleTime * 1000 < Date.now() - requestTime) {
+                    if (cell.index < 0) {
+                        logDebug("Error!");
+                    }
                     this.updateParagraph(cell);
                 }
             }
@@ -600,6 +609,23 @@ export class ZeppelinKernel {
         return vscode.workspace.applyEdit(editor);
     }
 
+    private _registerSyncNote(note: vscode.NotebookDocument) {
+        this._mapSyncNote.set(note, Date.now());
+    }
+
+    private _unregisterSyncNote(note: vscode.NotebookDocument) {
+        if (this._mapSyncNote.has(note)) {
+            this._mapSyncNote.delete(note);
+        }
+    }
+
+    public isNoteSyncing(note: vscode.NotebookDocument | undefined) {
+        if (note === undefined) {
+            return false;
+        }
+        return this._mapSyncNote.has(note);
+    }
+
     public async syncNote(note: vscode.NotebookDocument | undefined) {
         if (note === undefined) {
             return;
@@ -609,10 +635,12 @@ export class ZeppelinKernel {
             return;
         }
 
+        this._registerSyncNote(note);
         logDebug("syncNote start");
         let serverNote = await this.getNoteInfo(note);
         if (serverNote === undefined) {
             logDebug("syncNote failed");
+            this._unregisterSyncNote(note);
             return;
         }
 
@@ -668,6 +696,8 @@ export class ZeppelinKernel {
             }
             logDebug("syncNote end");
         });
+
+        this._unregisterSyncNote(note);
     }
 
     // public async syncNote(note: vscode.NotebookDocument | undefined) {
