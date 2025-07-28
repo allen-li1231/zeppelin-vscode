@@ -208,3 +208,9 @@ Zeppelin credentials not prompted as expected when Zeppelin notebook is not open
 * [Previously removed cell causing the out-of-bound error.](https://github.com/allen-li1231/zeppelin-vscode/commit/b2de5349908103ce1c5c4e70554b033795007a64)
 * [Make cell error outputs use stderr output](https://github.com/allen-li1231/zeppelin-vscode/commit/95e834b6f2068aaa8e58f5a9a71fe48872e573e4)  in response to #21.
 * [Make instant cell update earlier to silent prompting creating paragraph.](https://github.com/allen-li1231/zeppelin-vscode/commit/9ed56667449441229cf55b4baa9226ee87f43e90)
+
+
+## [0.2.15] - 2025-07-28
+
+### Fixed
+Notebook cells get deleted from replacement triggered by repeated syncNote in response to #24.
