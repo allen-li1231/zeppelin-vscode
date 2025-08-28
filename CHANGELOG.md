@@ -187,40 +187,40 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 ## [0.2.12] - 2025-01-14
 
 ### Fixed
-Wrong password even if provided correctly for [#15].
-Zeppelin credentials not prompted as expected when Zeppelin notebook is not opened.
+- Wrong password even if provided correctly for [#15].
+- Zeppelin credentials not prompted as expected when Zeppelin notebook is not opened.
 
 
 ## [0.2.13] - 2025-01-26
 
 ### Added
-* In response to #19, [allow disabling automatically loading proxy settings from `http_proxy`, `https_proxy` and `no_proxy` environment variables in extension setting for #19 ](https://github.com/allen-li1231/zeppelin-vscode/commit/c549652dd4c6a52d9d2ed4c64af5b092374bf100).
+- In response to #19, [allow disabling automatically loading proxy settings from `http_proxy`, `https_proxy` and `no_proxy` environment variables in extension setting for #19 ](https://github.com/allen-li1231/zeppelin-vscode/commit/c549652dd4c6a52d9d2ed4c64af5b092374bf100).
 
 ### Enhancement
-* Move some settings with default values into `settings.json` file to silent warnings.
+- Move some settings with default values into `settings.json` file to silent warnings.
 
 
 ## [0.2.14] - 2025-01-29
 
 ### Fixed
-* [Loading environment variables behavior not following the setting](https://github.com/allen-li1231/zeppelin-vscode/commit/21ee17c5ad1dbd56c9bacd40866b53f03b1e65b5) in response to #19.
-* [Newly added cell's text not being synced at all.](https://github.com/allen-li1231/zeppelin-vscode/commit/9c0c96843b35e8aaca3d0616072383f6aa78736a)
-* [Previously removed cell causing the out-of-bound error.](https://github.com/allen-li1231/zeppelin-vscode/commit/b2de5349908103ce1c5c4e70554b033795007a64)
-* [Make cell error outputs use stderr output](https://github.com/allen-li1231/zeppelin-vscode/commit/95e834b6f2068aaa8e58f5a9a71fe48872e573e4)  in response to #21.
-* [Make instant cell update earlier to silent prompting creating paragraph.](https://github.com/allen-li1231/zeppelin-vscode/commit/9ed56667449441229cf55b4baa9226ee87f43e90)
+- [Loading environment variables behavior not following the setting](https://github.com/allen-li1231/zeppelin-vscode/commit/21ee17c5ad1dbd56c9bacd40866b53f03b1e65b5) in response to #19.
+- [Newly added cell's text not being synced at all.](https://github.com/allen-li1231/zeppelin-vscode/commit/9c0c96843b35e8aaca3d0616072383f6aa78736a)
+- [Previously removed cell causing the out-of-bound error.](https://github.com/allen-li1231/zeppelin-vscode/commit/b2de5349908103ce1c5c4e70554b033795007a64)
+- [Make cell error outputs use stderr output](https://github.com/allen-li1231/zeppelin-vscode/commit/95e834b6f2068aaa8e58f5a9a71fe48872e573e4)  in response to #21.
+- [Make instant cell update earlier to silent prompting creating paragraph.](https://github.com/allen-li1231/zeppelin-vscode/commit/9ed56667449441229cf55b4baa9226ee87f43e90)
 
 
 ## [0.2.15] - 2025-07-28
 
 ### Fixed
-Notebook cells get deleted from replacement triggered by repeated syncNote in response to #24.
+- Notebook cells get deleted from replacement triggered by repeated syncNote in response to #24.
 
 
 ## [0.2.16] - 2025-08-28
 
 ### Fixed
-[Failure of retrieving interpreter settings causes extension to stop working](https://github.com/allen-li1231/zeppelin-vscode/commit/5c967ae81771d83c84f9f160b77110d16b95a069) in response to #26.
+- [Failure of retrieving interpreter settings causes extension to stop working](https://github.com/allen-li1231/zeppelin-vscode/commit/5c967ae81771d83c84f9f160b77110d16b95a069) in response to #26.
 
 ### Enhancement
-[Use sequential cell execution by default (was in parallel)](https://github.com/allen-li1231/zeppelin-vscode/commit/d5050d575a1c4d92a6826b04e1ddd9891fa0abbd) in response to #23.
-[Minor debug information improvements](https://github.com/allen-li1231/zeppelin-vscode/commit/9ad38213199848b5fd4cae43f8bbbb9993b41f55).
+- [Use sequential cell execution by default (was in parallel)](https://github.com/allen-li1231/zeppelin-vscode/commit/d5050d575a1c4d92a6826b04e1ddd9891fa0abbd) in response to #23.
+- [Minor debug information improvements](https://github.com/allen-li1231/zeppelin-vscode/commit/9ad38213199848b5fd4cae43f8bbbb9993b41f55).
