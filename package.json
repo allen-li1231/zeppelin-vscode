@@ -128,7 +128,7 @@
         "zeppelin.execution.concurrency": {
           "order": 4,
           "type": "string",
-          "default": "parallel",
+          "default": "sequential",
           "enum": [
             "parallel",
             "sequential"
