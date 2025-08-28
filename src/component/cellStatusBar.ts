@@ -106,7 +106,14 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
     }
 
     private async _updateInterpreterStatus(interpreterId: string) {
-        const res = await this.kernel.getService()?.getInterpreterSetting(interpreterId);
+        try{
+            var res = await this.kernel.getService()?.getInterpreterSetting(interpreterId);
+        }
+        catch (error) {
+            logDebug(`error in _updateInterpreterStatus for '${interpreterId}'`);
+            return undefined;
+        }
+
         if (res === undefined || res.data === undefined || res.data.status !== 'OK') {
             return undefined;
         }

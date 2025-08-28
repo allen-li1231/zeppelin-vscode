@@ -387,7 +387,7 @@ export class ZeppelinKernel {
                 if (!this.isNoteSyncing(cell.notebook)   // disregard syncing cells
                     && throttleTime * 1000 < Date.now() - requestTime) {
                     if (cell.index < 0) {
-                        logDebug("Error!");
+                        logDebug("_doUpdatePollingParagraphs: deleted cell", cell);
                     }
                     this.updateParagraph(cell);
                 }
