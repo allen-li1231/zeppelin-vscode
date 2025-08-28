@@ -214,3 +214,13 @@ Zeppelin credentials not prompted as expected when Zeppelin notebook is not open
 
 ### Fixed
 Notebook cells get deleted from replacement triggered by repeated syncNote in response to #24.
+
+
+## [0.2.16] - 2025-08-28
+
+### Fixed
+[Failure of retrieving interpreter settings causes extension to stop working](https://github.com/allen-li1231/zeppelin-vscode/commit/5c967ae81771d83c84f9f160b77110d16b95a069) in response to #26.
+
+### Enhancement
+[Use sequential cell execution by default (was in parallel)](https://github.com/allen-li1231/zeppelin-vscode/commit/d5050d575a1c4d92a6826b04e1ddd9891fa0abbd) in response to #23.
+[Minor debug information improvements](https://github.com/allen-li1231/zeppelin-vscode/commit/9ad38213199848b5fd4cae43f8bbbb9993b41f55).
