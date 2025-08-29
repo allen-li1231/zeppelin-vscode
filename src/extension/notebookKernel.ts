@@ -354,12 +354,11 @@ export class ZeppelinKernel {
     }
 
     public unregisterParagraphUpdate(cell: vscode.NotebookCell) {
-        return this._updateMutex.runExclusive(async () => {
-            if (!this._mapUpdateParagraph.has(cell)) {
-                return this._mapUpdateParagraph.delete(cell);
-            }
-            return false;
-        });
+        logDebug("unregisterParagraphUpdate", cell);
+        if (!this._mapUpdateParagraph.has(cell)) {
+            return this._mapUpdateParagraph.delete(cell);
+        }
+        return false;
     }
 
     public async instantUpdatePollingParagraphs() {
