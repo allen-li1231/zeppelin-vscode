@@ -224,3 +224,14 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 ### Enhancement
 - [Use sequential cell execution by default (was in parallel)](https://github.com/allen-li1231/zeppelin-vscode/commit/d5050d575a1c4d92a6826b04e1ddd9891fa0abbd) in response to #23.
 - [Minor debug information improvements](https://github.com/allen-li1231/zeppelin-vscode/commit/9ad38213199848b5fd4cae43f8bbbb9993b41f55).
+
+
+## [0.2.17] - 2025-08-29
+
+### Fixed
+- [Racing Condition in instant paragraph update](https://github.com/allen-li1231/zeppelin-vscode/commit/9ef6edba4eecd2982b482473c0ce067e8d04b7e9) in response to #26.
+
+### Enhancement
+- [Enrich Debug Logging](https://github.com/allen-li1231/zeppelin-vscode/commit/fd9de0fb243ce3ee782bcc02ad0b205e0dd734d4).
+- [Add http timeout setting](https://github.com/allen-li1231/zeppelin-vscode/commit/154a0b6f1298888815c8200bdf45fdee4f833b71).
+- [Improve interpreter status update strategy](https://github.com/allen-li1231/zeppelin-vscode/commit/780443aeb2a033bfb17f135aba93e960fc016ec0).

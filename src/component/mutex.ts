@@ -80,7 +80,7 @@ export class Mutex {
         }
         // The resource is available.
         this._isLocked = true; // Lock it.
-        // logDebug(`mutex ${this._name} locked`);
+        logDebug(`mutex ${this._name} locked`);
         // and give access to the next operation
         // in the queue.
         nextEntry.resolve(this._buildRelease());
@@ -96,7 +96,7 @@ export class Mutex {
             // Each release function make
             // the resource available again
             this._isLocked = false;
-            // logDebug(`mutex ${this._name} released`);
+            logDebug(`mutex ${this._name} releases`);
             // and call dispatch.
             this._dispatch();
         };
