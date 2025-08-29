@@ -344,6 +344,7 @@ export class ZeppelinKernel {
             return;
         }
 
+        logDebug("registerParagraphUpdate", cell);
         return this._updateMutex.runExclusive(async () => {
             if (!this._mapUpdateParagraph.has(cell)) {
                 this._mapUpdateParagraph.set(cell, Date.now());
@@ -361,12 +362,15 @@ export class ZeppelinKernel {
     }
 
     public async instantUpdatePollingParagraphs() {
+        logDebug("instantUpdatePollingParagraphs", this._mapUpdateParagraph);
+        // let notebookCells = Array.from(this._mapUpdateParagraph.keys());
         return this._updateMutex.runExclusive(async () => {
+            // Promise.all(notebookCells.map(this.updateParagraph.bind(this)))
             for (let cell of this._mapUpdateParagraph.keys()) {
                 await this.updateParagraph(cell);
             }
+            logDebug("instantUpdatePollingParagraphs ends");
         });
-        // return Promise.all(notebookCells.map(this.updateParagraph.bind(this)));
     }
 
     public async editWithoutParagraphUpdate(func: () => Promise<void>) {
@@ -382,6 +386,7 @@ export class ZeppelinKernel {
         let config = vscode.workspace.getConfiguration('zeppelin');
         let throttleTime: number = config.get('autosave.throttleTime', 3);
 
+        logDebug("_doUpdatePollingParagraphs", this._mapUpdateParagraph);
         return this._updateMutex.runExclusive(async () => {
             for (let [cell, requestTime] of this._mapUpdateParagraph) {
                 if (!this.isNoteSyncing(cell.notebook)   // disregard syncing cells
@@ -785,6 +790,7 @@ export class ZeppelinKernel {
             throw res;
         }
 
+        logDebug(`UpdateParagraphConfig: pollUpdateCellMetadata`);
         await this.pollUpdateCellMetadata(cell, res?.data.body);
     }
 
@@ -793,6 +799,7 @@ export class ZeppelinKernel {
             // index = -1: cell has been deleted from notebook
             if (cell.index === -1)
             {
+                logDebug(`updateParagraph: cell to be deleted`, cell);
                 this.cellStatusBar?.untrackCell(cell);
                 this._service?.deleteParagraph(
                     cell.notebook.metadata.id, cell.metadata.id
@@ -800,6 +807,7 @@ export class ZeppelinKernel {
                 if (!this._mapUpdateParagraph.has(cell)) {
                     this._mapUpdateParagraph.delete(cell);
                 }
+                logDebug(`updateParagraph: sync cell metadata`, cell);
                 await this.updateNoteMetadata(
                     cell.notebook,
                     await this.getNoteInfo(cell.notebook) ?? {}
@@ -810,7 +818,9 @@ export class ZeppelinKernel {
             // create corresponding paragraph when a cell is newly created
             if (cell.metadata.id === undefined)
             {
+                logDebug(`updateParagraph: cell to be created`, cell);
                 await this.createParagraph(cell);
+                logDebug(`updateParagraph: sync cell metadata`, cell);
                 await this.updateNoteMetadata(
                     cell.notebook,
                     await this.getNoteInfo(cell.notebook) ?? {}
@@ -822,10 +832,12 @@ export class ZeppelinKernel {
                     (paragraph: ParagraphData) => paragraph.id === cell.metadata.id
                 ))
             {
+                logDebug(`updateParagraph: cell position to be changed`, cell);
                 // cell index has changed, update to server
                 await this.getService()?.moveParagraphToIndex(
                     cell.notebook.metadata.id, cell.metadata.id, cell.index
                 );
+                logDebug(`updateParagraph: sync cell metadata`, cell);
                 await this.updateNoteMetadata(
                     cell.notebook,
                     await this.getNoteInfo(cell.notebook) ?? {}
@@ -886,15 +898,14 @@ export class ZeppelinKernel {
         }
 
         let config = vscode.workspace.getConfiguration('zeppelin');
-        let concurrency = config.get('execution.concurrency', 'parallel');
+        let concurrency = config.get('execution.concurrency', 'sequential');
         for (let cell of cells) {
+            logDebug(`execute in ${concurrency}`, cell);
             if (concurrency === 'parallel') {
-                logDebug("execute", cell);
                 this._doExecutionAsync(cell);
             }
             else {
                 let isSuccess = await this._executeMutex.runExclusive(async () => {
-                    logDebug("execute", cell);
                     return await this._doExecutionSync(cell);
                 });
                 if (!isSuccess) {
