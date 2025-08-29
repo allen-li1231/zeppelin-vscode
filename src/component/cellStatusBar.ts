@@ -124,6 +124,10 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
     }
 
     public async doUpdateAllInterpreterStatus() {
+        if (this._cellStatusUpdateMutex.isLocked()){
+            return;
+        }
+
         return this._cellStatusUpdateMutex.runExclusive(async () => {
             // It is safe to add elements or remove elements to a set while iterating it.
             // Supported in JavaScript 2015 (ES6)
