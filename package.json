@@ -211,6 +211,12 @@
           "type": "boolean",
           "default": true,
           "description": "Enable client verification. Note that this is otherwise unsafe when accessing a public endpoint."
+        },
+        "zeppelin.https.timeout": {
+          "order": 17,
+          "type": "number",
+          "default": 10,
+          "description": "Set global http timeout value."
         }
       }
     },

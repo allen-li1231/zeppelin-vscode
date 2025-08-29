@@ -171,13 +171,14 @@ export class ZeppelinKernel {
     setService(baseURL: string) {
         let userAgent = `${EXTENSION_NAME}/${getVersion(this._context)} vscode-extension/${vscode.version}`;
 
-        let service = new NotebookService(baseURL, userAgent, getProxy());
-
         let config = vscode.workspace.getConfiguration('zeppelin');
+        let timeout: number = config.get('https.timeout', 10);
         let caPath: string | undefined = config.get('https.CA-Certification');
         let keyPath: string | undefined = config.get('https.KeyPath');
         let passphase: string | undefined = config.get('https.passphase');
         let rejectUnauthorized = config.get('https.rejectUnauthorized', false);
+
+        let service = new NotebookService(baseURL, userAgent, getProxy(), timeout);
         service.setHttpsAgent(caPath, keyPath, passphase, rejectUnauthorized);
 
         this._service = service;

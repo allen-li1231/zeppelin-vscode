@@ -25,7 +25,8 @@ class BasicService {
     constructor(
         baseURL: string,
         userAgent: string,
-        proxy: AxiosProxyConfig | false | undefined = undefined
+        proxy: AxiosProxyConfig | false | undefined = undefined,
+        timeout: number = 0
     ) {
         this.baseURL = formatURL(baseURL);
 
@@ -48,6 +49,7 @@ class BasicService {
       this.cancelTokenSource = cancelTokenAxios;
       this.config = config;
 
+      this.session.defaults.timeout = timeout * 1000;
       this.session.defaults.headers.common["User-Agent"] = userAgent;
 
       // create request session based on config
@@ -177,8 +179,9 @@ export class NotebookService extends BasicService {
         baseUrl: string,
         userAgent: string,
         proxy: AxiosProxyConfig | false | undefined = undefined,
+        timeout: number = 0
     ) {
-        super(baseUrl, userAgent, proxy);
+        super(baseUrl, userAgent, proxy, timeout);
     }
 
     listNotes() {
@@ -364,7 +367,7 @@ export class NotebookService extends BasicService {
         );
     }
 
-    async runParagraph(noteId: string, paragraphId: string, sync: boolean = true, option?: any) {
+    async runParagraph(noteId: string, paragraphId: string, sync: boolean = true) {
         // let t = await this.listNotes();
         let url;
         if (sync) {
@@ -374,16 +377,11 @@ export class NotebookService extends BasicService {
             url = `/api/notebook/job/${encodeURIComponent(noteId)}/${encodeURIComponent(paragraphId)}`;
         }
 
-        let res;
-        if (option){
-            res = await this.session.post(
-                url,
-                option
-            );
-        }
-        else {
-            res = await this.session.post(url);
-        }
+        let res = await this.session.post(
+            url,
+            undefined,
+            sync ? {"timeout": 0} : undefined
+        );
 
         if (res instanceof AxiosError) {
             throw res;
