@@ -84,7 +84,7 @@ export class ExecutionManager
     {
         return this._mapTrackExecution.get(paragraphId)?.[0];
     }
-    
+
     public async trackExecution(
         execution: vscode.NotebookCellExecution,
         progressbar: Progress
@@ -262,7 +262,6 @@ export class ExecutionManager
             }
             execution.end(true, Date.now());
             return true;
-
         }
         catch (err)
         {
