@@ -386,6 +386,11 @@ export class ZeppelinKernel
         return res?.status === 200;
     }
 
+    public getExecutionByParagraphId(paragraphId: string)
+    {
+        return this._executionManager?.getExecutionByParagraphId(paragraphId);
+    }
+
     public registerParagraphUpdate(cell: vscode.NotebookCell)
     {
         if (!this._flagRegisterParagraphUpdate)

@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
 import { AxiosError } from 'axios';
 import { ZeppelinKernel } from '../extension/notebookKernel';
-import { reInterpreter, logDebug } from '../common/common';
+import { logDebug } from '../common/common';
 import { Mutex } from './mutex';
-import { parseParagraphToCellData } from '../common/parser';
+import { parseCellInterpreter, parseParagraphToCellData } from '../common/parser';
 
 
 export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvider {
@@ -69,7 +69,7 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
 
         }
 
-        let interpreterId = this._parseCellInterpreter(cell);
+        let interpreterId = parseCellInterpreter(cell);
         if (interpreterId === undefined) {
             return items;
         }
@@ -91,18 +91,6 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
         items.push(item);
 
         return items;
-    }
-
-    private _parseCellInterpreter(cell: vscode.NotebookCell) {
-        let interpreterIds = cell.document.getText().match(reInterpreter);
-        if (interpreterIds === null || interpreterIds.length === 0) {
-            return undefined;
-        }
-
-        let interpreterId = interpreterIds[1];
-        let rootIdx = interpreterId.indexOf('.');
-        interpreterId = rootIdx > 0 ? interpreterId.slice(0, rootIdx) : interpreterId;
-        return interpreterId;
     }
 
     private async _updateInterpreterStatus(interpreterId: string) {
@@ -138,7 +126,7 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
                     continue;
                 }
 
-                let interpreterId = this._parseCellInterpreter(cell);
+                let interpreterId = parseCellInterpreter(cell);
                 if (interpreterId === undefined) {
                     continue;
                 }

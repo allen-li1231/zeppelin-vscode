@@ -3,6 +3,7 @@ import {
     mapLanguage,
     mapLanguageKind,
     mapZeppelinLanguage,
+    reInterpreter,
     logDebug
 } from '../common/common';
 import {
@@ -11,6 +12,18 @@ import {
 	ParagraphResultMsg
 } from './types';
 
+
+export function parseCellInterpreter(cell: vscode.NotebookCell) {
+    let interpreterIds = cell.document.getText().match(reInterpreter);
+    if (interpreterIds === null || interpreterIds.length === 0) {
+        return undefined;
+    }
+
+    let interpreterId = interpreterIds[1];
+    let rootIdx = interpreterId.indexOf('.');
+    interpreterId = rootIdx > 0 ? interpreterId.slice(0, rootIdx) : interpreterId;
+    return interpreterId;
+}
 
 export function parseParagraphToCellData(
     paragraph: ParagraphData,
