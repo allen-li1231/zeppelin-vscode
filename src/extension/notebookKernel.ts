@@ -412,11 +412,7 @@ export class ZeppelinKernel
     public unregisterParagraphUpdate(cell: vscode.NotebookCell)
     {
         logDebug("unregisterParagraphUpdate", cell);
-        if (!this._mapUpdateParagraph.has(cell))
-        {
-            return this._mapUpdateParagraph.delete(cell);
-        }
-        return false;
+        return this._mapUpdateParagraph.delete(cell);
     }
 
     public async instantUpdatePollingParagraphs() {
@@ -636,6 +632,8 @@ export class ZeppelinKernel
             return;
         }
 
+        return await this._updateMutex.runExclusive(async () => {
+
         this._registerSyncNote(note);
         logDebug("syncNote start");
         let serverNote = await this.getNoteInfo(note);
@@ -650,15 +648,15 @@ export class ZeppelinKernel
             ? serverNote.paragraphs.map(parseParagraphToCellData)
             : [];
 
-        // need to unregister updates of cells to be deleted from syncing
-        for (let cell of note.getCells())
-        {
-            await this.unregisterParagraphUpdate(cell);
-        }
-
         let replaceRange = new vscode.NotebookRange(0, note.cellCount);
+
         await this.editWithoutParagraphUpdate(async () =>
         {
+            // need to unregister updates of cells to be deleted from syncing
+            for (let cell of note.getCells())
+            {
+                await this.unregisterParagraphUpdate(cell);
+            }
             await this.editNote(
                 note, replaceRange, serverCells,
                 undefined, undefined, undefined,
@@ -703,11 +701,11 @@ export class ZeppelinKernel
                     this._executionManager?.registerTrackExecution(newExecution);
                 }
             }
-            logDebug("syncNote end");
         }
     );
-
         this._unregisterSyncNote(note);
+        logDebug("syncNote end");
+    });
     }
 
     // public async syncNote(note: vscode.NotebookDocument | undefined) {
@@ -813,10 +811,9 @@ export class ZeppelinKernel
                 this._service?.deleteParagraph(
                     cell.notebook.metadata.id, cell.metadata.id
                 );
-                if (!this._mapUpdateParagraph.has(cell))
-                {
-                    this._mapUpdateParagraph.delete(cell);
-                }
+
+                this._mapUpdateParagraph.delete(cell);
+
                 logDebug(`updateParagraph: sync cell metadata`, cell);
                 await this.updateNoteMetadata(
                     cell.notebook,
