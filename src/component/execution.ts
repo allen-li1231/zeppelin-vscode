@@ -7,7 +7,7 @@ import { promptZeppelinServerURL, promptCreateParagraph
 } from '../common/interaction';
 import { parseCellInterpreter,
     parseParagraphResultToCellOutput } from '../common/parser';
-import { ParagraphData, ParagraphResult } from '../common/types';
+import { ParagraphData } from '../common/types';
 import { ZeppelinKernel } from '../extension/notebookKernel';
 
 
@@ -340,21 +340,24 @@ export class ExecutionManager
             const cellOutput = parseParagraphResultToCellOutput(
                 paragraph.results, pbText
             );
-            try{
-            execution.replaceOutput(new vscode.NotebookCellOutput(cellOutput));
+            try
+            {
+                execution.replaceOutput(new vscode.NotebookCellOutput(cellOutput));
             }
-            catch (err) {
+            catch (err)
+            {
                 logDebug("trackExecution error", err, execution);
             }
         }
         else if (paragraph.status !== "PENDING")
         {
             const pbOutput = vscode.NotebookCellOutputItem.stdout(pbText);
-            try{
-
-            execution.replaceOutput(new vscode.NotebookCellOutput([pbOutput]));
+            try
+            {
+                execution.replaceOutput(new vscode.NotebookCellOutput([pbOutput]));
             }
-            catch (err) {
+            catch (err)
+            {
                 logDebug("trackExecution error", err, execution);
             }
         }
