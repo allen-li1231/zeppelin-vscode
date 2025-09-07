@@ -30,6 +30,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		EXTENSION_NAME, cellStatusBar
 	);
 	kernel.cellStatusBar = cellStatusBar;
+	context.subscriptions.push(disposable);
 
 	disposable = vscode.commands.registerCommand(
 		'zeppelin-vscode.setZeppelinServerURL',
