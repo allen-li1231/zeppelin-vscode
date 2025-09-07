@@ -507,7 +507,7 @@ export async function promptCreateParagraph(
 	}
 
 	let selection = await vscode.window.showInformationMessage(
-		`The remote paragraph of the cell doesn't exist. 
+		`The remote paragraph of the cell ${cell.index} doesn't exist. 
 Do you wish to create the paragraph?`,
 		"Yes", "No"
 	);
@@ -518,8 +518,8 @@ Do you wish to create the paragraph?`,
 
 	try {
 		logDebug("promptCreateParagraph", cell);
-		await kernel.createParagraph(cell);
-		await kernel.updateByReplaceCell(cell);
+		return await kernel.createParagraph(cell);
+		// await kernel.updateByReplaceCell(cell);
 	}
 	catch (err) {
 		logDebug("promptCreateParagraph abort");
