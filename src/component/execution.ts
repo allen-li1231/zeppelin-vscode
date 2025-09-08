@@ -337,12 +337,24 @@ export class ExecutionManager
         // execution.setProgress(progress);
         if (paragraph.results)
         {
-            const cellOutput = parseParagraphResultToCellOutput(
-                paragraph.results, pbText
-            );
             try
             {
-                execution.replaceOutput(new vscode.NotebookCellOutput(cellOutput));
+                const cellOutput = parseParagraphResultToCellOutput(
+                    paragraph.results, pbText
+                );
+
+                // need to explicitly call clearOutput
+                // when the output is empty.
+                if (cellOutput.length === 0)
+                {
+                    execution.clearOutput();
+                }
+                else
+                {
+                    execution.replaceOutput(
+                        new vscode.NotebookCellOutput(cellOutput)
+                    );
+                }
             }
             catch (err)
             {
@@ -351,10 +363,12 @@ export class ExecutionManager
         }
         else if (paragraph.status !== "PENDING")
         {
-            const pbOutput = vscode.NotebookCellOutputItem.stdout(pbText);
             try
             {
-                execution.replaceOutput(new vscode.NotebookCellOutput([pbOutput]));
+                const pbOutput = vscode.NotebookCellOutputItem.stdout(pbText);
+                execution.replaceOutput(
+                    new vscode.NotebookCellOutput([pbOutput])
+                );
             }
             catch (err)
             {
