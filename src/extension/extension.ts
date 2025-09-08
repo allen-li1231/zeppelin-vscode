@@ -30,6 +30,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		EXTENSION_NAME, cellStatusBar
 	);
 	kernel.cellStatusBar = cellStatusBar;
+	context.subscriptions.push(disposable);
 
 	disposable = vscode.commands.registerCommand(
 		'zeppelin-vscode.setZeppelinServerURL',
@@ -145,17 +146,19 @@ export async function activate(context: vscode.ExtensionContext) {
 				if (cellAdded?.metadata.id !== undefined
 					&& cellAdded.metadata.id === cellRemoved?.metadata.id) {
 					logDebug("onDidChangeNotebookDocument: cellReplaced", cellAdded);
-					kernel.registerParagraphUpdate(cellAdded);
+					kernel.updateParagraph(cellAdded);
 				}
 				else {
-					// normal add/remove cell registering
+					// normal add/remove cell registeration
 					if (cellAdded !== undefined) {
-						logDebug("onDidChangeNotebookDocument: cellAdded", cellAdded);
-						kernel.registerParagraphUpdate(cellAdded);
+						logDebug("onDidChangeNotebookDocument: cellAdded", cellAdded.index);
+						// update right away,
+						// otherwise more added cell contaminate the indices
+						kernel.updateParagraph(cellAdded);
 					}
 					if (cellRemoved !== undefined) {
 						logDebug("onDidChangeNotebookDocument: cellRemoved", cellRemoved);
-						kernel.registerParagraphUpdate(cellRemoved);
+						kernel.updateParagraph(cellRemoved);
 					}
 				}
 			}

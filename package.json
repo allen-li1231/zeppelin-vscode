@@ -2,7 +2,7 @@
   "name": "zeppelin-vscode",
   "displayName": "Zeppelin Notebook",
   "description": "Apache Zeppelin Notebook Extension for VS Code",
-  "version": "0.2.17",
+  "version": "0.2.18",
   "publisher": "AllenLi1231",
   "author": {
     "name": "Allen Li"
@@ -128,13 +128,15 @@
         "zeppelin.execution.concurrency": {
           "order": 4,
           "type": "string",
-          "default": "sequential",
+          "default": "by interpreter",
           "enum": [
+            "by interpreter",
             "parallel",
             "sequential"
           ],
           "enumDescriptions": [
-            "Run muliple cells simultaneously",
+            "Executions are dispatched to interpreter, with concurrency determined by interpreter setting",
+            "Run multiple cells simultaneously",
             "Execute in order, new execution will be blocked before previous execution is finished"
           ],
           "description": "Set cell execution concurrency."
