@@ -229,9 +229,24 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 ## [0.2.17] - 2025-08-29
 
 ### Fixed
-- [Racing Condition in instant paragraph update](https://github.com/allen-li1231/zeppelin-vscode/commit/9ef6edba4eecd2982b482473c0ce067e8d04b7e9) in response to #26.
+- [Racing condition in instant paragraph update](https://github.com/allen-li1231/zeppelin-vscode/commit/9ef6edba4eecd2982b482473c0ce067e8d04b7e9) in response to #26.
 
 ### Enhancement
-- [Enrich Debug Logging](https://github.com/allen-li1231/zeppelin-vscode/commit/fd9de0fb243ce3ee782bcc02ad0b205e0dd734d4).
+- [Enrich debug logging](https://github.com/allen-li1231/zeppelin-vscode/commit/fd9de0fb243ce3ee782bcc02ad0b205e0dd734d4).
 - [Add http timeout setting](https://github.com/allen-li1231/zeppelin-vscode/commit/154a0b6f1298888815c8200bdf45fdee4f833b71).
 - [Improve interpreter status update strategy](https://github.com/allen-li1231/zeppelin-vscode/commit/780443aeb2a033bfb17f135aba93e960fc016ec0).
+
+
+## [0.2.18] - 2025-09-07
+
+### Fixed
+- [Fix bug that caused revisions in notebook get reverted](https://github.com/allen-li1231/zeppelin-vscode/commit/95e882dc58dc06da4e36480acb1b58b2d37b50af) in response to #29.
+- [Cell output not cleared when execution starts](https://github.com/allen-li1231/zeppelin-vscode/commit/0676c76cf5fc4d27642dececd64c6f4a3e83e398) in response to #30.
+- [Fix 'index out of bound' error when adding multiple cells in a high frequency](https://github.com/allen-li1231/zeppelin-vscode/commit/059a8d357da9f6331da11fe96ba35c6f4e437326).
+- [Leaking cell status bar item](https://github.com/allen-li1231/zeppelin-vscode/commit/92259c36fb90a00107fa35ffcd7144d675465d03).
+- [Fix paragraph deletion error when syncing notebook](https://github.com/allen-li1231/zeppelin-vscode/commit/13c939005882d89637d9e74b109b262c3fc68cce).
+
+### Enhancement
+- [New cell execution policy: 'by interpreter' dispatches executions to corresponding interpreter, with concurrency determined by interpreter setting on Zeppelin server](https://github.com/allen-li1231/zeppelin-vscode/commit/c642d8e89a7378877a322be11abfa7a4d7ca2e82), hopefully resolving #29.
+- [Improve creating paragraph prompt message](https://github.com/allen-li1231/zeppelin-vscode/commit/af8d9271d1cd15c95f2a57f73aaa1b663c036f60).
+- [Remove duplicated update operation during cell status bar updating](https://github.com/allen-li1231/zeppelin-vscode/commit/ee92a20827263993fab3d764eb134265984382ca).
