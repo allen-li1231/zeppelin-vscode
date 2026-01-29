@@ -241,8 +241,8 @@
         "zeppelin.https.timeout": {
           "order": 17,
           "type": "number",
-          "default": 10,
-          "description": "Set global http timeout value."
+          "default": 4000,
+          "description": "Set global http timeout value in seconds."
         }
       }
     },

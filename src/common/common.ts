@@ -21,7 +21,7 @@ mapLanguageKind.set('markdown', 1);
 
 // ref: https://github.com/apache/zeppelin/blob/8b8848ad82423eb5a56d93ec1e94a146f36754c2/zeppelin-web-angular/projects/zeppelin-sdk/src/interfaces/message-common.interface.ts#L22
 export const mapLanguage = new Map<string, string>([
-    ['', "plaintext"],
+    ['', "sql"],
     ["groovy", "groovy"],
     ["java", "java"],
     ["javascript", "javascript"],

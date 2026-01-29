@@ -11,6 +11,10 @@ import {
 	ParagraphResult,
 	ParagraphResultMsg
 } from './types';
+import {
+    isTableData,
+    formatTableOutput
+} from './tableFormatter';
 
 
 export function parseCellInterpreter(cell: vscode.NotebookCell) {
@@ -55,6 +59,8 @@ export function parseParagraphResultToCellOutput(
     let encoder = new TextEncoder();
     let textOutput = '', htmlOutput = '', errorOutput = '';
     let imageOutputs: Uint8Array[] = [];
+    let hasTableData = false;
+    
     for (let msg of results.msg ?? []) {
         if (msg.type === 'HTML') {
             htmlOutput += msg.data;
@@ -67,7 +73,22 @@ export function parseParagraphResultToCellOutput(
             errorOutput += msg.data;
         }
         else {
-            textOutput += msg.data;
+            // Check if this is table data (TABLE type from Zeppelin or %table format)
+            const isTABLE = msg.type === 'TABLE';
+            const hasTableFormat = msg.data && isTableData(msg.data);
+            
+            if (isTABLE || hasTableFormat) {
+                hasTableData = true;
+                const tableOutput = formatTableOutput(msg.data, results.code || 'table');
+                if (tableOutput) {
+                    outputs.push(tableOutput);
+                } else {
+                    // Fallback to text if table parsing fails
+                    textOutput += msg.data;
+                }
+            } else {
+                textOutput += msg.data;
+            }
         }
     }
 
@@ -102,10 +123,19 @@ export function parseParagraphResultToCellOutput(
         );
     }
 
-    if (progressbarText || textOutput.length > 0) {
+    // Only add text output if we haven't already added table output
+    if ((progressbarText || textOutput.length > 0) && !hasTableData) {
         outputs.push(
             new vscode.NotebookCellOutputItem(
                 encoder.encode((progressbarText ?? '') + textOutput),
+                'text/plain'
+            )
+        );
+    } else if (progressbarText && hasTableData) {
+        // If we have both progress bar and table, add progress bar separately
+        outputs.unshift(
+            new vscode.NotebookCellOutputItem(
+                encoder.encode(progressbarText),
                 'text/plain'
             )
         );
