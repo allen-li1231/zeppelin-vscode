@@ -475,12 +475,14 @@ export async function promptZeppelinCredential(kernel: ZeppelinKernel) {
 	if (note === undefined) {
 		kernel.deactivate();
 		await kernel.getContext().secrets.delete('zeppelinUsername');
+		await kernel.getContext().secrets.delete('zeppelinPassword');
 		kernel.checkInService(baseURL);
 		return;
 	}
 
-	// remove username so login procedure could be triggered
+	// remove username and password so login procedure could be triggered
 	await kernel.getContext().secrets.delete('zeppelinUsername');
+	await kernel.getContext().secrets.delete('zeppelinPassword');
 
 	// task when remote server is connectable.
 	kernel.checkInService(baseURL, async () => {
@@ -494,6 +496,32 @@ export async function promptZeppelinCredential(kernel: ZeppelinKernel) {
 			promptCreateNotebook(kernel, note);
 		}
 	});
+	});
+}
+
+
+// function that logs out from Zeppelin server
+export async function promptZeppelinLogout(kernel: ZeppelinKernel) {
+	return mutex.runExclusive(async () => {
+		const selection = await vscode.window.showInformationMessage(
+			'Are you sure you want to logout from Zeppelin server?',
+			"Yes", "No"
+		);
+		
+		if (selection !== 'Yes') {
+			return;
+		}
+
+		// Clear stored credentials
+		await kernel.getContext().secrets.delete('zeppelinUsername');
+		await kernel.getContext().secrets.delete('zeppelinPassword');
+
+		// Deactivate kernel (disconnect from server)
+		kernel.deactivate();
+
+		vscode.window.showInformationMessage(
+			'Successfully logged out from Zeppelin server. Credentials have been cleared.'
+		);
 	});
 }
 

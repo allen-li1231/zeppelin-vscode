@@ -47,6 +47,13 @@ export async function activate(context: vscode.ExtensionContext) {
 
 
 	disposable = vscode.commands.registerCommand(
+		'zeppelin-vscode.logout',
+		_ => interact.promptZeppelinLogout(kernel)
+	);
+	context.subscriptions.push(disposable);
+
+
+	disposable = vscode.commands.registerCommand(
 		'zeppelin-vscode.importCurrentNotebook',
 		_ => interact.promptCreateNotebook(
 			kernel, vscode.window.activeNotebookEditor?.notebook
