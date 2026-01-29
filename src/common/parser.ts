@@ -33,7 +33,7 @@ export function parseParagraphToCellData(
     paragraph: ParagraphData,
 ): vscode.NotebookCellData {
     let lang = paragraph.config?.editorSetting?.language ?? '';
-    lang = mapLanguage.get(lang) ?? "plaintext";
+    lang = mapLanguage.get(lang) ?? "sql";
     // default cell kind is markup language
     let kind: number = mapLanguageKind.get(lang) ?? vscode.NotebookCellKind.Code;
     // empty cell could have no text method, while NotebookCellData must have text value,
@@ -206,8 +206,8 @@ export function parseCellToParagraphData(
         : cell.document.getText();
 
     let languageId = cell instanceof vscode.NotebookCellData
-        ? mapZeppelinLanguage.get(cell.languageId) ?? "plain_text"
-        : mapZeppelinLanguage.get(cell.document.languageId) ?? "plain_text";
+        ? mapZeppelinLanguage.get(cell.languageId) ?? "sql"
+        : mapZeppelinLanguage.get(cell.document.languageId) ?? "sql";
 
     if (paragraph.id !== undefined) {
         if (paragraph.config === undefined) {

@@ -32,6 +32,7 @@ export const mapLanguage = new Map<string, string>([
     ["python", "python"],
     ["r", "r"],
     ["sql", "sql"],
+    ['plaintext', "plaintext"],
     ["markdown", "markdown"],
     ["pig", "pig"],
     ["sh", "shellscript"],

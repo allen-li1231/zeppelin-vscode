@@ -726,7 +726,7 @@ export class ZeppelinKernel
         let lineNumbers = vscode.workspace.getConfiguration("editor")
             .get("lineNumbers", vscode.TextEditorLineNumbersStyle.Off);
 
-		let lang = mapZeppelinLanguage.get(cell.document.languageId) ?? "plain_text";
+		let lang = mapZeppelinLanguage.get(cell.document.languageId) ?? "sql";
         let config = {
             "lineNumbers": lineNumbers !== vscode.TextEditorLineNumbersStyle.Off,
             "editorMode": `ace/mode/${lang}`,
@@ -776,7 +776,7 @@ export class ZeppelinKernel
             .get("lineNumbers", vscode.TextEditorLineNumbersStyle.Off)
             !== vscode.TextEditorLineNumbersStyle.Off;
 
-        let lang = mapZeppelinLanguage.get(cell.document.languageId) ?? "plain_text";
+        let lang = mapZeppelinLanguage.get(cell.document.languageId) ?? "sql";
         let config = {
             "lineNumbers": cell.metadata?.config.lineNumbers ?? lineNumbers,
             "editorMode": `ace/mode/${lang}`,
@@ -886,5 +886,54 @@ export class ZeppelinKernel
                 return await this._updateParagraph(cell);
             }
         );
+    }
+
+    /**
+     * Extracts the interpreter prefix (e.g., %spark_rajeswara-kaipa) from cell text
+     */
+    public getInterpreterFromCell(cell: vscode.NotebookCell): string | undefined {
+        const text = cell.document.getText();
+        // Match interpreter prefix like %spark_rajeswara-kaipa at the start
+        const match = text.match(/^[\s\n]*(%[\w\d\._-]+)/);
+        if (match && match[1]) {
+            return match[1];
+        }
+        return undefined;
+    }
+
+    /**
+     * Updates the text content of a cell
+     */
+    public async updateCellText(cell: vscode.NotebookCell, newText: string): Promise<boolean> {
+        const editor = new vscode.WorkspaceEdit();
+        const fullRange = new vscode.Range(
+            cell.document.positionAt(0),
+            cell.document.positionAt(cell.document.getText().length)
+        );
+        editor.replace(cell.document.uri, fullRange, newText);
+        return vscode.workspace.applyEdit(editor);
+    }
+
+    /**
+     * Handles newly added cell: inherits interpreter from above cell
+     */
+    public async handleNewCellAdded(cell: vscode.NotebookCell): Promise<void> {
+        const notebook = cell.notebook;
+        const cellIndex = cell.index;
+        const cellText = cell.document.getText().trim();
+
+        // Only process if the cell is empty (new cell)
+        if (cellText.length === 0 && cellIndex > 0) {
+            // Get the previous cell
+            const previousCell = notebook.cellAt(cellIndex - 1);
+            if (previousCell) {
+                const interpreterPrefix = this.getInterpreterFromCell(previousCell);
+                if (interpreterPrefix) {
+                    // Update the new cell with the interpreter prefix
+                    await this.updateCellText(cell, interpreterPrefix + '\n');
+                    logDebug(`Inherited interpreter from previous cell: ${interpreterPrefix}`);
+                }
+            }
+        }
     }
 }

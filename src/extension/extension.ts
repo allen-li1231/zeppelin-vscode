@@ -159,6 +159,10 @@ export async function activate(context: vscode.ExtensionContext) {
 					// normal add/remove cell registeration
 					if (cellAdded !== undefined) {
 						logDebug("onDidChangeNotebookDocument: cellAdded", cellAdded.index);
+						
+						// Inherit interpreter from above cell for new empty cells
+						kernel.handleNewCellAdded(cellAdded);
+						
 						// update right away,
 						// otherwise more added cell contaminate the indices
 						kernel.updateParagraph(cellAdded);
@@ -211,7 +215,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			if (cell.document !== event.textEditor.document) {
 				continue;
 			}
-			let lang = mapZeppelinLanguage.get(cell.document.languageId) ?? "plain_text";
+			let lang = mapZeppelinLanguage.get(cell.document.languageId) ?? "sql";
 			let res: boolean = await kernel.updateCellMetadata(cell, {
 				config: {
 					"lineNumbers": lineNumbers,
