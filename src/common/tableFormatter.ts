@@ -205,19 +205,110 @@ export function formatTableAsHTML(tableData: TableData, tableId: string = 'table
         vertical-align: top;
         transition: all 0.2s ease;
         user-select: text;
+        position: relative;
+    }
+    
+    .zeppelin-table td .cell-content {
+        display: block;
         cursor: pointer;
+        min-height: 24px;
+    }
+    
+    .zeppelin-table td:hover .cell-content {
+        padding-right: 30px;
+    }
+    
+    .zeppelin-table td .cell-copy-btn {
+        display: none;
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        background: var(--vscode-button-background);
+        color: var(--vscode-button-foreground);
+        border: none;
+        border-radius: 3px;
+        padding: 2px 4px;
+        font-size: 11px;
+        cursor: pointer;
+        z-index: 10;
+        opacity: 0;
+        transition: opacity 0.2s, background 0.2s;
+        line-height: 1;
+    }
+    
+    .zeppelin-table td .cell-copy-btn:hover {
+        opacity: 1 !important;
+        background: var(--vscode-button-hoverBackground);
+    }
+    
+    .zeppelin-table td:hover .cell-copy-btn {
+        display: inline-block;
+        opacity: 0.85;
+    }
+    
+    .zeppelin-table td.copied {
+        background: #28a745 !important;
+        color: white !important;
+        transition: all 0.3s ease;
+    }
+    
+    .zeppelin-table td.copied .cell-copy-btn {
+        background: #28a745 !important;
+        color: white !important;
     }
     
     .zeppelin-table td.expanded {
         white-space: pre-wrap !important;
-        max-width: none !important;
+        max-width: 800px !important;
+        min-width: 300px !important;
         overflow: visible !important;
-        background: var(--vscode-editor-selectionBackground) !important;
-        font-weight: 500;
+        background: var(--vscode-editor-background) !important;
         border: 2px solid var(--vscode-focusBorder) !important;
-        box-shadow: 0 0 8px rgba(0, 0, 0, 0.2);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
         z-index: 100;
         position: relative;
+        font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+        font-size: 12px;
+        line-height: 1.5;
+        padding: 12px 16px !important;
+        word-break: break-word;
+    }
+    
+    .zeppelin-table td.expanded .cell-content {
+        display: block;
+        max-height: 400px;
+        overflow-y: auto;
+        padding-right: 40px;
+    }
+    
+    .zeppelin-table td.expanded .cell-content.formatted-sql {
+        color: var(--vscode-editor-foreground);
+    }
+    
+    .zeppelin-table td.expanded .cell-copy-btn {
+        display: inline-block !important;
+        opacity: 1 !important;
+        top: 8px;
+        right: 8px;
+    }
+    
+    .zeppelin-table td.expanded .format-sql-btn {
+        display: inline-block !important;
+        position: absolute;
+        top: 8px;
+        right: 40px;
+        background: var(--vscode-button-secondaryBackground);
+        color: var(--vscode-button-secondaryForeground);
+        border: none;
+        border-radius: 3px;
+        padding: 2px 6px;
+        font-size: 10px;
+        cursor: pointer;
+        z-index: 11;
+    }
+    
+    .format-sql-btn {
+        display: none;
     }
     
     .zeppelin-table td:hover:not(.expanded) {
@@ -339,14 +430,18 @@ ${headers.map(h => `                    <th>${escapeHtml(h)}</th>`).join('\n')}
             </thead>
             <tbody>
 ${rows.map(row => `                <tr>
-${row.map(cell => `                    <td onclick="this.classList.toggle('expanded')" title="Click to expand/collapse">${escapeHtml(cell)}</td>`).join('\n')}
+${row.map(cell => `                    <td class="table-cell-with-copy" title="Click to expand/collapse, or click copy button to copy this cell" data-raw="${escapeHtmlAttr(cell)}">
+                        <span class="cell-content">${escapeHtml(cell)}</span>
+                        <button class="format-sql-btn" title="Format as SQL">Format</button>
+                        <button class="cell-copy-btn" title="Copy this cell">📋</button>
+                    </td>`).join('\n')}
                 </tr>`).join('\n')}
             </tbody>
         </table>
     </div>
     
     <div class="zeppelin-table-footer">
-        Click any cell to expand • Use Export CSV or Copy button to get data
+        Hover over any cell to see copy button (📋) • Click cell to expand/collapse • Click copy button to copy individual cell value
     </div>
 </div>
 
@@ -488,6 +583,200 @@ ${row.map(cell => `                    <td onclick="this.classList.toggle('expan
             copyToClipboard(csvContent, copyBtn);
         });
     }
+    
+    // Individual cell copy functionality
+    var container = document.getElementById(uniqueId);
+    if (container) {
+        // Get all table cells
+        var tableCells = container.querySelectorAll('.table-cell-with-copy');
+        
+        tableCells.forEach(function(cell) {
+            var copyButton = cell.querySelector('.cell-copy-btn');
+            var formatButton = cell.querySelector('.format-sql-btn');
+            var cellContent = cell.querySelector('.cell-content');
+            
+            // Store original content for reset
+            var originalContent = cellContent.innerHTML;
+            
+            // Handle cell click for expand/collapse (on the cell itself)
+            cell.addEventListener('click', function(e) {
+                // Don't toggle if clicking on buttons
+                if (e.target.classList.contains('cell-copy-btn') || 
+                    e.target.classList.contains('format-sql-btn')) {
+                    return;
+                }
+                
+                var isExpanded = cell.classList.contains('expanded');
+                
+                if (isExpanded) {
+                    // Collapsing - reset to original content
+                    cell.classList.remove('expanded');
+                    cellContent.innerHTML = originalContent;
+                    cellContent.classList.remove('formatted-sql');
+                    
+                    // Reset format button
+                    var formatBtn = cell.querySelector('.format-sql-btn');
+                    if (formatBtn) {
+                        formatBtn.textContent = 'Format';
+                        formatBtn.disabled = false;
+                    }
+                } else {
+                    // Expanding
+                    cell.classList.add('expanded');
+                }
+            });
+            
+            // Handle copy button click
+            if (copyButton) {
+                copyButton.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    
+                    // Get the raw text from data attribute (original unformatted value)
+                    var textToCopy = cell.getAttribute('data-raw') || cellContent.textContent || '';
+                    
+                    // Copy to clipboard
+                    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                        navigator.clipboard.writeText(textToCopy)
+                            .then(function() {
+                                showCellCopyFeedback(cell, true);
+                            })
+                            .catch(function() {
+                                fallbackCopy(textToCopy, cell);
+                            });
+                    } else {
+                        fallbackCopy(textToCopy, cell);
+                    }
+                });
+            }
+            
+        });
+    }
+    
+    // Fallback copy method for individual cells
+    function fallbackCopy(text, cell) {
+        var textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.cssText = 'position:fixed;top:0;left:0;width:2em;height:2em;padding:0;border:none;';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        
+        try {
+            var success = document.execCommand('copy');
+            showCellCopyFeedback(cell, success);
+        } catch (err) {
+            showCellCopyFeedback(cell, false);
+        }
+        
+        document.body.removeChild(textarea);
+    }
+    
+    // Show visual feedback when cell is copied
+    function showCellCopyFeedback(cell, success) {
+        if (success) {
+            var originalBg = cell.style.background;
+            cell.classList.add('copied');
+            
+            setTimeout(function() {
+                cell.classList.remove('copied');
+            }, 800);
+        } else {
+            alert('Failed to copy cell content. Please select and copy manually.');
+        }
+    }
+    
+    // SQL formatting function
+    function formatSQL(text) {
+        if (!text) return text;
+        
+        var formatted = text;
+        
+        // Add newlines before major SQL keywords
+        var keywords = [
+            'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'JOIN', 'LEFT JOIN', 'RIGHT JOIN', 
+            'INNER JOIN', 'OUTER JOIN', 'ON', 'GROUP BY', 'ORDER BY', 'HAVING', 
+            'LIMIT', 'OFFSET', 'UNION', 'INSERT', 'UPDATE', 'DELETE', 'SET',
+            'CREATE TABLE', 'ALTER TABLE', 'DROP TABLE', 'CREATE VIEW',
+            'USING', 'PARTITIONED BY', 'LOCATION', 'TBLPROPERTIES', 'WITH'
+        ];
+        
+        // Sort by length (longest first) to avoid partial matches
+        keywords.sort(function(a, b) { return b.length - a.length; });
+        
+        keywords.forEach(function(kw) {
+            var regex = new RegExp('\\\\s+(' + kw + ')\\\\b', 'gi');
+            formatted = formatted.replace(regex, '\\n$1');
+        });
+        
+        // Add newlines after commas in SELECT clause (but not inside parentheses)
+        var inParen = 0;
+        var result = '';
+        for (var i = 0; i < formatted.length; i++) {
+            var char = formatted[i];
+            if (char === '(') inParen++;
+            else if (char === ')') inParen--;
+            
+            result += char;
+            
+            // Add newline after comma if not in parentheses
+            if (char === ',' && inParen === 0) {
+                result += '\\n  ';
+            }
+        }
+        formatted = result;
+        
+        // Add indentation for better readability
+        var lines = formatted.split('\\n');
+        var indentLevel = 0;
+        formatted = lines.map(function(line) {
+            var trimmed = line.trim();
+            
+            // Decrease indent for closing keywords
+            if (trimmed.match(/^(FROM|WHERE|GROUP|ORDER|HAVING|LIMIT|\\))/i)) {
+                indentLevel = Math.max(0, indentLevel - 1);
+            }
+            
+            var indent = '  '.repeat(indentLevel);
+            
+            // Increase indent after opening keywords
+            if (trimmed.match(/^(SELECT|FROM|WHERE|\\()/i)) {
+                indentLevel++;
+            }
+            
+            return indent + trimmed;
+        }).join('\\n');
+        
+        return formatted;
+    }
+    
+    // Handle format button clicks
+    var formatButtons = container.querySelectorAll('.format-sql-btn');
+    formatButtons.forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            
+            var cell = btn.closest('.table-cell-with-copy');
+            var cellContent = cell.querySelector('.cell-content');
+            var rawText = cell.getAttribute('data-raw') || cellContent.textContent;
+            
+            // Format the SQL
+            var formattedSQL = formatSQL(rawText);
+            
+            // Update the display
+            cellContent.innerHTML = '<pre style="margin:0;white-space:pre-wrap;font-family:inherit;">' + 
+                formattedSQL.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</pre>';
+            cellContent.classList.add('formatted-sql');
+            
+            // Expand the cell if not already expanded
+            if (!cell.classList.contains('expanded')) {
+                cell.classList.add('expanded');
+            }
+            
+            // Change button text
+            btn.textContent = 'Formatted';
+            btn.disabled = true;
+        });
+    });
 })();
 </script>
 `;
@@ -537,6 +826,25 @@ function escapeHtml(text: string): string {
     };
     
     return str.replace(/[&<>"']/g, (char) => htmlEscapes[char]);
+}
+
+/**
+ * Escape text for HTML attribute values
+ */
+function escapeHtmlAttr(text: string): string {
+    if (text == null || text === undefined) {
+        return '';
+    }
+    
+    const str = String(text);
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/\n/g, '&#10;')
+        .replace(/\r/g, '&#13;');
 }
 
 /**

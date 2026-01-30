@@ -267,9 +267,33 @@
       {
         "command": "zeppelin-vscode.restartInterpreter",
         "title": "Zeppelin: restart a interpreter"
+      },
+      {
+        "command": "zeppelin-vscode.restartNotebookInterpreter",
+        "title": "Restart Interpreter",
+        "icon": "$(debug-restart)"
+      },
+      {
+        "command": "zeppelin-vscode.copyCellContent",
+        "title": "Zeppelin: Copy Cell Content to Clipboard",
+        "icon": "$(copy)"
       }
     ],
     "menus": {
+      "notebook/toolbar": [
+        {
+          "command": "zeppelin-vscode.restartNotebookInterpreter",
+          "when": "notebookType == 'zeppelin-notebook'",
+          "group": "navigation"
+        }
+      ],
+      "notebook/cell/title": [
+        {
+          "command": "zeppelin-vscode.copyCellContent",
+          "when": "notebookType == 'zeppelin-notebook'",
+          "group": "inline@1"
+        }
+      ],
       "commandPalette": [
         {
           "command": "zeppelin-vscode.importCurrentNotebook",
@@ -287,6 +311,14 @@
         {
           "command": "zeppelin-vscode.restartInterpreter",
           "when": "resourceExtname == .zpln || resourceExtname == .ipynb"
+        },
+        {
+          "command": "zeppelin-vscode.restartNotebookInterpreter",
+          "when": "false"
+        },
+        {
+          "command": "zeppelin-vscode.copyCellContent",
+          "when": "false"
         }
       ]
     }

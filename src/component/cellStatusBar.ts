@@ -35,6 +35,19 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
         logDebug("before update CellStatusBar");
         this._setCell.add(cell);
         const items: vscode.NotebookCellStatusBarItem[] = [];
+        
+        // Add copy cell content button
+        const copyItem = new vscode.NotebookCellStatusBarItem(
+            '$(copy)',
+            vscode.NotebookCellStatusBarAlignment.Right,
+        );
+        copyItem.command = <vscode.Command> {
+            title: '$(copy)',
+            command: 'zeppelin-vscode.copyCellContent',
+            arguments: [cell],
+        };
+        copyItem.tooltip = 'Copy cell content to clipboard';
+        items.push(copyItem);
 
         // status === string: normal status
         // status === undefined: cannot reach remote server

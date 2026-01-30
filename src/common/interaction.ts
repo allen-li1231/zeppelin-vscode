@@ -604,3 +604,94 @@ export async function promptRestartInterpreter(
 		vscode.window.showInformationMessage(`Interpreter "${interpreterId}" restarted.`);
 	}
 }
+
+
+// function that prompts user to restart interpreter from the notebook toolbar
+export async function promptRestartNotebookInterpreter(kernel: ZeppelinKernel) {
+	if (!kernel.isActive()) {
+		vscode.window.showWarningMessage('Not connected to any Zeppelin server');
+		return;
+	}
+
+	const note = vscode.window.activeNotebookEditor?.notebook;
+	if (!note || note.cellCount === 0) {
+		vscode.window.showWarningMessage('No active notebook found');
+		return;
+	}
+
+	// Extract interpreter IDs from cells in the notebook
+	const interpreterIds = new Set<string>();
+	for (let i = 0; i < note.cellCount; i++) {
+		const cell = note.cellAt(i);
+		if (cell.kind === vscode.NotebookCellKind.Code) {
+			const text = cell.document.getText();
+			// Match interpreter prefix like %spark_rajeswara-kaipa
+			const match = text.match(/^[\s\n]*%([^\s\n]+)/);
+			if (match && match[1]) {
+				// Extract interpreter name without dot notation
+				let interpreterId = match[1];
+				let rootIdx = interpreterId.indexOf('.');
+				interpreterId = rootIdx > 0 ? interpreterId.slice(0, rootIdx) : interpreterId;
+				interpreterIds.add(interpreterId);
+			}
+		}
+	}
+
+	if (interpreterIds.size === 0) {
+		const selection = await vscode.window.showInputBox({
+			title: 'No interpreter found in cells. Please specify interpreter name:',
+			placeHolder: 'e.g., spark_username'
+		});
+		
+		if (!selection || selection.trim().length === 0) {
+			return;
+		}
+		interpreterIds.add(selection.trim());
+	}
+
+	// If multiple interpreters found, let user choose
+	let selectedInterpreter: string;
+	if (interpreterIds.size === 1) {
+		selectedInterpreter = Array.from(interpreterIds)[0];
+	} else {
+		const selection = await vscode.window.showQuickPick(
+			Array.from(interpreterIds),
+			{
+				title: 'Select interpreter to restart',
+				placeHolder: 'Choose an interpreter'
+			}
+		);
+		
+		if (!selection) {
+			return;
+		}
+		selectedInterpreter = selection;
+	}
+
+	// Confirm restart
+	const confirmation = await vscode.window.showInformationMessage(
+		`Restart interpreter "${selectedInterpreter}"?`,
+		"Yes", "No"
+	);
+
+	if (confirmation !== "Yes") {
+		return;
+	}
+
+	// Restart the interpreter
+	const res = await kernel.getService()?.restartInterpreter(selectedInterpreter);
+	if (res === undefined) {
+		return;
+	}
+	if (res instanceof AxiosError) {
+		if (!res.response) {
+			vscode.window.showErrorMessage(`Failed to restart interpreter "${selectedInterpreter}"`);
+		} else {
+			vscode.window.showErrorMessage(`Failed to restart interpreter "${selectedInterpreter}": ${res.response.data}`);
+		}
+	} else if (res.status !== 200) {
+		vscode.window.showWarningMessage(res.statusText);
+	} else {
+		vscode.window.showInformationMessage(`Interpreter "${selectedInterpreter}" restarted successfully.`);
+	}
+}

@@ -15,6 +15,10 @@ import {
     isTableData,
     formatTableOutput
 } from './tableFormatter';
+import {
+    formatTextOutput,
+    shouldUseEnhancedTextFormat
+} from './textFormatter';
 
 
 export function parseCellInterpreter(cell: vscode.NotebookCell) {
@@ -125,20 +129,42 @@ export function parseParagraphResultToCellOutput(
 
     // Only add text output if we haven't already added table output
     if ((progressbarText || textOutput.length > 0) && !hasTableData) {
-        outputs.push(
-            new vscode.NotebookCellOutputItem(
-                encoder.encode((progressbarText ?? '') + textOutput),
-                'text/plain'
-            )
-        );
+        const fullText = (progressbarText ?? '') + textOutput;
+        
+        // Use enhanced text formatter for multi-line or complex output
+        if (shouldUseEnhancedTextFormat(fullText)) {
+            outputs.push(formatTextOutput(fullText, {
+                showWhitespace: false,
+                maxLines: 50,
+                collapsible: true,
+                wordWrap: true
+            }));
+        } else {
+            // For simple output, use plain text
+            outputs.push(
+                new vscode.NotebookCellOutputItem(
+                    encoder.encode(fullText),
+                    'text/plain'
+                )
+            );
+        }
     } else if (progressbarText && hasTableData) {
         // If we have both progress bar and table, add progress bar separately
-        outputs.unshift(
-            new vscode.NotebookCellOutputItem(
-                encoder.encode(progressbarText),
-                'text/plain'
-            )
-        );
+        if (shouldUseEnhancedTextFormat(progressbarText)) {
+            outputs.unshift(formatTextOutput(progressbarText, {
+                showWhitespace: false,
+                maxLines: 20,
+                collapsible: false,
+                wordWrap: true
+            }));
+        } else {
+            outputs.unshift(
+                new vscode.NotebookCellOutputItem(
+                    encoder.encode(progressbarText),
+                    'text/plain'
+                )
+            );
+        }
     }
 
     return outputs;

@@ -70,8 +70,39 @@ export async function activate(context: vscode.ExtensionContext) {
 
 
 	disposable = vscode.commands.registerCommand(
+		'zeppelin-vscode.restartNotebookInterpreter',
+		() => interact.promptRestartNotebookInterpreter(kernel)
+	);
+	context.subscriptions.push(disposable);
+
+
+	disposable = vscode.commands.registerCommand(
 		'zeppelin-vscode.createMissingParagraph',
 		_.partial(interact.promptCreateParagraph, kernel)
+	);
+	context.subscriptions.push(disposable);
+
+
+	disposable = vscode.commands.registerCommand(
+		'zeppelin-vscode.copyCellContent',
+		async (cell?: vscode.NotebookCell) => {
+			// If cell is not provided, try to get the active cell
+			if (!cell) {
+				const activeEditor = vscode.window.activeNotebookEditor;
+				if (activeEditor && activeEditor.selection) {
+					const cellIndex = activeEditor.selection.start;
+					cell = activeEditor.notebook.cellAt(cellIndex);
+				}
+			}
+			
+			if (cell) {
+				const content = cell.document.getText();
+				await vscode.env.clipboard.writeText(content);
+				vscode.window.showInformationMessage('✓ Cell content copied to clipboard!');
+			} else {
+				vscode.window.showWarningMessage('No cell selected to copy');
+			}
+		}
 	);
 	context.subscriptions.push(disposable);
 
