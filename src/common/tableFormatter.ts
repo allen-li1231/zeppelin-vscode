@@ -441,7 +441,7 @@ ${row.map(cell => `                    <td class="table-cell-with-copy" title="C
     </div>
     
     <div class="zeppelin-table-footer">
-        Hover over any cell to see copy button (📋) • Click cell to expand/collapse • Click copy button to copy individual cell value
+        . Click cell to expand/collapse and copy individual cell value
     </div>
 </div>
 

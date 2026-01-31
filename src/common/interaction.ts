@@ -331,9 +331,37 @@ export async function promptCreateNotebook(
 	}
 
 	return mutex.runExclusive(async () => {
-	// take name in metadata, or note path base name as name of new note
-	var name = note.metadata.name ?? note.uri.path.replace(/\.[^.]+$/, '');
+	// Use workspace-relative path as the default (like Zeppelin web UI)
+	// This ensures the path is based on current directory
+	var name = note.metadata.name ?? kernel.getWorkspaceRelativePath(note.uri);
 	let baseName = name.split('/').pop();
+
+	// First, check if notebook with this path already exists on server
+	// If it does, connect to it instead of creating a new one
+	let existingNote = await kernel.findNoteByPath(name);
+	if (existingNote) {
+		logDebug("Found existing notebook on server with same path", existingNote);
+		
+		// Connect to the existing notebook instead of creating new
+		await kernel.updateNoteMetadata(note, { 
+			id: existingNote.id,
+			name: existingNote.path,
+			path: existingNote.path
+		});
+		
+		vscode.window.showInformationMessage(
+			`Connected to existing notebook "${existingNote.path}" on server`
+		);
+		
+		// Sync the notebook to get latest content from server
+		kernel.syncNote(note);
+		
+		if (onCreateSuccess !== undefined) {
+			onCreateSuccess();
+		}
+		
+		return true;
+	}
 
 	let visibleNotes = await kernel.listNotes();
 
@@ -364,7 +392,7 @@ export async function promptCreateNotebook(
 	// remove suffix
 	quickPick.value = name;
 	quickPick.title = `Specify path to save
-		 new notebook "${name}" to Zeppelin server`;
+		 new notebook "${baseName}" to Zeppelin server`;
 	quickPick.ignoreFocusOut = true;
 	quickPick.items = visiblePaths.map(value => { return { label: value }; });
 
@@ -376,11 +404,56 @@ export async function promptCreateNotebook(
 
 		let newNotebookPath = quickPick.value;
 		if (!!newNotebookPath){
+			// Normalize path: ensure it starts with '/'
+			if (!newNotebookPath.startsWith('/')) {
+				newNotebookPath = '/' + newNotebookPath;
+			}
+
+			// Check again if notebook with this path exists (user might have changed the path)
+			let existingNoteForPath = await kernel.findNoteByPath(newNotebookPath);
+			if (existingNoteForPath) {
+				logDebug("Found existing notebook for specified path", existingNoteForPath);
+				
+				// Connect to the existing notebook instead of creating new
+				await kernel.updateNoteMetadata(note, { 
+					id: existingNoteForPath.id,
+					name: existingNoteForPath.path,
+					path: existingNoteForPath.path
+				});
+				
+				vscode.window.showInformationMessage(
+					`Connected to existing notebook "${existingNoteForPath.path}" on server`
+				);
+				
+				// Sync the notebook to get latest content from server
+				kernel.syncNote(note);
+				
+				if (onCreateSuccess !== undefined) {
+					onCreateSuccess();
+				}
+				
+				quickPick.hide();
+				return;
+			}
+
 			let noteId: string;
 
 			try {
 				if (note.metadata.id === undefined) {
 					let paragraphs = note.getCells().map(parseCellToParagraphData);
+					
+					// SAFETY CHECK: Warn if creating empty notebook
+					if (paragraphs.length === 0) {
+						const confirm = await vscode.window.showWarningMessage(
+							`Local notebook is empty. Are you sure you want to create an empty notebook on the server?`,
+							"Yes, Create Empty", "Cancel"
+						);
+						if (confirm !== "Yes, Create Empty") {
+							quickPick.hide();
+							return;
+						}
+					}
+					
 					noteId = await kernel.createNote(newNotebookPath, paragraphs);
 				}
 				else {
@@ -394,11 +467,17 @@ export async function promptCreateNotebook(
 				return;
 			}
 
-			if (onCreateSuccess !== undefined) {
-				onCreateSuccess();
-			}
+			if (noteId) {
+				if (onCreateSuccess !== undefined) {
+					onCreateSuccess();
+				}
 
-			kernel.updateNoteMetadata(note, { id: noteId });
+				kernel.updateNoteMetadata(note, { id: noteId, name: newNotebookPath, path: newNotebookPath });
+				
+				vscode.window.showInformationMessage(
+					`Created notebook "${newNotebookPath}" on server`
+				);
+			}
 		}
 
 		quickPick.hide();

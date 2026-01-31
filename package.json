@@ -241,8 +241,8 @@
         "zeppelin.https.timeout": {
           "order": 17,
           "type": "number",
-          "default": 4000,
-          "description": "Set global http timeout value in seconds."
+          "default": 60,
+          "description": "Set global http timeout value in seconds. Default is 60 seconds. Set to 0 for no timeout (not recommended)."
         }
       }
     },
@@ -277,10 +277,20 @@
         "command": "zeppelin-vscode.copyCellContent",
         "title": "Zeppelin: Copy Cell Content to Clipboard",
         "icon": "$(copy)"
+      },
+      {
+        "command": "zeppelin-vscode.refreshNotebook",
+        "title": "Refresh Notebook",
+        "icon": "$(refresh)"
       }
     ],
     "menus": {
       "notebook/toolbar": [
+        {
+          "command": "zeppelin-vscode.refreshNotebook",
+          "when": "notebookType == 'zeppelin-notebook'",
+          "group": "navigation"
+        },
         {
           "command": "zeppelin-vscode.restartNotebookInterpreter",
           "when": "notebookType == 'zeppelin-notebook'",
@@ -319,6 +329,10 @@
         {
           "command": "zeppelin-vscode.copyCellContent",
           "when": "false"
+        },
+        {
+          "command": "zeppelin-vscode.refreshNotebook",
+          "when": "resourceExtname == .zpln"
         }
       ]
     }

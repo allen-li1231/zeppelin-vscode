@@ -76,6 +76,38 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(disposable);
 
 
+	// Command to manually refresh/resync the notebook
+	disposable = vscode.commands.registerCommand(
+		'zeppelin-vscode.refreshNotebook',
+		async () => {
+			const note = vscode.window.activeNotebookEditor?.notebook;
+			if (!note) {
+				vscode.window.showWarningMessage('No active notebook to refresh');
+				return;
+			}
+			
+			if (!kernel.isActive()) {
+				vscode.window.showWarningMessage('Not connected to Zeppelin server');
+				return;
+			}
+
+			vscode.window.showInformationMessage('Refreshing notebook from server...');
+			
+			// First check connection health
+			const isHealthy = await kernel.forceConnectionCheck();
+			if (!isHealthy) {
+				vscode.window.showErrorMessage('Cannot connect to Zeppelin server. Please check your network connection.');
+				return;
+			}
+			
+			// Sync the notebook
+			await kernel.syncNote(note);
+			vscode.window.showInformationMessage('Notebook refreshed successfully');
+		}
+	);
+	context.subscriptions.push(disposable);
+
+
 	disposable = vscode.commands.registerCommand(
 		'zeppelin-vscode.createMissingParagraph',
 		_.partial(interact.promptCreateParagraph, kernel)
@@ -140,20 +172,46 @@ export async function activate(context: vscode.ExtensionContext) {
 				'currentZeppelinServerURL', undefined
 			);
 			kernel.checkInService(baseURL, async () => {
-				// task when remote server is connectable but the note is not on it.
+				// task when remote server is connectable
+				// First check if notebook exists on server by ID
 				if (await kernel.hasNote(note.metadata.id)) {
 					if (selection === null) {
 						// ask if connect automatically from now on.
 						interact.promptAlwaysConnect();
 					}
-					//kernel.syncNote(note);
+					// Sync the notebook to get latest content
+					kernel.syncNote(note);
 				}
 				else {
-					// import/create identical note when there doesn't exist one.
-					interact.promptCreateNotebook(kernel, note, 
-						selection === null
-						? interact.promptAlwaysConnect
-						: undefined);
+					// Notebook doesn't exist by ID, check by path
+					// This handles the case where the notebook exists on server
+					// but the local file doesn't have the ID yet
+					const workspacePath = kernel.getWorkspaceRelativePath(note.uri);
+					const existingNote = await kernel.findNoteByPath(workspacePath);
+					
+					if (existingNote) {
+						// Found notebook by path - connect to it
+						logDebug("Found existing notebook by path:", existingNote);
+						await kernel.updateNoteMetadata(note, {
+							id: existingNote.id,
+							name: existingNote.path,
+							path: existingNote.path
+						});
+						
+						if (selection === null) {
+							interact.promptAlwaysConnect();
+						}
+						
+						// Sync to get latest content from server
+						kernel.syncNote(note);
+					}
+					else {
+						// Notebook doesn't exist on server - prompt to create/import
+						interact.promptCreateNotebook(kernel, note, 
+							selection === null
+							? interact.promptAlwaysConnect
+							: undefined);
+					}
 				}
 			});
 		}
@@ -164,6 +222,32 @@ export async function activate(context: vscode.ExtensionContext) {
 	disposable = vscode.workspace.onDidChangeNotebookDocument(event => {
 		if (!event.notebook.uri.fsPath.endsWith(NOTEBOOK_SUFFIX)
 			|| !kernel.isActive()) {
+			return;
+		}
+
+		// SAFETY CHECK: Don't sync changes if connection is unhealthy
+		if (!kernel.isConnectionHealthy()) {
+			logDebug("onDidChangeNotebookDocument: skipping - connection unhealthy");
+			return;
+		}
+
+		// SAFETY CHECK: Count total removals - if too many, block to prevent data loss
+		let totalRemovals = 0;
+		for (let contentChange of event.contentChanges) {
+			totalRemovals += contentChange.removedCells.length;
+		}
+		
+		// If removing more than 3 cells at once, and notebook will be empty/near-empty, block it
+		const resultingCellCount = event.notebook.cellCount;
+		if (totalRemovals > 3 && resultingCellCount <= 1) {
+			logDebug("onDidChangeNotebookDocument: BLOCKED bulk deletion", {
+				removals: totalRemovals,
+				resultingCellCount
+			});
+			vscode.window.showWarningMessage(
+				`Blocked bulk deletion of ${totalRemovals} paragraphs. ` +
+				`This may indicate corrupted state. Use "Refresh Notebook from Server" to restore.`
+			);
 			return;
 		}
 
@@ -276,16 +360,45 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 		logDebug("onDidChangeActiveNotebookEditor", event);
 
-		if (await kernel.doesNotebookExist(event?.notebook)) {
+		const notebook = event?.notebook;
+		if (!notebook) {
+			return;
+		}
+
+		// First check if notebook exists by ID
+		if (await kernel.doesNotebookExist(notebook)) {
 			let config = vscode.workspace.getConfiguration('zeppelin');
 			let selection = config.get('autosave.syncActiveNotebook');
 
-			if (selection && !kernel.isNoteSyncing(event?.notebook)) {
-				await kernel.syncNote(event?.notebook);
+			if (selection && !kernel.isNoteSyncing(notebook)) {
+				await kernel.syncNote(notebook);
 			}
 		}
 		else {
-			interact.promptCreateNotebook(kernel, event?.notebook);
+			// Notebook doesn't exist by ID, check by path
+			const workspacePath = kernel.getWorkspaceRelativePath(notebook.uri);
+			const existingNote = await kernel.findNoteByPath(workspacePath);
+			
+			if (existingNote) {
+				// Found notebook by path - connect to it silently
+				logDebug("Found existing notebook by path:", existingNote);
+				await kernel.updateNoteMetadata(notebook, {
+					id: existingNote.id,
+					name: existingNote.path,
+					path: existingNote.path
+				});
+				
+				// Sync to get latest content from server
+				let config = vscode.workspace.getConfiguration('zeppelin');
+				let selection = config.get('autosave.syncActiveNotebook');
+				if (selection && !kernel.isNoteSyncing(notebook)) {
+					await kernel.syncNote(notebook);
+				}
+			}
+			else {
+				// Notebook doesn't exist - prompt to create
+				interact.promptCreateNotebook(kernel, notebook);
+			}
 		}
 	});
 	context.subscriptions.push(disposable);

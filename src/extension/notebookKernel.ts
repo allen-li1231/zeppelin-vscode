@@ -37,6 +37,7 @@ export class ZeppelinKernel
 
     // private _timerSyncNote?: NodeJS.Timer;
     private _timerUpdateCell?: NodeJS.Timer;
+    private _timerHealthCheck?: NodeJS.Timer;
     private _executionManager?: ExecutionManager;
     private _mapSyncNote = new Map<
         vscode.NotebookDocument, number
@@ -44,6 +45,8 @@ export class ZeppelinKernel
     private _mapNotebookEdits = new Map<vscode.NotebookCell, vscode.NotebookEdit[]>();
     private _mapUpdateParagraph = new Map<vscode.NotebookCell, number>();
     private _flagRegisterParagraphUpdate = true;
+    private _isConnectionHealthy = true;
+    private _lastConnectionCheck = 0;
 
     public cellStatusBar: CellStatusProvider | undefined = undefined;
 
@@ -96,6 +99,17 @@ export class ZeppelinKernel
                 poolingInterval * 1000);
             }
 
+            // Start health check timer to detect network reconnection
+            if (this._timerHealthCheck === undefined)
+            {
+                // Check connection health every 30 seconds
+                this._timerHealthCheck = setInterval(async () =>
+                {
+                    await this._checkConnectionHealth.bind(this)();
+                },
+                30 * 1000);
+            }
+
             // if (this._timerSyncNote === undefined) {
             //     let note = vscode.window.activeNotebookEditor?.notebook;
 
@@ -108,9 +122,81 @@ export class ZeppelinKernel
             // }
 
             this._executionManager?.scheduleTracking();
+            this._isConnectionHealthy = true;
         }
         logDebug("activate", this.isActive());
         return this.isActive();
+    }
+
+    /**
+     * Check connection health and trigger resync if connection was lost and is now restored
+     */
+    private async _checkConnectionHealth()
+    {
+        if (!this._service || !this.isActive())
+        {
+            return;
+        }
+
+        try {
+            // Quick health check - list notes with short timeout
+            const result = await this._service.listNotes();
+            
+            if (result instanceof AxiosError) {
+                // Connection failed
+                if (this._isConnectionHealthy) {
+                    logDebug("Connection health check failed, marking as unhealthy");
+                    this._isConnectionHealthy = false;
+                    this.setDisplay(
+                        this._context.workspaceState.get('currentZeppelinServerName', this.label),
+                        EXTENSION_NAME + ' (Disconnected)',
+                        this._context.workspaceState.get('currentZeppelinServerURL', undefined)
+                    );
+                }
+            } else {
+                // Connection succeeded
+                if (!this._isConnectionHealthy) {
+                    logDebug("Connection restored, triggering resync");
+                    this._isConnectionHealthy = true;
+                    this.setDisplay(
+                        this._context.workspaceState.get('currentZeppelinServerName', this.label),
+                        EXTENSION_NAME,
+                        this._context.workspaceState.get('currentZeppelinServerURL', undefined)
+                    );
+                    
+                    // Resync active notebook
+                    const note = vscode.window.activeNotebookEditor?.notebook;
+                    if (note && !this.isNoteSyncing(note)) {
+                        vscode.window.showInformationMessage('Connection restored. Syncing notebook...');
+                        await this.syncNote(note);
+                    }
+                }
+            }
+            
+            this._lastConnectionCheck = Date.now();
+        } catch (err) {
+            logDebug("Connection health check error", err);
+            if (this._isConnectionHealthy) {
+                this._isConnectionHealthy = false;
+            }
+        }
+    }
+
+    /**
+     * Check if connection is currently healthy
+     */
+    public isConnectionHealthy(): boolean
+    {
+        return this._isConnectionHealthy;
+    }
+
+    /**
+     * Force a connection health check and resync if needed
+     */
+    public async forceConnectionCheck(): Promise<boolean>
+    {
+        await this._checkConnectionHealth();
+        return this._isConnectionHealthy;
     }
 
     deactivate()
@@ -131,6 +217,12 @@ export class ZeppelinKernel
             this._timerUpdateCell = undefined;
         }
 
+        if (this._timerHealthCheck !== undefined)
+        {
+            clearInterval(this._timerHealthCheck);
+            this._timerHealthCheck = undefined;
+        }
+
         // if (this._timerSyncNote !== undefined) {
         //     clearInterval(this._timerSyncNote);
         //     this._timerSyncNote = undefined;
@@ -139,6 +231,7 @@ export class ZeppelinKernel
         this._executionManager?.dispose();
 
         this._isActive = false;
+        this._isConnectionHealthy = true;
         logDebug("activate", this.isActive());
         return this.isActive();
     }
@@ -267,6 +360,78 @@ export class ZeppelinKernel
             }
         }
         return false;
+    }
+
+    /**
+     * Find a notebook on the server by its path/name.
+     * Returns the note info if found, undefined otherwise.
+     * This is used to connect to an existing notebook instead of creating a duplicate.
+     */
+    public async findNoteByPath(notePath: string): Promise<{id: string, path: string, name: string} | undefined>
+    {
+        if (!notePath)
+        {
+            return undefined;
+        }
+
+        // Normalize path: ensure it starts with '/'
+        let normalizedPath = notePath.startsWith('/') ? notePath : '/' + notePath;
+        
+        for (let note of await this.listNotes())
+        {
+            // before Zeppelin 10.0, path of note
+            // is stored in 'name' key instead of 'path'
+            let path = note.path ?? note.name;
+            
+            // Skip trashed notes
+            if (path.startsWith('/~Trash'))
+            {
+                continue;
+            }
+
+            // Compare paths (case-sensitive, exact match)
+            if (path === normalizedPath)
+            {
+                return {
+                    id: note.id,
+                    path: path,
+                    name: note.name ?? path
+                };
+            }
+        }
+        return undefined;
+    }
+
+    /**
+     * Get workspace-relative path for a notebook.
+     * This matches Zeppelin web UI behavior where paths are relative to the workspace.
+     */
+    public getWorkspaceRelativePath(noteUri: vscode.Uri): string
+    {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (workspaceFolders && workspaceFolders.length > 0)
+        {
+            const workspaceRoot = workspaceFolders[0].uri.fsPath;
+            const notePath = noteUri.fsPath;
+            
+            // If notebook is inside workspace, get relative path
+            if (notePath.startsWith(workspaceRoot))
+            {
+                let relativePath = notePath.substring(workspaceRoot.length);
+                // Remove leading slash if present
+                if (relativePath.startsWith('/') || relativePath.startsWith('\\'))
+                {
+                    relativePath = relativePath.substring(1);
+                }
+                // Remove file extension
+                relativePath = relativePath.replace(/\.[^.]+$/, '');
+                return '/' + relativePath;
+            }
+        }
+        
+        // Fallback: just use the filename without extension
+        const fileName = noteUri.path.split('/').pop() || '';
+        return '/' + fileName.replace(/\.[^.]+$/, '');
     }
 
     public async createNote(name: string, paragraphs?: ParagraphData[])
@@ -652,6 +817,16 @@ export class ZeppelinKernel
             return;
         }
 
+        // SAFETY CHECK: Don't sync if connection is unhealthy
+        if (!this._isConnectionHealthy)
+        {
+            logDebug("syncNote: skipping - connection unhealthy");
+            vscode.window.showWarningMessage(
+                "Cannot sync: Connection to server is unhealthy. Try again when connection is restored."
+            );
+            return;
+        }
+
         return await this._updateMutex.runExclusive(async () => {
 
         this._registerSyncNote(note);
@@ -802,11 +977,42 @@ export class ZeppelinKernel
     }
 
     private async _updateParagraph(cell: vscode.NotebookCell) {
+        // SAFETY CHECK: Don't perform updates if connection is unhealthy
+        if (!this._isConnectionHealthy)
+        {
+            logDebug(`updateParagraph: skipping - connection unhealthy`, cell);
+            return;
+        }
+
         try {
             // index = -1: cell has been deleted from notebook
             if (cell.index === -1)
             {
                 logDebug(`updateParagraph: cell to be deleted`, cell);
+                
+                // SAFETY CHECK: Verify paragraph exists on server before deleting
+                // This prevents accidental deletion when local state is corrupted
+                if (!cell.metadata.id)
+                {
+                    logDebug(`updateParagraph: skip delete - no paragraph ID`, cell);
+                    this._mapUpdateParagraph.delete(cell);
+                    return;
+                }
+
+                // SAFETY CHECK: Don't delete if notebook appears empty locally
+                // This could indicate a corrupted local state
+                const localCellCount = cell.notebook.cellCount;
+                if (localCellCount === 0)
+                {
+                    logDebug(`updateParagraph: BLOCKED delete - local notebook is empty, possible corruption`, cell);
+                    vscode.window.showWarningMessage(
+                        `Blocked paragraph deletion: Local notebook appears empty. ` +
+                        `Use "Refresh Notebook from Server" to restore content.`
+                    );
+                    this._mapUpdateParagraph.delete(cell);
+                    return;
+                }
+
                 this.cellStatusBar?.untrackCell(cell);
                 this._service?.deleteParagraph(
                     cell.notebook.metadata.id, cell.metadata.id

@@ -296,6 +296,23 @@ export class ExecutionManager
         catch (err)
         {
             logDebug("error in trackExecution:", err);
+            
+            // Check if this is a network/timeout error - don't end execution, let it retry
+            if (err instanceof AxiosError)
+            {
+                const isNetworkError = !err.response || 
+                    err.code === "ECONNABORTED" || 
+                    err.response?.status === 504 ||
+                    err.response?.status === 408;
+                    
+                if (isNetworkError)
+                {
+                    logDebug("trackExecution: network error, will retry on next poll", err);
+                    // Don't unregister - will retry on next poll
+                    return;
+                }
+            }
+            
             this.unregisterTrackExecution(execution);
             let cellOutput = new vscode.NotebookCellOutput([
                 vscode.NotebookCellOutputItem.error({
@@ -405,7 +422,7 @@ export class ExecutionManager
         return Promise.all(aryExecution);
     }
 
-    private async _dispatchInterpreter(cell: vscode.NotebookCell)
+    private _dispatchInterpreter(cell: vscode.NotebookCell)
     {
         let interpreterId = parseCellInterpreter(cell) ?? '';
         if (!this._mapInterpreterQueue.has(interpreterId))
@@ -415,10 +432,14 @@ export class ExecutionManager
             );
         }
 
+        // Queue execution in interpreter's mutex - don't await
+        // This allows all cells to be queued immediately
+        // The mutex ensures only one cell per interpreter runs at a time
+        // but different interpreters run in parallel (like Zeppelin web UI)
         this._mapInterpreterQueue.get(interpreterId)?.runExclusive(
-            () =>
+            async () =>
             {
-                return this._doExecutionSync(cell);
+                return await this._doExecutionSync(cell);
             }
         );
     }
@@ -434,8 +455,20 @@ export class ExecutionManager
             return;
         }
 
+        // Check connection health before executing
+        if (!this.kernel.isConnectionHealthy())
+        {
+            const isHealthy = await this.kernel.forceConnectionCheck();
+            if (!isHealthy)
+            {
+                vscode.window.showWarningMessage('Cannot execute: Connection to Zeppelin server is not available. Try "Refresh Notebook" when connection is restored.');
+                return;
+            }
+        }
+
         let config = vscode.workspace.getConfiguration('zeppelin');
         let concurrency = config.get('execution.concurrency', 'by interpreter');
+        
         for (let cell of cells)
         {
             logDebug(`execute in ${concurrency}`, cell);
@@ -446,6 +479,7 @@ export class ExecutionManager
 
             if (concurrency === "parallel")
             {
+                // Fire and forget - tracking system will pick up results
                 this._doExecutionAsync(cell);
             }
             else if (concurrency === "sequential")
@@ -458,8 +492,10 @@ export class ExecutionManager
             }
             else if (concurrency === "by interpreter")
             {
+                // Fire and forget - interpreter queue handles ordering internally
+                // Each interpreter's mutex ensures proper sequencing within that interpreter
+                // but all interpreters run in parallel (like Zeppelin web UI)
                 this._dispatchInterpreter(cell);
-
             }
 		}
 	}
@@ -489,7 +525,7 @@ export class ExecutionManager
         if (cell.metadata.status === 404)
         {
             promptCreateParagraph(this.kernel, cell);
-            return;
+            return false;
         }
 
         let execution: ZeppelinExecution;
@@ -506,9 +542,14 @@ export class ExecutionManager
             return this._cancelToken(execution);
         });
 
+        // Start execution BEFORE sending to server
+        execution.start(Date.now());
+        this.registerTrackExecution(execution);
+
         try
         {
-            this.kernel.runParagraph(cell, true);
+            // Await the runParagraph call to ensure it completes
+            await this.kernel.runParagraph(cell, true);
         }
         catch (err)
         {
@@ -517,6 +558,14 @@ export class ExecutionManager
             if (err instanceof AxiosError && err.code === "ERR_CANCELED")
             {
                 execution.end(false, Date.now());
+            }
+            else if (err instanceof AxiosError && (err.code === "ECONNABORTED" || err.response?.status === 504))
+            {
+                // Timeout or gateway timeout - don't end execution, let tracking continue
+                logDebug("_doExecutionSync: timeout, will continue tracking", err);
+                vscode.window.showWarningMessage(`Execution request timed out. Use "Refresh Notebook" to check status.`);
+                // The tracking will pick up results when connection is restored
+                return true;
             }
             else
             {
@@ -535,7 +584,6 @@ export class ExecutionManager
             }
             return false;
         }
-        this.registerTrackExecution(execution);
 
         return true;
     }
@@ -562,13 +610,18 @@ export class ExecutionManager
             return this._cancelToken(execution);
         });
 
+        // Start execution BEFORE sending to server
+        execution.start(Date.now());
+        this.registerTrackExecution(execution);
+
         try {
             let paragraph = await this.kernel.getParagraphInfo(cell);
 
             if ((paragraph.status !== "RUNNING")
-                    && (cell.metadata.status !== "PENDING"))
+                    && (paragraph.status !== "PENDING"))
             {
-                this.kernel.runParagraph(cell, false);
+                // Only run if not already running/pending
+                await this.kernel.runParagraph(cell, false);
             }
             else
             {
@@ -578,12 +631,20 @@ export class ExecutionManager
         }
         catch (err)
         {
-            execution.start(Date.now());
             let cellOutput: vscode.NotebookCellOutput;
 
             if (err instanceof AxiosError && err.code === "ERR_CANCELED")
             {
                 execution.end(false, Date.now());
+                this.unregisterTrackExecution(execution);
+            }
+            else if (err instanceof AxiosError && (err.code === "ECONNABORTED" || err.response?.status === 504))
+            {
+                // Timeout or gateway timeout - don't end execution, let tracking continue
+                logDebug("_doExecutionAsync: timeout, will continue tracking", err);
+                vscode.window.showWarningMessage(`Execution request timed out. Use "Refresh Notebook" to check status.`);
+                // The tracking will pick up results when connection is restored
+                return;
             }
             else
             {
@@ -599,13 +660,10 @@ export class ExecutionManager
                 ]);
                 execution.replaceOutput(cellOutput);
                 execution.end(false, Date.now());
+                this.unregisterTrackExecution(execution);
             }
             return;
         }
-
-        execution.start(Date.now());
-        // execution.setProgress(10);
-        this.registerTrackExecution(execution);
     }
 
     public async resumeExecutionStatus(
