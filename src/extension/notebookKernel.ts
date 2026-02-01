@@ -843,6 +843,58 @@ export class ZeppelinKernel
             ? serverNote.paragraphs.map(parseParagraphToCellData)
             : [];
 
+        // SAFETY CHECK: Warn if server has fewer cells than local
+        // This could indicate data loss or corruption
+        const localCellCount = note.cellCount;
+        const serverCellCount = serverCells.length;
+        
+        if (localCellCount > 0 && serverCellCount === 0)
+        {
+            logDebug("syncNote: SERVER HAS NO CELLS but local has cells", {
+                localCellCount, serverCellCount
+            });
+            
+            const action = await vscode.window.showWarningMessage(
+                `Warning: Server notebook is empty but local has ${localCellCount} cells. ` +
+                `This may indicate data loss. What would you like to do?`,
+                "Keep Local (Don't Sync)", "Import Local to Server", "Use Server (Empty)"
+            );
+            
+            if (action === "Keep Local (Don't Sync)")
+            {
+                this._unregisterSyncNote(note);
+                return;
+            }
+            else if (action === "Import Local to Server")
+            {
+                // Re-import the local notebook to server
+                this._unregisterSyncNote(note);
+                const { promptCreateNotebook } = await import('../common/interaction');
+                promptCreateNotebook(this, note);
+                return;
+            }
+            // else: proceed with empty server state (user chose "Use Server (Empty)")
+        }
+        else if (localCellCount > 3 && serverCellCount < localCellCount / 2)
+        {
+            // Server has significantly fewer cells than local
+            logDebug("syncNote: Server has significantly fewer cells", {
+                localCellCount, serverCellCount
+            });
+            
+            const action = await vscode.window.showWarningMessage(
+                `Warning: Server has ${serverCellCount} cells but local has ${localCellCount} cells. ` +
+                `Syncing will remove ${localCellCount - serverCellCount} local cells. Continue?`,
+                "Yes, Use Server", "No, Keep Local"
+            );
+            
+            if (action !== "Yes, Use Server")
+            {
+                this._unregisterSyncNote(note);
+                return;
+            }
+        }
+
         let replaceRange = new vscode.NotebookRange(0, note.cellCount);
 
         await this.editWithoutParagraphUpdate(async () =>

@@ -13,7 +13,8 @@ import {
 } from './types';
 import {
     isTableData,
-    formatTableOutput
+    formatTableOutput,
+    formatTableOutputAsHtml
 } from './tableFormatter';
 import {
     formatTextOutput,
@@ -63,7 +64,7 @@ export function parseParagraphResultToCellOutput(
     let encoder = new TextEncoder();
     let textOutput = '', htmlOutput = '', errorOutput = '';
     let imageOutputs: Uint8Array[] = [];
-    let hasTableData = false;
+    let tableOutputs: string[] = []; // Collect all table HTML to combine them
     
     for (let msg of results.msg ?? []) {
         if (msg.type === 'HTML') {
@@ -82,10 +83,10 @@ export function parseParagraphResultToCellOutput(
             const hasTableFormat = msg.data && isTableData(msg.data);
             
             if (isTABLE || hasTableFormat) {
-                hasTableData = true;
-                const tableOutput = formatTableOutput(msg.data, results.code || 'table');
-                if (tableOutput) {
-                    outputs.push(tableOutput);
+                // Collect table HTML - we'll combine them later
+                const tableHtml = formatTableOutputAsHtml(msg.data, `table-${tableOutputs.length}`);
+                if (tableHtml) {
+                    tableOutputs.push(tableHtml);
                 } else {
                     // Fallback to text if table parsing fails
                     textOutput += msg.data;
@@ -94,6 +95,17 @@ export function parseParagraphResultToCellOutput(
                 textOutput += msg.data;
             }
         }
+    }
+    
+    // Combine all tables into a single HTML output (like Zeppelin web UI)
+    if (tableOutputs.length > 0) {
+        const combinedTablesHtml = tableOutputs.join('\n<div style="margin: 20px 0; border-top: 1px solid var(--vscode-panel-border);"></div>\n');
+        outputs.push(
+            new vscode.NotebookCellOutputItem(
+                encoder.encode(combinedTablesHtml),
+                'text/html'
+            )
+        );
     }
 
     if (htmlOutput.length > 0) {
@@ -126,6 +138,8 @@ export function parseParagraphResultToCellOutput(
             new vscode.NotebookCellOutputItem(mergedArray, 'image/png')
         );
     }
+
+    const hasTableData = tableOutputs.length > 0;
 
     // Only add text output if we haven't already added table output
     if ((progressbarText || textOutput.length > 0) && !hasTableData) {

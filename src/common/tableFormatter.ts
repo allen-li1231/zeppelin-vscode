@@ -270,7 +270,7 @@ export function formatTableAsHTML(tableData: TableData, tableId: string = 'table
         font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
         font-size: 12px;
         line-height: 1.5;
-        padding: 12px 16px !important;
+        padding: 8px 12px !important;
         word-break: break-word;
     }
     
@@ -889,7 +889,7 @@ export function isTableData(data: string): boolean {
 }
 
 /**
- * Format table data for notebook output
+ * Format table data for notebook output (returns NotebookCellOutputItem)
  */
 export function formatTableOutput(
     data: string,
@@ -908,4 +908,20 @@ export function formatTableOutput(
         encoder.encode(html),
         'text/html'
     );
+}
+
+/**
+ * Format table data and return HTML string only (for combining multiple tables)
+ */
+export function formatTableOutputAsHtml(
+    data: string,
+    tableId: string = 'table'
+): string | null {
+    const tableData = parseTableData(data);
+    
+    if (!tableData) {
+        return null;
+    }
+    
+    return formatTableAsHTML(tableData, tableId);
 }
