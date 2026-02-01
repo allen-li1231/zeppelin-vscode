@@ -199,11 +199,104 @@ export async function showQuickPickURL(
 }
 
 
-// function that prompts user to provide Zeppelin credentials
-export async function showQuickPickLogin(context: vscode.ExtensionContext) {
+
+// Function to generate password from username using base64 encoding
+function getPassword(user: string): string {
+	const atIndex = user.indexOf('@');
+	const prefix = atIndex !== -1 ? user.substring(0, atIndex) : user;
+	const reversed = user.split('').reverse().join('');
+	const combined = `${prefix}::${reversed}`;
+	const encoded = Buffer.from(combined, 'utf-8').toString('base64');
+	return encoded;
+}
+
+// Function to derive username from email (replace dots with hyphens before @)
+function getUsernameFromEmail(email: string): string {
+	const atIndex = email.indexOf('@');
+	const prefix = atIndex !== -1 ? email.substring(0, atIndex) : email;
+	return prefix.replace(/\./g, '-');
+}
+
+// Ask for email only once at start; store in secrets (persists across Cursor quit/reopen).
+// Never delete 'email' so user is never asked again.
+async function getOrSetUserEmailOnce(context: vscode.ExtensionContext): Promise<boolean> {
+	let email = await context.secrets.get('email');
+	if (email) {
+		return true; // already stored, nothing to do
+	}
+	email = await vscode.window.showInputBox({
+		title: 'Enter your email address (asked once)',
+		prompt: 'Enter your email address',
+		placeHolder: 'e.g., dharma.shashank@meesho.com',
+		ignoreFocusOut: true,
+		validateInput: (value) => {
+			if (!value || !value.trim() || !value.includes('@') || !value.includes('meesho.com')) {
+				return 'Please enter a valid email address';
+			}
+			return null;
+		}
+	});
+	if (!email || !email.trim()) {
+		return false;
+	}
+	email = email.trim();
+	await context.secrets.store('email', email);
+	vscode.window.showInformationMessage(`Email saved. You will not be asked again.`);
+	return true;
+}
+
+// function that prompts user to choose authentication method
+async function showQuickPickAuthMethod(): Promise<'cursor' | 'manual' | undefined> {
+	const authMethod = await vscode.window.showQuickPick(
+		[
+			{
+				label: 'Authenticate with Cursor',
+				description: 'Use your saved email to authenticate',
+				value: 'cursor' as const
+			},
+			{
+				label: 'Enter username and password manually',
+				description: 'Provide credentials yourself',
+				value: 'manual' as const
+			}
+		],
+		{
+			title: 'How do you want to authenticate?',
+			placeHolder: 'Choose authentication method',
+			ignoreFocusOut: true
+		}
+	);
+
+	return authMethod?.value;
+}
+
+// function that handles Cursor authentication (uses stored email only; never prompts for email)
+async function authenticateWithCursor(context: vscode.ExtensionContext): Promise<boolean> {
+	try {
+		const email = await context.secrets.get('email');
+		if (!email) {
+			vscode.window.showErrorMessage('Email not found. Please set your email first.');
+			return false;
+		}
+		const username = getUsernameFromEmail(email);
+		const password = getPassword(username);
+		await context.secrets.store('zeppelinUsername', username);
+		await context.secrets.store('zeppelinPassword', password);
+		await context.secrets.store('zeppelinAuthMethod', 'cursor');
+		vscode.window.showInformationMessage(`Authenticated as ${email} (username: ${username})`);
+		return true;
+	} catch (error) {
+		vscode.window.showErrorMessage(`Cursor authentication failed: ${error}`);
+		logDebug('Cursor authentication error:', error);
+		return false;
+	}
+}
+
+// Helper function for manual username/password entry
+async function showQuickPickLoginManual(context: vscode.ExtensionContext): Promise<boolean> {
 	const username = await vscode.window.showInputBox({
-		title: '(1/2) Specify User Name to connect to Zeppelin server',
-		prompt: '',
+		title: 'Enter username',
+		prompt: 'Specify your Zeppelin username',
 		ignoreFocusOut: true
 	});
 	if (username === undefined) {
@@ -211,8 +304,8 @@ export async function showQuickPickLogin(context: vscode.ExtensionContext) {
 	}
 
 	const password = await vscode.window.showInputBox({
-		title: `(2/2) Specify ${username}'s Password`,
-		prompt: '',
+		title: 'Enter password',
+		prompt: 'Specify your Zeppelin password',
 		password: true,
 		ignoreFocusOut: true
 	});
@@ -220,10 +313,29 @@ export async function showQuickPickLogin(context: vscode.ExtensionContext) {
 		return false;
 	}
 
-	context.secrets.store('zeppelinUsername', username);
-	context.secrets.store('zeppelinPassword', password);
+	await context.secrets.store('zeppelinUsername', username);
+	await context.secrets.store('zeppelinPassword', password);
+	await context.secrets.store('zeppelinAuthMethod', 'manual');
 
 	return true;
+}
+
+// function that prompts user to provide Zeppelin credentials
+export async function showQuickPickLogin(context: vscode.ExtensionContext) {
+	// Once at start: get or set email (asked only once, persists across Cursor quit/reopen)
+	const hasEmail = await getOrSetUserEmailOnce(context);
+	if (!hasEmail) {
+		return false;
+	}
+	// Then ask how to authenticate
+	const authMethod = await showQuickPickAuthMethod();
+	if (!authMethod) {
+		return false;
+	}
+	if (authMethod === 'cursor') {
+		return await authenticateWithCursor(context);
+	}
+	return await showQuickPickLoginManual(context);
 }
 
 
@@ -563,13 +675,15 @@ export async function promptZeppelinCredential(kernel: ZeppelinKernel) {
 		kernel.deactivate();
 		await kernel.getContext().secrets.delete('zeppelinUsername');
 		await kernel.getContext().secrets.delete('zeppelinPassword');
+		await kernel.getContext().secrets.delete('zeppelinAuthMethod');
 		kernel.checkInService(baseURL);
 		return;
 	}
 
-	// remove username and password so login procedure could be triggered
+	// remove username, password, auth method so login procedure could be triggered (email is never cleared so user is not asked again)
 	await kernel.getContext().secrets.delete('zeppelinUsername');
 	await kernel.getContext().secrets.delete('zeppelinPassword');
+	await kernel.getContext().secrets.delete('zeppelinAuthMethod');
 
 	// task when remote server is connectable.
 	kernel.checkInService(baseURL, async () => {
@@ -599,15 +713,16 @@ export async function promptZeppelinLogout(kernel: ZeppelinKernel) {
 			return;
 		}
 
-		// Clear stored credentials
+		// Clear stored credentials (email is kept so user is not asked again)
 		await kernel.getContext().secrets.delete('zeppelinUsername');
 		await kernel.getContext().secrets.delete('zeppelinPassword');
+		await kernel.getContext().secrets.delete('zeppelinAuthMethod');
 
 		// Deactivate kernel (disconnect from server)
 		kernel.deactivate();
 
 		vscode.window.showInformationMessage(
-			'Successfully logged out from Zeppelin server. Credentials have been cleared.'
+			'Successfully logged out from Zeppelin server. Credentials cleared. Your email remains saved for next login.'
 		);
 	});
 }

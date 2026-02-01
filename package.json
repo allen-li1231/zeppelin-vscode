@@ -258,7 +258,7 @@
       },
       {
         "command": "zeppelin-vscode.setZeppelinCredential",
-        "title": "Zeppelin: Set Zeppelin Credential (username and password)"
+        "title": "Zeppelin: Set Zeppelin Credential"
       },
       {
         "command": "zeppelin-vscode.logout",

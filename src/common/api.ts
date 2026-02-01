@@ -59,7 +59,8 @@ class BasicService {
       // URLs that should have silent error handling (polling operations)
       const SILENT_ERROR_PATTERNS = [
           '/api/notebook/job/', // Job status polling
-          '/paragraph/' // Paragraph updates during sync
+          '/paragraph/', // Paragraph updates during sync
+          '/api/interpreter/setting/' // Interpreter status polling
       ];
 
       // create request session based on config
@@ -117,7 +118,7 @@ class BasicService {
                     }
                 }
                 else if (error.response?.status === 401) {
-                    if (!shouldSuppressError) {
+                    if (!isSilentOperation && !shouldSuppressError) {
                         window.showWarningMessage(
                             `You do not have permission to access '${url}'`
                         );
