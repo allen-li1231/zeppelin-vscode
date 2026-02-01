@@ -1,6 +1,6 @@
 import { AxiosError } from 'axios';
 import { NotebookService } from './api';
-import { reURL, logDebug } from './common';
+import { reURL, logDebug, getRestartInterpreterId } from './common';
 import * as vscode from 'vscode';
 import { ZeppelinKernel } from '../extension/notebookKernel';
 import { parseCellToParagraphData } from './parser';
@@ -16,6 +16,8 @@ export async function showInputURL() {
 		value: '',
 		title: '(1/2) Specify the URL of the Existing Zeppelin Server',
 		placeHolder: 'e.g, http://127.0.0.1:8080',
+		prompt: '',
+		ignoreFocusOut: true,
 		validateInput: text => {
 			if (text.match(reURL)) {
 				return null;
@@ -30,6 +32,8 @@ export async function showInputURL() {
 	// get url display label from input box
 	const label = await vscode.window.showInputBox({
 		title: '(2/2) Change Zeppelin Server Display Name (Leave Blank To Use URL)',
+		prompt: '',
+		ignoreFocusOut: true,
 	});
 	if (label === undefined) {
 		return undefined;
@@ -198,7 +202,9 @@ export async function showQuickPickURL(
 // function that prompts user to provide Zeppelin credentials
 export async function showQuickPickLogin(context: vscode.ExtensionContext) {
 	const username = await vscode.window.showInputBox({
-		title: '(1/2) Specify User Name to connect to Zeppelin server'
+		title: '(1/2) Specify User Name to connect to Zeppelin server',
+		prompt: '',
+		ignoreFocusOut: true
 	});
 	if (username === undefined) {
 		return false;
@@ -206,7 +212,9 @@ export async function showQuickPickLogin(context: vscode.ExtensionContext) {
 
 	const password = await vscode.window.showInputBox({
 		title: `(2/2) Specify ${username}'s Password`,
-		password: true
+		prompt: '',
+		password: true,
+		ignoreFocusOut: true
 	});
 	if (password === undefined) {
 		return false;
@@ -645,7 +653,9 @@ export async function promptRestartInterpreter(
 
 	if (interpreterId === undefined) {
 		interpreterId = await vscode.window.showInputBox({
-			title: 'Please specify a interpreter:'
+			title: 'Please specify a interpreter:',
+			prompt: '',
+			ignoreFocusOut: true
 		});
 	}
 	if (interpreterId === undefined || interpreterId.trim().length === 0) {
@@ -663,7 +673,9 @@ export async function promptRestartInterpreter(
 	if (selection === undefined || selection === "No") {
 		return;
 	}
-	let res = await kernel.getService()?.restartInterpreter(interpreterId);
+	// Zeppelin restart API uses group name (e.g. spark for pyspark)
+	const restartId = getRestartInterpreterId(interpreterId);
+	let res = await kernel.getService()?.restartInterpreter(restartId);
 	if (res === undefined) {
 		return;
 	}
@@ -719,7 +731,9 @@ export async function promptRestartNotebookInterpreter(kernel: ZeppelinKernel) {
 	if (interpreterIds.size === 0) {
 		const selection = await vscode.window.showInputBox({
 			title: 'No interpreter found in cells. Please specify interpreter name:',
-			placeHolder: 'e.g., spark_username'
+			placeHolder: 'e.g., spark_username',
+			prompt: '',
+			ignoreFocusOut: true
 		});
 		
 		if (!selection || selection.trim().length === 0) {
@@ -757,8 +771,9 @@ export async function promptRestartNotebookInterpreter(kernel: ZeppelinKernel) {
 		return;
 	}
 
-	// Restart the interpreter
-	const res = await kernel.getService()?.restartInterpreter(selectedInterpreter);
+	// Zeppelin restart API uses group name (e.g. spark for pyspark)
+	const restartId = getRestartInterpreterId(selectedInterpreter);
+	const res = await kernel.getService()?.restartInterpreter(restartId);
 	if (res === undefined) {
 		return;
 	}

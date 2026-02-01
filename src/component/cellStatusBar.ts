@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { AxiosError } from 'axios';
 import { ZeppelinKernel } from '../extension/notebookKernel';
-import { logDebug } from '../common/common';
+import { logDebug, getRestartInterpreterId } from '../common/common';
 import { Mutex } from './mutex';
 import { parseCellInterpreter } from '../common/parser';
 
@@ -107,8 +107,10 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
     }
 
     private async _updateInterpreterStatus(interpreterId: string) {
+        // Zeppelin uses group name for interpreter API (e.g. spark for pyspark)
+        const apiId = getRestartInterpreterId(interpreterId);
         try{
-            var res = await this.kernel.getService()?.getInterpreterSetting(interpreterId);
+            var res = await this.kernel.getService()?.getInterpreterSetting(apiId);
         }
         catch (error) {
             logDebug(`error in _updateInterpreterStatus for '${interpreterId}'`);

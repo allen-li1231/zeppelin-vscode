@@ -75,6 +75,11 @@ export const mapZeppelinLanguage = new Map<string, string>([
 
 export const reInterpreter = RegExp(/[\s\n]*%([\w\d\._]+)\s*\n+/);
 export const reURL = RegExp(/[-a-zA-Z0-9@:%._\+~#=]{1,256}\.?[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)?/gi);
+
+/** Zeppelin restart API uses interpreter group name: e.g. pyspark -> spark */
+export function getRestartInterpreterId(interpreterId: string): string {
+    return interpreterId === 'pyspark' ? 'spark' : interpreterId;
+}
 export const reCookies = RegExp(/^(JSESSIONID=((?!deleteMe).)*?);/s);
 export const reBase64= /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
 

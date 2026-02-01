@@ -13,8 +13,13 @@ import {
 } from './types';
 import {
     isTableData,
+    isDataFrameSchema,
+    isPythonSparkDataFrame,
+    isPySparkRowCollection,
+    isSinglePySparkRow,
     formatTableOutput,
-    formatTableOutputAsHtml
+    formatTableOutputAsHtml,
+    formatDataFrameSchemaAsCard
 } from './tableFormatter';
 import {
     formatTextOutput,
@@ -62,10 +67,16 @@ export function parseParagraphResultToCellOutput(
     let outputs: vscode.NotebookCellOutputItem[] = [];
 
     let encoder = new TextEncoder();
-    let textOutput = '', htmlOutput = '', errorOutput = '';
+    let htmlOutput = '', errorOutput = '';
     let imageOutputs: Uint8Array[] = [];
-    let tableOutputs: string[] = []; // Collect all table HTML to combine them
+    let mixedOutputs: { type: 'text' | 'schema' | 'table', content: string, index: number }[] = [];
     
+    // Add progress bar text as first item if present
+    if (progressbarText && progressbarText.trim()) {
+        mixedOutputs.push({ type: 'text', content: progressbarText, index: -1 });
+    }
+    
+    let msgIndex = 0;
     for (let msg of results.msg ?? []) {
         if (msg.type === 'HTML') {
             htmlOutput += msg.data;
@@ -78,31 +89,220 @@ export function parseParagraphResultToCellOutput(
             errorOutput += msg.data;
         }
         else {
-            // Check if this is table data (TABLE type from Zeppelin or %table format)
+            // First check if the ENTIRE message is a table or schema (don't split these)
             const isTABLE = msg.type === 'TABLE';
-            const hasTableFormat = msg.data && isTableData(msg.data);
+            const isFullMessagePySparkDF = msg.data && isPythonSparkDataFrame(msg.data);
+            const isFullMessageRowCollection = msg.data && isPySparkRowCollection(msg.data);
+            const isFullMessageSingleRow = msg.data && isSinglePySparkRow(msg.data);
+            const isFullMessageDataFrame = msg.data && isDataFrameSchema(msg.data);
+            const isFullMessageTable = msg.data && isTableData(msg.data);
             
-            if (isTABLE || hasTableFormat) {
-                // Collect table HTML - we'll combine them later
-                const tableHtml = formatTableOutputAsHtml(msg.data, `table-${tableOutputs.length}`);
+            if (isTABLE || isFullMessagePySparkDF || isFullMessageRowCollection || isFullMessageSingleRow) {
+                // Full PySpark table, Row collection, or single Row - don't split
+                const tableHtml = formatTableOutputAsHtml(msg.data, `table-${msgIndex}`);
                 if (tableHtml) {
-                    tableOutputs.push(tableHtml);
+                    mixedOutputs.push({ type: 'table', content: tableHtml, index: msgIndex });
                 } else {
-                    // Fallback to text if table parsing fails
-                    textOutput += msg.data;
+                    mixedOutputs.push({ type: 'text', content: msg.data, index: msgIndex });
                 }
-            } else {
-                textOutput += msg.data;
+            } else if (isFullMessageDataFrame) {
+                // Single DataFrame schema - don't split
+                const schemaHtml = formatDataFrameSchemaAsCard(msg.data);
+                if (schemaHtml) {
+                    mixedOutputs.push({ type: 'schema', content: schemaHtml, index: msgIndex });
+                } else {
+                    mixedOutputs.push({ type: 'text', content: msg.data, index: msgIndex });
+                }
+            } else if (isFullMessageTable) {
+                // Tab-separated table - don't split
+                const tableHtml = formatTableOutputAsHtml(msg.data, `table-${msgIndex}`);
+                if (tableHtml) {
+                    mixedOutputs.push({ type: 'table', content: tableHtml, index: msgIndex });
+                } else {
+                    mixedOutputs.push({ type: 'text', content: msg.data, index: msgIndex });
+                }
+            } else if (msg.data && msg.data.trim()) {
+                // Mixed content (multiple schemas/text in one message) - need smart splitting
+                const lines = msg.data.split('\n');
+                let currentTextBuffer: string[] = [];
+                let currentRowBuffer = '';
+                let inRowCollection = false;
+                let bracketDepth = 0;
+                
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i];
+                    const trimmedLine = line.trim();
+                    
+                    // Track if we're inside a Row collection
+                    for (const char of line) {
+                        if (char === '[') {
+                            bracketDepth++;
+                            if (bracketDepth === 1 && line.includes('Row(')) {
+                                inRowCollection = true;
+                                // Flush text buffer before starting Row collection
+                                if (currentTextBuffer.length > 0) {
+                                    mixedOutputs.push({ 
+                                        type: 'text', 
+                                        content: currentTextBuffer.join('\n'), 
+                                        index: msgIndex 
+                                    });
+                                    currentTextBuffer = [];
+                                }
+                            }
+                        } else if (char === ']') {
+                            bracketDepth--;
+                        }
+                    }
+                    
+                    if (inRowCollection) {
+                        // Accumulate Row collection lines
+                        currentRowBuffer += (currentRowBuffer ? '\n' : '') + line;
+                        
+                        // Check if Row collection is complete
+                        if (bracketDepth === 0) {
+                            inRowCollection = false;
+                            // Try to format the complete Row collection
+                            const tableHtml = formatTableOutputAsHtml(currentRowBuffer.trim(), `table-${msgIndex}-${i}`);
+                            if (tableHtml) {
+                                mixedOutputs.push({ type: 'table', content: tableHtml, index: msgIndex });
+                            } else {
+                                // Fallback to text if formatting failed
+                                currentTextBuffer.push(currentRowBuffer);
+                            }
+                            currentRowBuffer = '';
+                        }
+                    } else if (!trimmedLine) {
+                        // Empty line
+                        if (currentTextBuffer.length > 0) {
+                            currentTextBuffer.push(line);
+                        }
+                    } else if (isSinglePySparkRow(trimmedLine)) {
+                        // Single Row object on single line
+                        // Flush text buffer first
+                        if (currentTextBuffer.length > 0) {
+                            mixedOutputs.push({ 
+                                type: 'text', 
+                                content: currentTextBuffer.join('\n'), 
+                                index: msgIndex 
+                            });
+                            currentTextBuffer = [];
+                        }
+                        
+                        // Add single Row
+                        const rowHtml = formatTableOutputAsHtml(trimmedLine, `table-${msgIndex}-${i}`);
+                        if (rowHtml) {
+                            mixedOutputs.push({ type: 'table', content: rowHtml, index: msgIndex });
+                        } else {
+                            currentTextBuffer.push(line);
+                        }
+                    } else if (isDataFrameSchema(trimmedLine)) {
+                        // DataFrame schema on single line
+                        // Flush text buffer first
+                        if (currentTextBuffer.length > 0) {
+                            mixedOutputs.push({ 
+                                type: 'text', 
+                                content: currentTextBuffer.join('\n'), 
+                                index: msgIndex 
+                            });
+                            currentTextBuffer = [];
+                        }
+                        
+                        // Add schema
+                        const schemaHtml = formatDataFrameSchemaAsCard(trimmedLine);
+                        if (schemaHtml) {
+                            mixedOutputs.push({ type: 'schema', content: schemaHtml, index: msgIndex });
+                        } else {
+                            currentTextBuffer.push(line);
+                        }
+                    } else {
+                        // Regular text line
+                        currentTextBuffer.push(line);
+                    }
+                }
+                
+                // Flush remaining text buffer
+                if (currentTextBuffer.length > 0) {
+                    mixedOutputs.push({ 
+                        type: 'text', 
+                        content: currentTextBuffer.join('\n'), 
+                        index: msgIndex 
+                    });
+                }
+                
+                // Flush remaining Row collection if any
+                if (currentRowBuffer) {
+                    const tableHtml = formatTableOutputAsHtml(currentRowBuffer.trim(), `table-${msgIndex}-final`);
+                    if (tableHtml) {
+                        mixedOutputs.push({ type: 'table', content: tableHtml, index: msgIndex });
+                    } else {
+                        mixedOutputs.push({ type: 'text', content: currentRowBuffer, index: msgIndex });
+                    }
+                }
             }
         }
+        msgIndex++;
     }
     
-    // Combine all tables into a single HTML output (like Zeppelin web UI)
-    if (tableOutputs.length > 0) {
-        const combinedTablesHtml = tableOutputs.join('\n<div style="margin: 20px 0; border-top: 1px solid var(--vscode-panel-border);"></div>\n');
+    // Combine mixed outputs with proper separation
+    if (mixedOutputs.length > 0) {
+        let combinedHtml = '';
+        let currentTextBuffer = '';
+        
+        // Add header if we have many outputs
+        if (mixedOutputs.length > 10) {
+            combinedHtml += `
+                <div style="padding: 8px 12px; background: var(--vscode-input-background); border: 1px solid var(--vscode-panel-border); border-radius: 4px; margin-bottom: 10px; font-size: 12px;">
+                    <strong style="color: var(--vscode-textLink-foreground);">Multiple Outputs:</strong> 
+                    <span style="color: var(--vscode-foreground);">Showing ${mixedOutputs.length} outputs (expand any item for details)</span>
+                </div>
+            `;
+        }
+        
+        mixedOutputs.forEach((output, idx) => {
+            if (output.type === 'text') {
+                // Buffer text outputs
+                currentTextBuffer += output.content + '\n';
+            } else {
+                // Flush text buffer before schema/table
+                if (currentTextBuffer.trim()) {
+                    combinedHtml += `
+                        <div style="padding: 8px 12px; background: var(--vscode-editor-background); border: 1px solid var(--vscode-panel-border); border-radius: 4px; margin: 8px 0; font-family: monospace; font-size: 11px; white-space: pre-wrap; color: var(--vscode-foreground);">${escapeHtml(currentTextBuffer.trim())}</div>
+                    `;
+                    currentTextBuffer = '';
+                }
+                
+                // Add schema or table
+                if (output.type === 'schema') {
+                    combinedHtml += `<div style="margin: 8px 0;">${output.content}</div>`;
+                } else if (output.type === 'table') {
+                    // Add separator and number for tables if multiple
+                    const tableCount = mixedOutputs.filter(o => o.type === 'table').length;
+                    if (tableCount > 1) {
+                        const tableNumber = mixedOutputs.slice(0, idx + 1).filter(o => o.type === 'table').length;
+                        combinedHtml += `
+                            <div style="padding: 8px 12px; background: var(--vscode-input-background); border-left: 3px solid var(--vscode-textLink-foreground); margin: 15px 0 10px 0; font-weight: 600; font-size: 13px;">
+                                Result ${tableNumber} of ${tableCount}
+                            </div>
+                        `;
+                    }
+                    combinedHtml += output.content;
+                    if (idx < mixedOutputs.length - 1) {
+                        combinedHtml += '<div style="margin: 15px 0; border-top: 2px solid var(--vscode-panel-border);"></div>';
+                    }
+                }
+            }
+        });
+        
+        // Flush any remaining text
+        if (currentTextBuffer.trim()) {
+            combinedHtml += `
+                <div style="padding: 8px 12px; background: var(--vscode-editor-background); border: 1px solid var(--vscode-panel-border); border-radius: 4px; margin: 8px 0; font-family: monospace; font-size: 11px; white-space: pre-wrap; color: var(--vscode-foreground);">${escapeHtml(currentTextBuffer.trim())}</div>
+            `;
+        }
+        
         outputs.push(
             new vscode.NotebookCellOutputItem(
-                encoder.encode(combinedTablesHtml),
+                encoder.encode(combinedHtml),
                 'text/html'
             )
         );
@@ -139,49 +339,24 @@ export function parseParagraphResultToCellOutput(
         );
     }
 
-    const hasTableData = tableOutputs.length > 0;
-
-    // Only add text output if we haven't already added table output
-    if ((progressbarText || textOutput.length > 0) && !hasTableData) {
-        const fullText = (progressbarText ?? '') + textOutput;
-        
-        // Use enhanced text formatter for multi-line or complex output
-        if (shouldUseEnhancedTextFormat(fullText)) {
-            outputs.push(formatTextOutput(fullText, {
-                showWhitespace: false,
-                maxLines: 50,
-                collapsible: true,
-                wordWrap: true
-            }));
-        } else {
-            // For simple output, use plain text
-            outputs.push(
-                new vscode.NotebookCellOutputItem(
-                    encoder.encode(fullText),
-                    'text/plain'
-                )
-            );
-        }
-    } else if (progressbarText && hasTableData) {
-        // If we have both progress bar and table, add progress bar separately
-        if (shouldUseEnhancedTextFormat(progressbarText)) {
-            outputs.unshift(formatTextOutput(progressbarText, {
-                showWhitespace: false,
-                maxLines: 20,
-                collapsible: false,
-                wordWrap: true
-            }));
-        } else {
-            outputs.unshift(
-                new vscode.NotebookCellOutputItem(
-                    encoder.encode(progressbarText),
-                    'text/plain'
-                )
-            );
-        }
-    }
-
     return outputs;
+}
+
+function escapeHtml(text: string): string {
+    if (text == null || text === undefined) {
+        return '';
+    }
+    
+    const str = String(text);
+    const htmlEscapes: { [key: string]: string } = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    };
+    
+    return str.replace(/[&<>"']/g, (char) => htmlEscapes[char]);
 }
 
 export function parseCellOutputsToParagraphResult(
