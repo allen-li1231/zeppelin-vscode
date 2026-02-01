@@ -857,23 +857,27 @@ export class ZeppelinKernel
             const action = await vscode.window.showWarningMessage(
                 `Warning: Server notebook is empty but local has ${localCellCount} cells. ` +
                 `This may indicate data loss. What would you like to do?`,
-                "Keep Local (Don't Sync)", "Import Local to Server", "Use Server (Empty)"
+                "Sync Local to Server", "Sync from Server (Empty)"
             );
             
-            if (action === "Keep Local (Don't Sync)")
+            if (action === "Sync Local to Server")
             {
+                // Push local cells to server
+                this._unregisterSyncNote(note);
+                await this._syncLocalToServer(note);
+                return;
+            }
+            else if (action === "Sync from Server (Empty)")
+            {
+                // Proceed with empty server state
+                // Continue with normal sync flow below
+            }
+            else
+            {
+                // User cancelled
                 this._unregisterSyncNote(note);
                 return;
             }
-            else if (action === "Import Local to Server")
-            {
-                // Re-import the local notebook to server
-                this._unregisterSyncNote(note);
-                const { promptCreateNotebook } = await import('../common/interaction');
-                promptCreateNotebook(this, note);
-                return;
-            }
-            // else: proceed with empty server state (user chose "Use Server (Empty)")
         }
         else if (localCellCount > 3 && serverCellCount < localCellCount / 2)
         {
@@ -885,11 +889,18 @@ export class ZeppelinKernel
             const action = await vscode.window.showWarningMessage(
                 `Warning: Server has ${serverCellCount} cells but local has ${localCellCount} cells. ` +
                 `Syncing will remove ${localCellCount - serverCellCount} local cells. Continue?`,
-                "Yes, Use Server", "No, Keep Local"
+                "Sync Local to Server", "Sync from Server"
             );
             
-            if (action !== "Yes, Use Server")
+            if (action === "Sync Local to Server")
             {
+                this._unregisterSyncNote(note);
+                await this._syncLocalToServer(note);
+                return;
+            }
+            else if (action !== "Sync from Server")
+            {
+                // User cancelled
                 this._unregisterSyncNote(note);
                 return;
             }
@@ -937,6 +948,109 @@ export class ZeppelinKernel
     // public async syncNote(note: vscode.NotebookDocument | undefined) {
     //     return this._updateMutex.runExclusive(async () => this._syncNote(note));
     // }
+
+    /**
+     * Sync local cells to server - creates paragraphs on server for each local cell
+     */
+    private async _syncLocalToServer(note: vscode.NotebookDocument): Promise<boolean>
+    {
+        if (!note || !note.metadata?.id)
+        {
+            vscode.window.showWarningMessage("Cannot sync to server: notebook has no ID");
+            return false;
+        }
+
+        const noteId = note.metadata.id;
+        const cells = note.getCells();
+        
+        if (cells.length === 0)
+        {
+            vscode.window.showWarningMessage("No cells to sync to server");
+            return false;
+        }
+
+        try {
+            vscode.window.showInformationMessage(`Syncing ${cells.length} cells to server...`);
+            
+            let successCount = 0;
+            let failCount = 0;
+            
+            for (const cell of cells)
+            {
+                const text = cell.document.getText();
+                const lang = mapZeppelinLanguage.get(cell.document.languageId) ?? "sql";
+                const lineNumbers = vscode.workspace.getConfiguration("editor")
+                    .get("lineNumbers", vscode.TextEditorLineNumbersStyle.Off)
+                    !== vscode.TextEditorLineNumbersStyle.Off;
+                
+                const config = {
+                    "lineNumbers": lineNumbers,
+                    "editorMode": `ace/mode/${lang}`,
+                    "editorSetting": {
+                        "language": lang,
+                        "editOnDblClick": false,
+                        "completionKey": "TAB",
+                        "completionSupport": cell.kind !== 1
+                    }
+                };
+
+                try {
+                    // Create paragraph on server
+                    const res = await this._service?.createParagraph(
+                        noteId, text, cell.index, '', config
+                    );
+                    
+                    if (res instanceof AxiosError)
+                    {
+                        logDebug(`Failed to create paragraph ${cell.index}:`, res);
+                        failCount++;
+                    }
+                    else if (res?.data?.body)
+                    {
+                        // Update local cell with server paragraph ID
+                        await this.updateCellMetadata(cell, {
+                            id: res.data.body,
+                            config
+                        });
+                        successCount++;
+                    }
+                }
+                catch (err)
+                {
+                    logDebug(`Error creating paragraph ${cell.index}:`, err);
+                    failCount++;
+                }
+            }
+
+            // Update notebook metadata with latest from server
+            const serverNote = await this.getNoteInfo(note);
+            if (serverNote)
+            {
+                await this.updateNoteMetadata(note, serverNote);
+            }
+
+            if (failCount === 0)
+            {
+                vscode.window.showInformationMessage(
+                    `Successfully synced ${successCount} cells to server`
+                );
+                return true;
+            }
+            else
+            {
+                vscode.window.showWarningMessage(
+                    `Synced ${successCount} cells, failed ${failCount} cells`
+                );
+                return successCount > 0;
+            }
+        }
+        catch (err)
+        {
+            logDebug("Error in _syncLocalToServer:", err);
+            vscode.window.showErrorMessage(`Failed to sync to server: ${err}`);
+            return false;
+        }
+    }
 
     public async applyPolledNotebookEdits() {
         for (let [cell, edits] of this._mapNotebookEdits)

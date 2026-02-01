@@ -11,6 +11,49 @@ import { ParagraphData } from '../common/types';
 import { ZeppelinKernel } from '../extension/notebookKernel';
 
 
+/**
+ * Parse Zeppelin date string to timestamp.
+ * Zeppelin returns dates like "Feb 1, 2026 9:13:40 AM" without timezone info.
+ * 
+ * IMPORTANT: Zeppelin stores dates in UTC but formats them without timezone suffix.
+ * We need to append "UTC" to parse correctly, otherwise Date.parse() interprets
+ * as local time causing timezone offset issues (e.g., 5:30 hour offset for IST users).
+ * 
+ * @param dateStr The date string from Zeppelin API
+ * @returns Parsed timestamp in milliseconds, or undefined if invalid
+ */
+function parseZeppelinDate(dateStr: string | undefined): number | undefined
+{
+    if (!dateStr)
+    {
+        return undefined;
+    }
+
+    // Zeppelin dates are in UTC but without timezone suffix
+    // Append " UTC" to ensure correct parsing
+    const dateStrWithTz = dateStr.includes("UTC") || dateStr.includes("GMT") 
+        ? dateStr 
+        : dateStr + " UTC";
+    
+    const timestamp = Date.parse(dateStrWithTz);
+    
+    if (isNaN(timestamp))
+    {
+        // Fallback: try parsing as-is (local time)
+        const fallbackTimestamp = Date.parse(dateStr);
+        if (!isNaN(fallbackTimestamp))
+        {
+            logDebug("parseZeppelinDate: parsed as local time (fallback)", dateStr);
+            return fallbackTimestamp;
+        }
+        logDebug("parseZeppelinDate: failed to parse", dateStr);
+        return undefined;
+    }
+
+    return timestamp;
+}
+
+
 enum ZeppelinExecutionState {
 	init,
 	started,
@@ -695,12 +738,23 @@ export class ExecutionManager
             || serverCell?.metadata?.status === "RUNNING")
         {
             logDebug("resumeExecutionStatus resuming", cell);
+            // If we don't have startTime from memory (e.g., after window restart),
+            // try to get it from the server's dateStarted field
+            if (startTime === undefined && serverCell?.metadata?.dateStarted)
+            {
+                startTime = parseZeppelinDate(serverCell.metadata.dateStarted);
+            }
             newExecution.start(startTime);
             this.registerTrackExecution(newExecution);
         }
         else if (serverCell?.metadata?.status !== "PENDING")
         {
-            startTime = Date.parse(cell.metadata.dateStarted);
+            // For completed executions, use dateStarted from server metadata
+            // This preserves the correct "Started X min ago" display after window restart
+            if (serverCell?.metadata?.dateStarted)
+            {
+                startTime = parseZeppelinDate(serverCell.metadata.dateStarted);
+            }
             newExecution.start(startTime);
             this.registerTrackExecution(newExecution);
         }
@@ -717,9 +771,16 @@ export class ExecutionManager
                 newExecution.clearOutput();
             }
 
+            // Use dateFinished from server metadata for accurate end time display
+            let endTime: number | undefined = parseZeppelinDate(serverCell?.metadata?.dateFinished);
+            if (endTime === undefined)
+            {
+                endTime = Date.now();
+            }
+
             newExecution.end(
-                cell.metadata.status !== "ERROR",
-                Date.parse(cell.metadata.dateFinished) || Date.now()
+                serverCell?.metadata?.status !== "ERROR",
+                endTime
             );
         }
         else
