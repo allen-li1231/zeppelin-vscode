@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
-import { AxiosError } from 'axios';
 import { ZeppelinKernel } from '../extension/notebookKernel';
-import { logDebug } from '../common/common';
+import { logDebug, getRestartInterpreterId } from '../common/common';
 import { Mutex } from './mutex';
 import { parseCellInterpreter } from '../common/parser';
+import { AIModeManager } from './aiMode';
 
 
 export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvider {
@@ -11,30 +11,61 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
     private _setCell = new Set<vscode.NotebookCell>();
     public kernel: ZeppelinKernel;
     private readonly _cellStatusUpdateMutex = new Mutex("_cellStatusUpdate");
-    private _timerUpdateCellStatus: NodeJS.Timer;
+    private readonly _onDidChange = new vscode.EventEmitter<void>();
 
     constructor(kernel: ZeppelinKernel) {
         this.kernel = kernel;
-
-        const trackInterval = vscode.workspace.getConfiguration('zeppelin')
-            .get('interpreter.trackInterval', 5);
-        this._timerUpdateCellStatus = setInterval(
-            this.doUpdateAllInterpreterStatus.bind(this),
-            trackInterval * 1000
-        );
     }
 
-    onDidChangeCellStatusBarItems?: vscode.Event<void> | undefined;
+    onDidChangeCellStatusBarItems: vscode.Event<void> = this._onDidChange.event;
+
+    /** Call to refresh cell status bar (e.g. after AI Mode selection change). */
+    refresh(): void {
+        this._onDidChange.fire();
+    }
 
     provideCellStatusBarItems(cell: vscode.NotebookCell):
         vscode.ProviderResult<vscode.NotebookCellStatusBarItem | vscode.NotebookCellStatusBarItem[]> {
 
-        if (!this.kernel.isActive() || cell.kind === vscode.NotebookCellKind.Markup) {
+        if (cell.kind === vscode.NotebookCellKind.Markup) {
             return [];
         }
         logDebug("before update CellStatusBar");
         this._setCell.add(cell);
         const items: vscode.NotebookCellStatusBarItem[] = [];
+
+        const isSelected = AIModeManager.getSelectedCells().some(c => c === cell);
+        const selectItem = new vscode.NotebookCellStatusBarItem(
+            isSelected ? '🟢 Selected for AI Mode' : '○ Select for AI Mode',
+            vscode.NotebookCellStatusBarAlignment.Left,
+        );
+        selectItem.command = {
+            title: isSelected ? 'Deselect' : 'Select for AI Mode',
+            command: 'zeppelin-vscode.selectCellForAIMode',
+            arguments: [cell],
+        };
+        selectItem.tooltip = isSelected
+            ? 'Selected for AI Mode (click to deselect)'
+            : 'Click to select this cell for AI Mode';
+        items.push(selectItem);
+
+        // Only show other status items if kernel is active
+        if (!this.kernel.isActive()) {
+            return items;
+        }
+
+        // Add copy cell content button
+        const copyItem = new vscode.NotebookCellStatusBarItem(
+            '$(copy)',
+            vscode.NotebookCellStatusBarAlignment.Right,
+        );
+        copyItem.command = <vscode.Command> {
+            title: '$(copy)',
+            command: 'zeppelin-vscode.copyCellContent',
+            arguments: [cell],
+        };
+        copyItem.tooltip = 'Copy cell content to clipboard';
+        items.push(copyItem);
 
         // status === string: normal status
         // status === undefined: cannot reach remote server
@@ -94,8 +125,10 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
     }
 
     private async _updateInterpreterStatus(interpreterId: string) {
+        // Zeppelin uses group name for interpreter API (e.g. spark for pyspark)
+        const apiId = getRestartInterpreterId(interpreterId);
         try{
-            var res = await this.kernel.getService()?.getInterpreterSetting(interpreterId);
+            var res = await this.kernel.getService()?.getInterpreterSetting(apiId);
         }
         catch (error) {
             logDebug(`error in _updateInterpreterStatus for '${interpreterId}'`);
@@ -145,56 +178,19 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
         return this._setCell.delete(cell);
     }
 
+    /**
+     * DISABLED: REST polling for visible cells
+     * Now using WebSocket for real-time sync
+     * For non-WebSocket notebooks, user can manually refresh
+     */
     public async doUpdateVisibleCells() {
-        const activeNotebook = vscode.window.activeNotebookEditor;
-        if (activeNotebook === undefined
-            || activeNotebook.notebook.cellCount === 0
-            || !await this.kernel.doesNotebookExist(activeNotebook.notebook)) {
-            return;
-        }
-        return this.kernel.editWithoutParagraphUpdate(async () => {
-            logDebug("doUpdateVisibleCells: updating", activeNotebook.visibleRanges);
-
-            for (let range of activeNotebook.visibleRanges) {
-                if (range.isEmpty) {
-                    continue;
-                }
-
-                for (let i = range.start; i < range.end; i ++) {
-                    let cell = activeNotebook?.notebook.cellAt(i);
-                    let execution = this.kernel.getExecutionByParagraphId(cell.metadata.id);
-                    if (cell === undefined 
-                        || execution !== undefined
-                        || i >= activeNotebook.selection?.start
-                        && i < activeNotebook.selection?.end)
-                    {
-                        continue;
-                    }
-                    try {
-                        await this.kernel.getParagraphInfo(cell);
-                        logDebug("doUpdateVisibleCells: after update paragraphs");
-
-                    }
-                    catch (err) {
-                        let status = err instanceof AxiosError
-                            ? err.response?.status
-                            : undefined;
-                        if (status === cell.metadata.status) {
-                            // ignore the same error
-                            continue;
-                        }
-                        logDebug("error in doUpdateVisibleCells:" + err);
-                        // trigger cell status bar update
-                        await this.kernel.updateCellMetadata(
-                            cell, {"status": status}
-                        );
-                    }
-                }
-            }
-        });
+        // NO-OP: We no longer poll for cell updates
+        // WebSocket notebooks get real-time updates via events
+        // Non-WebSocket notebooks don't get automatic updates (use manual refresh)
+        logDebug("doUpdateVisibleCells: disabled - using WebSocket events instead");
     }
 
     public dispose() {
-        clearInterval(this._timerUpdateCellStatus);
+        // No timers to clean up - using WebSocket for sync
     }
 }

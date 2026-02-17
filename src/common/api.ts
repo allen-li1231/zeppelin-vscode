@@ -52,6 +52,17 @@ class BasicService {
       this.session.defaults.timeout = timeout * 1000;
       this.session.defaults.headers.common["User-Agent"] = userAgent;
 
+      // Track recent errors to suppress duplicates and transient failures
+      let recentErrors = new Map<string, number>();
+      const ERROR_COOLDOWN_MS = 5000; // Suppress duplicate errors within 5 seconds
+      
+      // URLs that should have silent error handling (polling operations)
+      const SILENT_ERROR_PATTERNS = [
+          '/api/notebook/job/', // Job status polling
+          '/paragraph/', // Paragraph updates during sync
+          '/api/interpreter/setting/' // Interpreter status polling
+      ];
+
       // create request session based on config
       this.session.interceptors.response.use(
             (response) => {
@@ -70,28 +81,75 @@ class BasicService {
                     `api error: ${error.request.method} ${error.request.path}`,
                     error
                 );
-                let url = error.request?.path;
+                let url = error.request?.path || '';
+
+                // Check if this is a silent operation (polling, background sync)
+                const isSilentOperation = SILENT_ERROR_PATTERNS.some(pattern => url.includes(pattern));
+                
+                // Check if we've recently shown an error for this URL
+                const errorKey = `${error.response?.status || 'network'}_${url}`;
+                const lastErrorTime = recentErrors.get(errorKey);
+                const now = Date.now();
+                const shouldSuppressError = lastErrorTime && (now - lastErrorTime) < ERROR_COOLDOWN_MS;
+
+                // Check for timeout errors
+                const isTimeoutError = error.code === 'ECONNABORTED' || 
+                    error.message?.includes('timeout') ||
+                    error.response?.status === 504 ||
+                    error.response?.status === 408;
 
                 if (!error.response) {
-                    window.showErrorMessage(`Error calling ${url}: ${error.message}
-                        possibly due to local network issue`);
+                    // Network error - only show if not a silent operation and not recently shown
+                    if (!isSilentOperation && !shouldSuppressError) {
+                        if (isTimeoutError) {
+                            window.setStatusBarMessage(`$(warning) Connection timeout. Use "Refresh Notebook" to sync.`, 5000);
+                        } else {
+                            window.setStatusBarMessage(`$(warning) Connection error. Use "Refresh Notebook" to sync.`, 5000);
+                        }
+                        recentErrors.set(errorKey, now);
+                    }
+                }
+                else if (error.response?.status === 504 || error.response?.status === 408) {
+                    // Gateway Timeout (504) or Request Timeout (408)
+                    // These often happen when laptop disconnects/reconnects
+                    if (!isSilentOperation && !shouldSuppressError) {
+                        window.setStatusBarMessage(`$(warning) Gateway timeout. Use "Refresh Notebook" to sync.`, 5000);
+                        recentErrors.set(errorKey, now);
+                    }
                 }
                 else if (error.response?.status === 401) {
-                    window.showWarningMessage(
-                        `You do not have permission to access '${url}'`
-                    );
+                    if (!isSilentOperation && !shouldSuppressError) {
+                        window.setStatusBarMessage(`$(warning) Permission denied for '${url}'`, 5000);
+                        recentErrors.set(errorKey, now);
+                    }
                 }
                 else if (error.response?.status === 404) {
+                    // 404 is often expected (resource doesn't exist yet) - log only
                     logDebug(`Resource '${error.request.path}' not found`);
                 }
+                else if (error.response?.status === 500) {
+                    // Server error - show only for non-silent operations
+                    if (!isSilentOperation && !shouldSuppressError) {
+                        logDebug(`Server error for '${url}': ${error.response.data?.message || error.message}`);
+                        // Don't show error message for 500 during sync, it will be retried
+                    }
+                }
                 else if (error.response?.status !== 403
-                        && error.response.data.exception !== 'UnavailableSecurityManagerException') {
-                    // simplify credential error
-                    window.showErrorMessage(`${error.message}: 
-                        ${!!error.response.data.message
-                          ? error.response.data.message
-                          : error.response.statusText
-                        }`);
+                        && error.response.data?.exception !== 'UnavailableSecurityManagerException') {
+                    // Other errors - show only if not silent and not recently shown
+                    if (!isSilentOperation && !shouldSuppressError) {
+                        window.setStatusBarMessage(`$(warning) Request failed. Try "Refresh Notebook".`, 5000);
+                        recentErrors.set(errorKey, now);
+                    }
+                }
+
+                // Clean up old entries from recentErrors (prevent memory leak)
+                if (recentErrors.size > 100) {
+                    for (const [key, time] of recentErrors) {
+                        if (now - time > ERROR_COOLDOWN_MS * 2) {
+                            recentErrors.delete(key);
+                        }
+                    }
                 }
 
                 // instead of rejecting error, pass it to outer scope

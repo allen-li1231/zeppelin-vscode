@@ -161,50 +161,74 @@
         },
         "zeppelin.proxy.host": {
           "order": 8,
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "format": "uri",
           "default": null,
           "description": "Set proxy host for connection with Zeppelin server."
         },
         "zeppelin.proxy.port": {
           "order": 9,
-          "type": ["integer", "null"],
+          "type": [
+            "integer",
+            "null"
+          ],
           "default": null,
           "description": "Set proxy port for connection with Zeppelin server."
         },
         "zeppelin.proxy.credential.username": {
           "order": 10,
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "default": null,
           "description": "Specifies proxy authentication for connection with Zeppelin server."
         },
         "zeppelin.proxy.credential.password": {
           "order": 11,
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "default": null,
           "description": "Specifies proxy authentication for connection with Zeppelin server."
         },
         "zeppelin.proxy.credential.protocol": {
           "order": 12,
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "default": null,
           "description": "Specifies the proxy protocol for connection with Zeppelin server."
         },
         "zeppelin.https.CA-Certification": {
           "order": 13,
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "default": null,
           "description": "Configure a trustworthy private CA cert file path. A complete cert chain is in .pem or .crt format. You must include all certs in the chain up to the trust root."
         },
         "zeppelin.https.KeyPath": {
           "order": 14,
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "default": null,
           "description": "Configure a trustworthy private key path."
         },
         "zeppelin.https.passphase": {
           "order": 15,
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "default": null,
           "description": "Configure private key's corresponding passphase."
         },
@@ -217,8 +241,40 @@
         "zeppelin.https.timeout": {
           "order": 17,
           "type": "number",
+          "default": 60,
+          "description": "Set global http timeout value in seconds. Default is 60 seconds. Set to 0 for no timeout (not recommended)."
+        },
+        "zeppelin.websocket.enabled": {
+          "order": 18,
+          "type": "boolean",
+          "default": true,
+          "description": "Enable WebSocket connections for real-time notebook sync. When enabled, active notebooks use WebSocket instead of REST polling for updates."
+        },
+        "zeppelin.websocket.maxActiveNotebooks": {
+          "order": 19,
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Maximum number of notebooks with active WebSocket connections. When exceeded, the least recently used notebook's connection is closed. Range: 1-10."
+        },
+        "zeppelin.websocket.pingInterval": {
+          "order": 20,
+          "type": "number",
           "default": 10,
-          "description": "Set global http timeout value."
+          "description": "WebSocket ping interval in seconds to keep connection alive."
+        },
+        "zeppelin.websocket.reconnectDelay": {
+          "order": 21,
+          "type": "number",
+          "default": 3,
+          "description": "Initial delay in seconds before attempting to reconnect a dropped WebSocket connection."
+        },
+        "zeppelin.websocket.maxReconnectAttempts": {
+          "order": 22,
+          "type": "number",
+          "default": 5,
+          "description": "Maximum number of reconnection attempts before falling back to REST polling."
         }
       }
     },
@@ -234,14 +290,111 @@
       },
       {
         "command": "zeppelin-vscode.setZeppelinCredential",
-        "title": "Zeppelin: Set Zeppelin Credential (username and password)"
+        "title": "Zeppelin: Set Zeppelin Credential"
+      },
+      {
+        "command": "zeppelin-vscode.logout",
+        "title": "Zeppelin: Logout from Zeppelin Server"
       },
       {
         "command": "zeppelin-vscode.restartInterpreter",
         "title": "Zeppelin: restart a interpreter"
+      },
+      {
+        "command": "zeppelin-vscode.restartNotebookInterpreter",
+        "title": "Restart Interpreter",
+        "icon": "$(debug-restart)"
+      },
+      {
+        "command": "zeppelin-vscode.recreateNote",
+        "title": "Restore Note",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "zeppelin-vscode.copyCellContent",
+        "title": "Zeppelin: Copy Cell Content to Clipboard",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "zeppelin-vscode.refreshNotebook",
+        "title": "Refresh Notebook",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "zeppelin-vscode.reloadWindow",
+        "title": "Reload Window",
+        "icon": "$(debug-restart)"
+      },
+      {
+        "command": "zeppelin-vscode.createAINotebook",
+        "title": "Create AI Notebook",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "zeppelin-vscode.enterAIMode",
+        "title": "AI Mode",
+        "icon": "$(sparkle)",
+        "enablement": "notebookType == 'zeppelin-notebook'"
+      },
+      {
+        "command": "zeppelin-vscode.aiMode.showActions",
+        "title": "AI Mode: Show Actions",
+        "icon": "$(check)"
+      },
+      {
+        "command": "zeppelin-vscode.selectCellForAIMode",
+        "title": "Select Cell for AI Mode",
+        "icon": "$(check)"
+      },
+      {
+        "command": "zeppelin-vscode.aiMode.done",
+        "title": "AI Mode: Done - Apply Changes"
+      },
+      {
+        "command": "zeppelin-vscode.aiMode.cancel",
+        "title": "AI Mode: Cancel - Discard Changes"
       }
     ],
     "menus": {
+      "notebook/toolbar": [
+        {
+          "command": "zeppelin-vscode.refreshNotebook",
+          "when": "notebookType == 'zeppelin-notebook' && !zeppelin-vscode.refreshNotebookCooldown",
+          "group": "navigation"
+        },
+        {
+          "command": "zeppelin-vscode.reloadWindow",
+          "when": "notebookType == 'zeppelin-notebook'",
+          "group": "navigation"
+        },
+        {
+          "command": "zeppelin-vscode.createAINotebook",
+          "when": "notebookType == 'zeppelin-notebook'",
+          "group": "navigation"
+        },
+        {
+          "command": "zeppelin-vscode.restartNotebookInterpreter",
+          "when": "notebookType == 'zeppelin-notebook'",
+          "group": "navigation"
+        },
+        {
+          "command": "zeppelin-vscode.recreateNote",
+          "when": "notebookType == 'zeppelin-notebook'",
+          "group": "navigation"
+        },
+        {
+          "command": "zeppelin-vscode.enterAIMode",
+          "when": "notebookType == 'zeppelin-notebook'",
+          "group": "navigation"
+        }
+      ],
+      "notebook/cell/title": [
+        {
+          "command": "zeppelin-vscode.copyCellContent",
+          "when": "notebookType == 'zeppelin-notebook'",
+          "group": "inline@1"
+        }
+      ],
       "commandPalette": [
         {
           "command": "zeppelin-vscode.importCurrentNotebook",
@@ -254,8 +407,47 @@
           "command": "zeppelin-vscode.setZeppelinCredential"
         },
         {
+          "command": "zeppelin-vscode.logout"
+        },
+        {
           "command": "zeppelin-vscode.restartInterpreter",
           "when": "resourceExtname == .zpln || resourceExtname == .ipynb"
+        },
+        {
+          "command": "zeppelin-vscode.restartNotebookInterpreter",
+          "when": "false"
+        },
+        {
+          "command": "zeppelin-vscode.copyCellContent",
+          "when": "false"
+        },
+        {
+          "command": "zeppelin-vscode.refreshNotebook",
+          "when": "resourceExtname == .zpln"
+        },
+        {
+          "command": "zeppelin-vscode.createAINotebook",
+          "when": "resourceExtname == .zpln"
+        },
+        {
+          "command": "zeppelin-vscode.enterAIMode",
+          "when": "resourceExtname == .zpln"
+        },
+        {
+          "command": "zeppelin-vscode.aiMode.showActions",
+          "when": "false"
+        },
+        {
+          "command": "zeppelin-vscode.selectCellForAIMode",
+          "when": "false"
+        },
+        {
+          "command": "zeppelin-vscode.aiMode.done",
+          "when": "resourceExtname == .sql && resourcePath =~ /ai-mode/"
+        },
+        {
+          "command": "zeppelin-vscode.aiMode.cancel",
+          "when": "resourceExtname == .sql && resourcePath =~ /ai-mode/"
         }
       ]
     }
@@ -278,6 +470,7 @@
     "@types/node": "16.x",
     "@types/vscode": "^1.79.0",
     "@types/vscode-notebook-renderer": "^1.72",
+    "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^5.59.1",
     "@typescript-eslint/parser": "^5.59.1",
     "@vscode/test-electron": "^2.3.0",
@@ -287,11 +480,13 @@
     "lodash": "^4.17.21",
     "ts-loader": "^9.4.4",
     "typescript": "^5.0.4",
+    "vsce": "^1.97.0",
     "webpack": "^5.88.2",
     "webpack-cli": "^5.1.4"
   },
   "dependencies": {
     "ansi-escapes": "^6.2.0",
-    "string-width": "^7.1.0"
+    "string-width": "^7.1.0",
+    "ws": "^8.19.0"
   }
 }
