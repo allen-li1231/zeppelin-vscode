@@ -31,6 +31,7 @@ export interface NoteInfo {
 export interface ParagraphData {
     config?: ParagraphConfig;
     dateCreated?: string;
+    dateStarted?: string;
     dateUpdated?: string;
     dateFinished?: string;
     errorMessage?: string;

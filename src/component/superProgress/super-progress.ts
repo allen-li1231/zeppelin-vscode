@@ -82,13 +82,15 @@ export class Progress extends Transform {
   }
 
   _transform(data: string | Buffer,
-    callback: Function): any | undefined {
+    _encoding: BufferEncoding,
+    callback: (error?: Error | null, data?: any) => void): void {
     this.update(data.length)
       .then(() => this.render())
       .then((r: string[]) => {
         this.push(r);
         callback();
-      });
+      })
+      .catch(callback);
   }
 
   _flush(callback: Function) {

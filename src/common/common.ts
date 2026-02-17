@@ -21,7 +21,7 @@ mapLanguageKind.set('markdown', 1);
 
 // ref: https://github.com/apache/zeppelin/blob/8b8848ad82423eb5a56d93ec1e94a146f36754c2/zeppelin-web-angular/projects/zeppelin-sdk/src/interfaces/message-common.interface.ts#L22
 export const mapLanguage = new Map<string, string>([
-    ['', "plaintext"],
+    ['', "sql"],
     ["groovy", "groovy"],
     ["java", "java"],
     ["javascript", "javascript"],
@@ -32,6 +32,7 @@ export const mapLanguage = new Map<string, string>([
     ["python", "python"],
     ["r", "r"],
     ["sql", "sql"],
+    ['plaintext', "plaintext"],
     ["markdown", "markdown"],
     ["pig", "pig"],
     ["sh", "shellscript"],
@@ -74,6 +75,11 @@ export const mapZeppelinLanguage = new Map<string, string>([
 
 export const reInterpreter = RegExp(/[\s\n]*%([\w\d\._]+)\s*\n+/);
 export const reURL = RegExp(/[-a-zA-Z0-9@:%._\+~#=]{1,256}\.?[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)?/gi);
+
+/** Zeppelin restart API uses interpreter group name: e.g. pyspark -> spark */
+export function getRestartInterpreterId(interpreterId: string): string {
+    return interpreterId === 'pyspark' ? 'spark' : interpreterId;
+}
 export const reCookies = RegExp(/^(JSESSIONID=((?!deleteMe).)*?);/s);
 export const reBase64= /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
 

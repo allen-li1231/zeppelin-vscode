@@ -3,12 +3,56 @@ import { AxiosError } from 'axios';
 import { Mutex } from './mutex';
 import { Progress } from './superProgress/super-progress';
 import { logDebug } from '../common/common';
-import { promptZeppelinServerURL, promptCreateParagraph
-} from '../common/interaction';
+import { promptZeppelinServerURL } from '../common/interaction';
 import { parseCellInterpreter,
     parseParagraphResultToCellOutput } from '../common/parser';
 import { ParagraphData } from '../common/types';
 import { ZeppelinKernel } from '../extension/notebookKernel';
+// NOTE: REST API used for all one-time operations (run, cancel, etc.)
+// WebSocket only for continuous background sync
+
+
+/**
+ * Parse Zeppelin date string to timestamp.
+ * Zeppelin returns dates like "Feb 1, 2026 9:13:40 AM" without timezone info.
+ * 
+ * IMPORTANT: Zeppelin stores dates in UTC but formats them without timezone suffix.
+ * We need to append "UTC" to parse correctly, otherwise Date.parse() interprets
+ * as local time causing timezone offset issues (e.g., 5:30 hour offset for IST users).
+ * 
+ * @param dateStr The date string from Zeppelin API
+ * @returns Parsed timestamp in milliseconds, or undefined if invalid
+ */
+function parseZeppelinDate(dateStr: string | undefined): number | undefined
+{
+    if (!dateStr)
+    {
+        return undefined;
+    }
+
+    // Zeppelin dates are in UTC but without timezone suffix
+    // Append " UTC" to ensure correct parsing
+    const dateStrWithTz = dateStr.includes("UTC") || dateStr.includes("GMT") 
+        ? dateStr 
+        : dateStr + " UTC";
+    
+    const timestamp = Date.parse(dateStrWithTz);
+    
+    if (isNaN(timestamp))
+    {
+        // Fallback: try parsing as-is (local time)
+        const fallbackTimestamp = Date.parse(dateStr);
+        if (!isNaN(fallbackTimestamp))
+        {
+            logDebug("parseZeppelinDate: parsed as local time (fallback)", dateStr);
+            return fallbackTimestamp;
+        }
+        logDebug("parseZeppelinDate: failed to parse", dateStr);
+        return undefined;
+    }
+
+    return timestamp;
+}
 
 
 enum ZeppelinExecutionState {
@@ -211,6 +255,10 @@ export class ExecutionManager
         return !(this._timerTrackExecution === undefined);
     }
 
+    /**
+     * Schedule polling for running cells only (5 second interval)
+     * Only polls cells that are actively running to fetch results
+     */
     public scheduleTracking()
     {
         if (this.isTrackingScheduled())
@@ -219,15 +267,12 @@ export class ExecutionManager
             return;
         }
 
-        let config = vscode.workspace.getConfiguration('zeppelin');
-        if (this._timerTrackExecution === undefined)
-        {
-            let trackExecutionInterval = config.get('execution.trackInterval', 1);
-
-            this._timerTrackExecution = setInterval(
-                this._doTrackAllExecution.bind(this),
-                trackExecutionInterval * 1000);
-        }
+        // Poll every 5 seconds for running cells only
+        this._timerTrackExecution = setInterval(async () => {
+            await this._pollRunningCells();
+        }, 5000);
+        
+        logDebug("scheduleTracking: polling enabled (5s) for running cells only");
     }
 
     public unscheduleTracking()
@@ -236,6 +281,31 @@ export class ExecutionManager
         {
             clearInterval(this._timerTrackExecution);
             this._timerTrackExecution = undefined;
+        }
+    }
+
+    /**
+     * Poll only running cells to fetch results
+     */
+    private async _pollRunningCells(): Promise<void> {
+        // Only poll if there are running executions
+        if (this._mapTrackExecution.size === 0) {
+            return;
+        }
+
+        logDebug(`_pollRunningCells: checking ${this._mapTrackExecution.size} running cells`);
+
+        for (const [paragraphId, execution] of this._mapTrackExecution) {
+            // Only track cells that are actually running
+            if (execution.state !== ZeppelinExecutionState.started) {
+                continue;
+            }
+
+            try {
+                await this.trackExecution(execution);
+            } catch (error) {
+                logDebug(`_pollRunningCells: error tracking ${paragraphId}`, error);
+            }
         }
     }
 
@@ -271,6 +341,36 @@ export class ExecutionManager
         return this._mapTrackExecution.get(paragraphId)?.progressBar;
     }
 
+    /**
+     * Force sync all running executions from server
+     * Call this when execution seems stuck
+     */
+    public async forceSyncAllExecutions(): Promise<void> {
+        logDebug("forceSyncAllExecutions: checking all running executions");
+        
+        for (const [paragraphId, execution] of this._mapTrackExecution) {
+            if (execution.state === ZeppelinExecutionState.started) {
+                try {
+                    await this.trackExecution(execution);
+                } catch (error) {
+                    logDebug(`forceSyncAllExecutions: error tracking ${paragraphId}`, error);
+                }
+            }
+        }
+    }
+
+    /**
+     * Force end an execution (for manual cleanup)
+     */
+    public forceEndExecution(paragraphId: string, success: boolean = false): void {
+        const execution = this._mapTrackExecution.get(paragraphId);
+        if (execution && execution.state === ZeppelinExecutionState.started) {
+            logDebug(`forceEndExecution: ending ${paragraphId}`);
+            execution.end(success, Date.now());
+            this.unregisterTrackExecution(execution);
+        }
+    }
+
     public async trackExecution(
         execution: ZeppelinExecution
     ) {
@@ -296,6 +396,27 @@ export class ExecutionManager
         catch (err)
         {
             logDebug("error in trackExecution:", err);
+            
+            // Check if this is a network/timeout error - don't end execution, let it retry
+            if (err instanceof AxiosError)
+            {
+                const isNetworkError = !err.response || 
+                    err.code === "ECONNABORTED" || 
+                    err.response?.status === 504 ||
+                    err.response?.status === 408;
+                    
+                if (isNetworkError)
+                {
+                    logDebug("trackExecution: network error, will retry on next poll", err);
+                    // Don't unregister - will retry on next poll
+                    return;
+                }
+                if (err.response?.status === 404)
+                {
+                    logDebug("trackExecution: 404 in cell output");
+                }
+            }
+            
             this.unregisterTrackExecution(execution);
             let cellOutput = new vscode.NotebookCellOutput([
                 vscode.NotebookCellOutputItem.error({
@@ -405,7 +526,7 @@ export class ExecutionManager
         return Promise.all(aryExecution);
     }
 
-    private async _dispatchInterpreter(cell: vscode.NotebookCell)
+    private _dispatchInterpreter(cell: vscode.NotebookCell)
     {
         let interpreterId = parseCellInterpreter(cell) ?? '';
         if (!this._mapInterpreterQueue.has(interpreterId))
@@ -415,10 +536,14 @@ export class ExecutionManager
             );
         }
 
+        // Queue execution in interpreter's mutex - don't await
+        // This allows all cells to be queued immediately
+        // The mutex ensures only one cell per interpreter runs at a time
+        // but different interpreters run in parallel (like Zeppelin web UI)
         this._mapInterpreterQueue.get(interpreterId)?.runExclusive(
-            () =>
+            async () =>
             {
-                return this._doExecutionSync(cell);
+                return await this._doExecutionSync(cell);
             }
         );
     }
@@ -434,8 +559,20 @@ export class ExecutionManager
             return;
         }
 
+        // Check connection health before executing
+        if (!this.kernel.isConnectionHealthy())
+        {
+            const isHealthy = await this.kernel.forceConnectionCheck();
+            if (!isHealthy)
+            {
+                vscode.window.setStatusBarMessage('$(warning) Cannot execute: Server unavailable. Try "Refresh Notebook".', 5000);
+                return;
+            }
+        }
+
         let config = vscode.workspace.getConfiguration('zeppelin');
         let concurrency = config.get('execution.concurrency', 'by interpreter');
+        
         for (let cell of cells)
         {
             logDebug(`execute in ${concurrency}`, cell);
@@ -446,6 +583,7 @@ export class ExecutionManager
 
             if (concurrency === "parallel")
             {
+                // Fire and forget - tracking system will pick up results
                 this._doExecutionAsync(cell);
             }
             else if (concurrency === "sequential")
@@ -458,8 +596,10 @@ export class ExecutionManager
             }
             else if (concurrency === "by interpreter")
             {
+                // Fire and forget - interpreter queue handles ordering internally
+                // Each interpreter's mutex ensures proper sequencing within that interpreter
+                // but all interpreters run in parallel (like Zeppelin web UI)
                 this._dispatchInterpreter(cell);
-
             }
 		}
 	}
@@ -471,10 +611,8 @@ export class ExecutionManager
             return;
         }
 
-        await this.kernel.instantUpdatePollingParagraphs();
-
-        let res = await this.kernel.getService()?.stopAll(note.metadata.id);
-        return res?.data;
+        // Use kernel method which handles WebSocket and REST fallback
+        return await this.kernel.stopAllParagraphs(note);
 	}
 
     private async _doExecutionSync(cell: vscode.NotebookCell)
@@ -486,10 +624,10 @@ export class ExecutionManager
 
         await this.kernel.instantUpdatePollingParagraphs();
 
-        if (cell.metadata.status === 404)
-        {
-            promptCreateParagraph(this.kernel, cell);
-            return;
+        const ready = await this.kernel.ensureCellExistsAndSynced(cell);
+        if (!ready) {
+            vscode.window.setStatusBarMessage('$(warning) Cell not ready to run. Check connection and try again.', 5000);
+            return false;
         }
 
         let execution: ZeppelinExecution;
@@ -506,9 +644,17 @@ export class ExecutionManager
             return this._cancelToken(execution);
         });
 
+        // Start execution BEFORE sending to server
+        execution.start(Date.now());
+        this.registerTrackExecution(execution);
+
         try
         {
-            this.kernel.runParagraph(cell, true);
+            // Fire and forget - do NOT wait for results
+            // This releases the mutex immediately so other cells can start
+            // Polling (every 5s) will fetch results and update this cell
+            await this.kernel.runParagraph(cell, false);
+            logDebug("_doExecutionSync: run sent, polling will fetch results");
         }
         catch (err)
         {
@@ -517,9 +663,21 @@ export class ExecutionManager
             if (err instanceof AxiosError && err.code === "ERR_CANCELED")
             {
                 execution.end(false, Date.now());
+                this.unregisterTrackExecution(execution);
+            }
+            else if (err instanceof AxiosError && (err.code === "ECONNABORTED" || err.response?.status === 504))
+            {
+                // Timeout - leave execution running, polling will pick it up
+                logDebug("_doExecutionSync: timeout, polling will continue", err);
+                vscode.window.setStatusBarMessage(`$(warning) Timeout, waiting for results...`, 3000);
+                return true;
             }
             else
             {
+                if (err instanceof AxiosError && err.response?.status === 404)
+                {
+                    logDebug("_doExecutionSync: 404");
+                }
                 cellOutput = new vscode.NotebookCellOutput([
                     vscode.NotebookCellOutputItem.error({ 
                         name: err instanceof Error
@@ -532,27 +690,33 @@ export class ExecutionManager
                 ]);
                 execution.replaceOutput(cellOutput);
                 execution.end(false, Date.now());
+                this.unregisterTrackExecution(execution);
             }
             return false;
         }
-        this.registerTrackExecution(execution);
 
+        // Return immediately - mutex released, other cells can run
+        // Polling will fetch results and end this execution
         return true;
     }
 
     private async _doExecutionAsync(cell: vscode.NotebookCell): Promise<void>
     {
-        if (!this.kernel.isActive()
-            || this.getExecutionByParagraphId(cell.metadata.id))
+        if (!this.kernel.isActive())
         {
             return;
         }
 
         await this.kernel.instantUpdatePollingParagraphs();
 
-        if (cell.metadata.status === 404)
+        const ready = await this.kernel.ensureCellExistsAndSynced(cell);
+        if (!ready) {
+            vscode.window.setStatusBarMessage('$(warning) Cell not ready to run. Check connection and try again.', 5000);
+            return;
+        }
+
+        if (this.getExecutionByParagraphId(cell.metadata?.id))
         {
-            promptCreateParagraph(this.kernel, cell);
             return;
         }
 
@@ -562,13 +726,20 @@ export class ExecutionManager
             return this._cancelToken(execution);
         });
 
+        // Start execution BEFORE sending to server
+        execution.start(Date.now());
+        this.registerTrackExecution(execution);
+
         try {
+            // Check status first via REST API
             let paragraph = await this.kernel.getParagraphInfo(cell);
 
             if ((paragraph.status !== "RUNNING")
-                    && (cell.metadata.status !== "PENDING"))
+                    && (paragraph.status !== "PENDING"))
             {
-                this.kernel.runParagraph(cell, false);
+                // Only run if not already running/pending
+                // Use sync=false for async execution, tracking will pick up results
+                await this.kernel.runParagraph(cell, false);
             }
             else
             {
@@ -578,15 +749,27 @@ export class ExecutionManager
         }
         catch (err)
         {
-            execution.start(Date.now());
             let cellOutput: vscode.NotebookCellOutput;
 
             if (err instanceof AxiosError && err.code === "ERR_CANCELED")
             {
                 execution.end(false, Date.now());
+                this.unregisterTrackExecution(execution);
+            }
+            else if (err instanceof AxiosError && (err.code === "ECONNABORTED" || err.response?.status === 504))
+            {
+                // Timeout or gateway timeout - don't end execution, let tracking continue
+                logDebug("_doExecutionAsync: timeout, will continue tracking", err);
+                vscode.window.showWarningMessage(`Execution request timed out. Use "Refresh Notebook" to check status.`);
+                // The tracking will pick up results when connection is restored
+                return;
             }
             else
             {
+                if (err instanceof AxiosError && err.response?.status === 404)
+                {
+                    logDebug("_doExecutionAsync: 404");
+                }
                 cellOutput = new vscode.NotebookCellOutput([
                     vscode.NotebookCellOutputItem.error({ 
                         name: err instanceof Error
@@ -599,13 +782,10 @@ export class ExecutionManager
                 ]);
                 execution.replaceOutput(cellOutput);
                 execution.end(false, Date.now());
+                this.unregisterTrackExecution(execution);
             }
             return;
         }
-
-        execution.start(Date.now());
-        // execution.setProgress(10);
-        this.registerTrackExecution(execution);
     }
 
     public async resumeExecutionStatus(
@@ -637,12 +817,23 @@ export class ExecutionManager
             || serverCell?.metadata?.status === "RUNNING")
         {
             logDebug("resumeExecutionStatus resuming", cell);
+            // If we don't have startTime from memory (e.g., after window restart),
+            // try to get it from the server's dateStarted field
+            if (startTime === undefined && serverCell?.metadata?.dateStarted)
+            {
+                startTime = parseZeppelinDate(serverCell.metadata.dateStarted);
+            }
             newExecution.start(startTime);
             this.registerTrackExecution(newExecution);
         }
         else if (serverCell?.metadata?.status !== "PENDING")
         {
-            startTime = Date.parse(cell.metadata.dateStarted);
+            // For completed executions, use dateStarted from server metadata
+            // This preserves the correct "Started X min ago" display after window restart
+            if (serverCell?.metadata?.dateStarted)
+            {
+                startTime = parseZeppelinDate(serverCell.metadata.dateStarted);
+            }
             newExecution.start(startTime);
             this.registerTrackExecution(newExecution);
         }
@@ -659,9 +850,16 @@ export class ExecutionManager
                 newExecution.clearOutput();
             }
 
+            // Use dateFinished from server metadata for accurate end time display
+            let endTime: number | undefined = parseZeppelinDate(serverCell?.metadata?.dateFinished);
+            if (endTime === undefined)
+            {
+                endTime = Date.now();
+            }
+
             newExecution.end(
-                cell.metadata.status !== "ERROR",
-                Date.parse(cell.metadata.dateFinished) || Date.now()
+                serverCell?.metadata?.status !== "ERROR",
+                endTime
             );
         }
         else
