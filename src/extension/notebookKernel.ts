@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { AxiosError } from 'axios';
 import { NotebookService } from '../common/api';
 import { EXTENSION_NAME,
-    SUPPORTEDLANGUAGE,
+    SUPPORTED_LANGUAGE,
     mapZeppelinLanguage,
     logDebug,
     getProxy,
@@ -26,7 +26,7 @@ export class ZeppelinKernel
     readonly id: string = 'zeppelin-notebook-kernel';
     readonly notebookType: string = 'zeppelin-notebook';
     readonly label: string = 'Zeppelin Notebook';
-    readonly supportedLanguages = SUPPORTEDLANGUAGE;
+    readonly supportedLanguages = SUPPORTED_LANGUAGE;
 
     private _context: vscode.ExtensionContext;
     private _service?: NotebookService;

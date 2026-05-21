@@ -6,7 +6,7 @@ export const DEBUG_MODE = true;
 export const EXTENSION_NAME = 'zeppelin-notebook';
 export const NOTEBOOK_SUFFIX = '.zpln';
 
-export const SUPPORTEDLANGUAGE = [
+export const SUPPORTED_LANGUAGE = [
     'plaintext', 'cypher', 'sql-bigquery', 'cassandra', 'es', 'flink-sql',
     'geode', 'groovy', 'gsp', 'hazelcastjet', 'hbase', 'hive-sql', 'hql', 'ignite',
     'influxdb', 'java', 'javascript', 'json', 'jsonl', 'jsonc', 'kotlin', 'ksql', 'kylin',
@@ -14,7 +14,7 @@ export const SUPPORTEDLANGUAGE = [
     'scio', 'shellscript', 'spark', 'sql', 'xml'];
 
 export const mapLanguageKind = new Map<string, number>();
-for (let lang of SUPPORTEDLANGUAGE) {
+for (let lang of SUPPORTED_LANGUAGE) {
     mapLanguageKind.set(lang, 2);
 }
 mapLanguageKind.set('markdown', 1);
