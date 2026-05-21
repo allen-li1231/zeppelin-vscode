@@ -441,7 +441,7 @@ export async function promptZeppelinServerURL(
 		}
 
 		// task when remote server is connectable.
-		kernel.checkInService(baseURL, async () => {
+		kernel.checkInService(undefined, async () => {
 			let config = vscode.workspace.getConfiguration('zeppelin');
 			let selection = config.get('alwaysConnectToTheLastServer');
 			if (selection === null) {
@@ -475,7 +475,7 @@ export async function promptZeppelinCredential(kernel: ZeppelinKernel) {
 	if (note === undefined) {
 		kernel.deactivate();
 		await kernel.getContext().secrets.delete('zeppelinUsername');
-		kernel.checkInService(baseURL);
+		kernel.checkInService(undefined, undefined);
 		return;
 	}
 
@@ -483,7 +483,7 @@ export async function promptZeppelinCredential(kernel: ZeppelinKernel) {
 	await kernel.getContext().secrets.delete('zeppelinUsername');
 
 	// task when remote server is connectable.
-	kernel.checkInService(baseURL, async () => {
+	kernel.checkInService(undefined, async () => {
 		let config = vscode.workspace.getConfiguration('zeppelin');
 		let selection = config.get('alwaysConnectToTheLastServer');
 		if (selection === null) {

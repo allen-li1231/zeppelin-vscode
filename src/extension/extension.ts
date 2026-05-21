@@ -6,7 +6,7 @@ import { CellStatusProvider} from '../component/cellStatusBar';
 import { ZeppelinSerializer } from './notebookSerializer';
 import { ZeppelinKernel } from './notebookKernel';
 import { EXTENSION_NAME, NOTEBOOK_SUFFIX, mapZeppelinLanguage, logDebug } from '../common/common';
-import _ = require('lodash');
+const _ = require('lodash');
 
 
 // This method is called when your extension is activated

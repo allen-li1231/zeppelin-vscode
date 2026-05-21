@@ -18,7 +18,7 @@ import { parseParagraphToCellData,
 import { Mutex } from '../component/mutex';
 import { ExecutionManager } from '../component/execution';
 // import ForProgress from '../component/ForProgress/ForProgress';
-import _ = require('lodash');
+const _ = require('lodash');
 
 
 export class ZeppelinKernel
@@ -208,7 +208,7 @@ export class ZeppelinKernel
     }
 
     public async checkInService(
-        baseURL: string | undefined,
+        baseURL?: string,
         onDidServiceActivate?: Function
     ) {
         if (baseURL === this._service?.baseURL && this.isActive())
