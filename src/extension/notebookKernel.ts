@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { AxiosError } from 'axios';
 import { NotebookService } from '../common/api';
 import { EXTENSION_NAME,
-    SUPPORTEDLANGUAGE,
+    SUPPORTED_LANGUAGE,
     mapZeppelinLanguage,
     logDebug,
     getProxy,
@@ -18,7 +18,7 @@ import { parseParagraphToCellData,
 import { Mutex } from '../component/mutex';
 import { ExecutionManager } from '../component/execution';
 // import ForProgress from '../component/ForProgress/ForProgress';
-import _ = require('lodash');
+const _ = require('lodash');
 
 
 export class ZeppelinKernel
@@ -26,7 +26,7 @@ export class ZeppelinKernel
     readonly id: string = 'zeppelin-notebook-kernel';
     readonly notebookType: string = 'zeppelin-notebook';
     readonly label: string = 'Zeppelin Notebook';
-    readonly supportedLanguages = SUPPORTEDLANGUAGE;
+    readonly supportedLanguages = SUPPORTED_LANGUAGE;
 
     private _context: vscode.ExtensionContext;
     private _service?: NotebookService;
@@ -208,7 +208,7 @@ export class ZeppelinKernel
     }
 
     public async checkInService(
-        baseURL: string | undefined,
+        baseURL?: string,
         onDidServiceActivate?: Function
     ) {
         if (baseURL === this._service?.baseURL && this.isActive())

@@ -198,9 +198,10 @@ export async function showQuickPickURL(
 // function that prompts user to provide Zeppelin credentials
 export async function showQuickPickLogin(context: vscode.ExtensionContext) {
 	const username = await vscode.window.showInputBox({
-		title: '(1/2) Specify User Name to connect to Zeppelin server'
+		title: '(1/2) Specify user name to connect to Zeppelin server (leave empty for anonymous login)'
 	});
-	if (username === undefined) {
+	if (!username) {
+		// either not given or an empty string
 		return false;
 	}
 
@@ -208,7 +209,7 @@ export async function showQuickPickLogin(context: vscode.ExtensionContext) {
 		title: `(2/2) Specify ${username}'s Password`,
 		password: true
 	});
-	if (password === undefined) {
+	if (!password) {
 		return false;
 	}
 
@@ -227,23 +228,29 @@ export async function doLogin(
 	retrying: boolean = false
 	): Promise<boolean> {
 
+	// context.secrets.delete('zeppelinUsername');
 	let username = await context.secrets.get('zeppelinUsername');
 	let res;
-	// prompt user to provide Zeppelin credential
-	// if he/she hasn't provided one under current workspace
-	// currently only store one credential for each workspace
-	if (username === undefined || retrying) {
-		// user name could be '' 
-		// if remote server doesn't require credential
+	// prompt users to provide Zeppelin credentials
+	// if they haven't provided one under current workspace
+	// only store one credential for each workspace
+
+	// user name could be '' 
+	// if remote server doesn't require credential to login
+	// try anonymous login first (#34)
+	if (!retrying && username === '') {
+		res = await service.anonymousLogin();
+	}
+	else if (username === undefined || retrying) {
 		let hasCredential = await showQuickPickLogin(context);
 		if (!hasCredential) {
-			return false;
+			res = await service.anonymousLogin();
 		}
-
-		username = await context.secrets.get('zeppelinUsername');
-		let password = await context.secrets.get('zeppelinPassword') ?? '';
-
-		res = await service.login(username ?? '', password ?? '');
+		else {
+			let password = await context.secrets.get('zeppelinPassword') ?? '';
+			username = await context.secrets.get('zeppelinUsername') ?? '';
+			res = await service.login(username, password);
+		}
 	}
 	else {
 		// try to login using cached credential
@@ -251,44 +258,73 @@ export async function doLogin(
 		res = await service.login(username, password ?? '');
 	}
 
-	if (res instanceof AxiosError) {
-		if (!res.response) {
-			// local network issue
-			vscode.window.showErrorMessage(`Failed to login for user '${username}'`);
-		}
-		else if (res.response.status === 403) {
-			if (res.response.data.status === 'FORBIDDEN') {
-				// wrong username or password
-				const selection = await vscode.window.showErrorMessage(
-					'Wrong username or password', "Retype", "Cancel"
-				);
-				if ( selection === 'Retype' ) {
-					return await doLogin(context, service, true);
-				}
+	if (!(res instanceof AxiosError)) {
+		if (res.data.body.principal === "anonymous") {
+			const selection = await vscode.window.showInformationMessage(
+				`Logged in Zeppelin server anonymously.`, "Set Credential"
+			);
+			if ( selection === 'Set Credential' ) {
+				return await doLogin(context, service, true);
 			}
-			else {
-				vscode.window.showErrorMessage(res.response.data);
-			}
-		}
-		// test if server has configured Shiro for multi-users,
-		// server will respond 'UnavailableSecurityManagerException' if not.
-		else if (res.response.data.exception 
-				=== 'UnavailableSecurityManagerException'
-			) {
-				vscode.window.showInformationMessage(`Zeppelin login API:
-			remote server has no credential authorization manager configured.
-			Please contact server administrator if this is unexpected.`);
 			return true;
 		}
-		else {
-			// server side error or client side error
-			vscode.window.showErrorMessage(`Failed to login for user '${username}'`);
-		}
-		return false;
+		return true;
 	}
 
-	return true;
+	// error handling
+	if (!res.response) {
+		// local network issue
+		vscode.window.showErrorMessage(`Failed to login for user '${username}'`);
+		return false;
+	}
+	else if (res.response.status === 403) {
+		if (res.response.data.status === 'FORBIDDEN') {
+			// wrong username or password
+			const selection = await vscode.window.showWarningMessage(
+				'Wrong username or password', "Retype", "Cancel"
+			);
+			if ( selection === 'Retype' ) {
+				return await doLogin(context, service, true);
+			}
+		}
+		else {
+			vscode.window.showErrorMessage(res.response.data);
+			return false;
+		}
+	}
+	else if (res.response.status === 302) {
+		// Zeppelin server disables anonymous login,
+		// we therefore enforce credential login.
+		const selection = await vscode.window.showErrorMessage(
+			'Anonymous login is disabled in the remote server, \
+			a valid credential is required.',
+			"Set Credential", "Cancel"
+		);
+		if ( selection === 'Set Credential' ) {
+			return await doLogin(context, service, true);
+		}
+		else {
+			vscode.window.showErrorMessage(res.response.data);
+			return false;
+		}
+	}
+	// test if server has configured Shiro for multi-users,
+	// server will respond 'UnavailableSecurityManagerException' if not.
+	else if (res.response.data.exception 
+			=== 'UnavailableSecurityManagerException'
+		) {
+			vscode.window.showInformationMessage(`Zeppelin login API:
+		remote server has no credential authorization manager configured.
+		Please contact server administrator if this is unexpected.`);
+		return true;
+	}
+	else {
+		// server side error or client side error
+		vscode.window.showErrorMessage(`Failed to login for user '${username}'`);
+	}
+	return false;
 }
+
 
 
 // function that prompts user to connect to remote Zeppelin server
@@ -441,7 +477,7 @@ export async function promptZeppelinServerURL(
 		}
 
 		// task when remote server is connectable.
-		kernel.checkInService(baseURL, async () => {
+		kernel.checkInService(undefined, async () => {
 			let config = vscode.workspace.getConfiguration('zeppelin');
 			let selection = config.get('alwaysConnectToTheLastServer');
 			if (selection === null) {
@@ -475,7 +511,7 @@ export async function promptZeppelinCredential(kernel: ZeppelinKernel) {
 	if (note === undefined) {
 		kernel.deactivate();
 		await kernel.getContext().secrets.delete('zeppelinUsername');
-		kernel.checkInService(baseURL);
+		kernel.checkInService(undefined, undefined);
 		return;
 	}
 
@@ -483,7 +519,7 @@ export async function promptZeppelinCredential(kernel: ZeppelinKernel) {
 	await kernel.getContext().secrets.delete('zeppelinUsername');
 
 	// task when remote server is connectable.
-	kernel.checkInService(baseURL, async () => {
+	kernel.checkInService(undefined, async () => {
 		let config = vscode.workspace.getConfiguration('zeppelin');
 		let selection = config.get('alwaysConnectToTheLastServer');
 		if (selection === null) {
