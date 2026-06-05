@@ -76,6 +76,9 @@ class BasicService {
                     window.showErrorMessage(`Error calling ${url}: ${error.message}
                         possibly due to local network issue`);
                 }
+                else if (error.response?.status === 302) {
+                    logDebug(`Redirected access to ${url}`);
+                }
                 else if (error.response?.status === 401) {
                     window.showWarningMessage(
                         `You do not have permission to access '${url}'`
@@ -135,6 +138,36 @@ class BasicService {
     cancelConnect() {
         this.getCancelToken().cancel();
         this.resetCancelToken();
+    }
+
+    async anonymousLogin() {
+        let res = await this.session.get(
+            '/api/security/ticket',
+            {
+                withCredentials: true,
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            }
+        );
+
+        if (res instanceof AxiosError) {
+            return res;
+        }
+
+        // store cookies to default headers
+        if (res.headers['set-cookie']) {
+            for (let cookie of res.headers['set-cookie']) {
+                let group = reCookies.exec(cookie);
+                if (group) {
+                    this.session.defaults.headers.common['Cookie'] = group[1];
+                    this.session.defaults.headers.common['Content-Type'] = 'application/json';
+                    //break;
+                }
+            }
+        }
+        return res;
     }
 
     async login(username: string, password: string) {
