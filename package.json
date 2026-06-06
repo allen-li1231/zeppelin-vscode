@@ -2,7 +2,7 @@
   "name": "zeppelin-vscode",
   "displayName": "Zeppelin Notebook",
   "description": "Apache Zeppelin Notebook Extension for VS Code",
-  "version": "0.2.18",
+  "version": "0.2.19",
   "publisher": "AllenLi1231",
   "author": {
     "name": "Allen Li"
@@ -161,50 +161,74 @@
         },
         "zeppelin.proxy.host": {
           "order": 8,
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "format": "uri",
           "default": null,
           "description": "Set proxy host for connection with Zeppelin server."
         },
         "zeppelin.proxy.port": {
           "order": 9,
-          "type": ["integer", "null"],
+          "type": [
+            "integer",
+            "null"
+          ],
           "default": null,
           "description": "Set proxy port for connection with Zeppelin server."
         },
         "zeppelin.proxy.credential.username": {
           "order": 10,
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "default": null,
           "description": "Specifies proxy authentication for connection with Zeppelin server."
         },
         "zeppelin.proxy.credential.password": {
           "order": 11,
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "default": null,
           "description": "Specifies proxy authentication for connection with Zeppelin server."
         },
         "zeppelin.proxy.credential.protocol": {
           "order": 12,
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "default": null,
           "description": "Specifies the proxy protocol for connection with Zeppelin server."
         },
         "zeppelin.https.CA-Certification": {
           "order": 13,
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "default": null,
           "description": "Configure a trustworthy private CA cert file path. A complete cert chain is in .pem or .crt format. You must include all certs in the chain up to the trust root."
         },
         "zeppelin.https.KeyPath": {
           "order": 14,
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "default": null,
           "description": "Configure a trustworthy private key path."
         },
         "zeppelin.https.passphase": {
           "order": 15,
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "default": null,
           "description": "Configure private key's corresponding passphase."
         },
@@ -219,6 +243,12 @@
           "type": "number",
           "default": 10,
           "description": "Set global http timeout value."
+        },
+        "zeppelin.paragraphCache.refreshInterval": {
+          "order": 18,
+          "type": "number",
+          "default": 5,
+          "description": "Set paragraph cache refresh interval and TTL (in seconds). Paragraph info fetched within this interval is served from cache to reduce network overhead."
         }
       }
     },
@@ -272,26 +302,25 @@
     "test": "node ./out/test/runTest.js"
   },
   "devDependencies": {
-    "@types/glob": "^8.1.0",
-    "@types/lodash": "^4.14.198",
-    "@types/mocha": "^10.0.1",
-    "@types/node": "16.x",
-    "@types/vscode": "^1.79.0",
+    "@types/glob": "^9.0.0",
+    "@types/lodash": "^4.17.24",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "25.x",
+    "@types/vscode": "^1.120.0",
     "@types/vscode-notebook-renderer": "^1.72",
-    "@typescript-eslint/eslint-plugin": "^5.59.1",
-    "@typescript-eslint/parser": "^5.59.1",
-    "@vscode/test-electron": "^2.3.0",
-    "axios": "^1.4.0",
-    "eslint": "^8.39.0",
-    "glob": "^8.1.0",
-    "lodash": "^4.17.21",
-    "ts-loader": "^9.4.4",
-    "typescript": "^5.0.4",
-    "webpack": "^5.88.2",
-    "webpack-cli": "^5.1.4"
+    "@typescript-eslint/eslint-plugin": "^8.60.1",
+    "@typescript-eslint/parser": "^8.60.1",
+    "@vscode/test-electron": "^2.5.2",
+    "axios": "^1.17.0",
+    "eslint": "^10.4.1",
+    "glob": "^13.0.6",
+    "lodash": "^4.18.1",
+    "ts-loader": "^9.6.0",
+    "typescript": "^6.0.3",
+    "webpack": "^5.107.2",
+    "webpack-cli": "^7.0.3"
   },
   "dependencies": {
-    "ansi-escapes": "^6.2.0",
-    "string-width": "^7.1.0"
+    "ansi-escapes": "^7.3.0"
   }
 }
