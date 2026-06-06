@@ -302,11 +302,11 @@
     "test": "node ./out/test/runTest.js"
   },
   "devDependencies": {
-    "@types/glob": "^9.0.0",
+    "@types/glob": "^8.1.0",
     "@types/lodash": "^4.17.24",
     "@types/mocha": "^10.0.10",
     "@types/node": "25.x",
-    "@types/vscode": "^1.120.0",
+    "@types/vscode": "^1.79.0",
     "@types/vscode-notebook-renderer": "^1.72",
     "@typescript-eslint/eslint-plugin": "^8.60.1",
     "@typescript-eslint/parser": "^8.60.1",
