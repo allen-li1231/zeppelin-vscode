@@ -12,7 +12,8 @@ import { CellStatusProvider } from '../component/cellStatusBar';
 import { NoteData,
     ParagraphData, ParagraphResult } from '../common/types';
 import { showQuickPickURL,
-    doLogin } from '../common/interaction';
+    doLogin,
+    promptCreateParagraph } from '../common/interaction';
 import { parseParagraphToCellData,
     parseParagraphResultToCellOutput } from '../common/parser';
 import { Mutex } from '../component/mutex';
@@ -35,8 +36,8 @@ export class ZeppelinKernel
     private _updateMutex = new Mutex("_updateMutex");
     private _editMutex = new Mutex("_editMutex");
 
-    // private _timerSyncNote?: NodeJS.Timer;
-    private _timerUpdateCell?: NodeJS.Timer;
+    // private _timerSyncNote?: ReturnType<typeof setInterval>;
+    private _timerUpdateCell?: ReturnType<typeof setInterval>;
     private _executionManager?: ExecutionManager;
     private _mapSyncNote = new Map<
         vscode.NotebookDocument, number
@@ -44,6 +45,8 @@ export class ZeppelinKernel
     private _mapNotebookEdits = new Map<vscode.NotebookCell, vscode.NotebookEdit[]>();
     private _mapUpdateParagraph = new Map<vscode.NotebookCell, number>();
     private _flagRegisterParagraphUpdate = true;
+    private _mapParagraphCache = new Map<string, { data: ParagraphData | null, timestamp: number }>();
+    private _timerRefreshParagraphCache?: ReturnType<typeof setInterval>;
 
     public cellStatusBar: CellStatusProvider | undefined = undefined;
 
@@ -96,6 +99,16 @@ export class ZeppelinKernel
                 poolingInterval * 1000);
             }
 
+            if (this._timerRefreshParagraphCache === undefined)
+            {
+                let cacheInterval: number = config.get('paragraphCache.refreshInterval', 5);
+
+                this._timerRefreshParagraphCache = setInterval(
+                    this._doRefreshParagraphCache.bind(this),
+                    cacheInterval * 1000
+                );
+            }
+
             // if (this._timerSyncNote === undefined) {
             //     let note = vscode.window.activeNotebookEditor?.notebook;
 
@@ -108,6 +121,7 @@ export class ZeppelinKernel
             // }
 
             this._executionManager?.scheduleTracking();
+            this.cellStatusBar?.scheduleTracking();
         }
         logDebug("activate", this.isActive());
         return this.isActive();
@@ -131,12 +145,20 @@ export class ZeppelinKernel
             this._timerUpdateCell = undefined;
         }
 
+        if (this._timerRefreshParagraphCache !== undefined)
+        {
+            clearInterval(this._timerRefreshParagraphCache);
+            this._timerRefreshParagraphCache = undefined;
+            this._mapParagraphCache.clear();
+        }
+
         // if (this._timerSyncNote !== undefined) {
         //     clearInterval(this._timerSyncNote);
         //     this._timerSyncNote = undefined;
         // }
 
         this._executionManager?.dispose();
+        this.cellStatusBar?.dispose();
 
         this._isActive = false;
         logDebug("activate", this.isActive());
@@ -338,34 +360,136 @@ export class ZeppelinKernel
     public async getParagraphInfo(
         cell: vscode.NotebookCell
     ) {
+        let config = vscode.workspace.getConfiguration('zeppelin');
+        let cacheInterval: number = config.get('paragraphCache.refreshInterval', 5);
+        let paragraphId = cell.metadata.id;
+
+        // Check cache for fresh data
+        if (paragraphId !== undefined)
+        {
+            let cached = this._mapParagraphCache.get(paragraphId);
+            if (cached !== undefined
+                && (Date.now() - cached.timestamp) < cacheInterval * 1000)
+            {
+                if (cached.data === null)
+                {
+                    // 404 sentinel: paragraph doesn't exist on server
+                    await this.editWithoutParagraphUpdate(async () => {
+                        await this.updateCellMetadata(cell, {"status": 404});
+                    });
+                    return <ParagraphData> cell.metadata;
+                }
+
+                this.pollUpdateCellMetadata(cell, cached.data);
+                return cached.data;
+            }
+        }
+
+        // Cache miss or stale: fetch from network
         let res = await this.getService()?.getParagraphInfo(
             cell.notebook.metadata.id, cell.metadata.id);
         let paragraph: ParagraphData;
 
         if (res instanceof AxiosError)
         {
-            // if (res.response?.status === 404)
-            // {
-            //     await promptCreateParagraph(this, cell);
-            //     paragraph = res.data.body ?? cell.metadata;
-            //     return paragraph;
-            // }
-            // else
-            // {
+            if (res.response?.status === 404)
+            {
+                // Cache the 404 sentinel
+                if (paragraphId !== undefined)
+                {
+                    this._mapParagraphCache.set(paragraphId, { data: null, timestamp: Date.now() });
+                }
+                const res = await promptCreateParagraph(this, cell);
+                paragraph = res?.data.body ?? cell.metadata;
+                return paragraph;
+            }
+            else
+            {
                 logDebug(
                     `Unable to get paragraph info ${cell.metadata.id} 
-                    in note '${cell.notebook.metadata.name}'`
+                    in note '${cell.notebook.metadata.name}'`, res
                 );
                 throw res;
-            // }
+            }
         }
         else
         {
             paragraph = res?.data.body ?? res?.data;
         }
 
+        // Cache the successful result
+        if (paragraphId !== undefined)
+        {
+            this._mapParagraphCache.set(paragraphId, { data: paragraph, timestamp: Date.now() });
+        }
+
         this.pollUpdateCellMetadata(cell, paragraph);
         return paragraph;
+    }
+
+    private async _doRefreshParagraphCache()
+    {
+        const activeNotebook = vscode.window.activeNotebookEditor;
+        if (activeNotebook === undefined || activeNotebook.notebook.cellCount === 0)
+        {
+            return;
+        }
+
+        const noteId = activeNotebook.notebook.metadata.id;
+        if (noteId === undefined) { return; }
+
+        // Collect fresh data from network first, then apply to cache atomically
+        const freshEntries: { paragraphId: string, data: ParagraphData | null }[] = [];
+
+        for (let range of activeNotebook.visibleRanges)
+        {
+            if (range.isEmpty) { continue; }
+
+            for (let i = range.start; i < range.end; i++)
+            {
+                let cell = activeNotebook.notebook.cellAt(i);
+                let paragraphId = cell.metadata.id;
+                if (paragraphId === undefined) { continue; }
+
+                try
+                {
+                    let res = await this.getService()?.getParagraphInfo(noteId, paragraphId);
+                    if (res instanceof AxiosError)
+                    {
+                        if (res.response?.status === 404)
+                        {
+                            freshEntries.push({ paragraphId, data: null });
+                        }
+                        else
+                        {
+                            logDebug(`_doRefreshParagraphCache: error for ${paragraphId}`, res);
+                        }
+                    }
+                    else
+                    {
+                        let paragraph: ParagraphData = res?.data.body ?? res?.data;
+                        freshEntries.push({ paragraphId, data: paragraph });
+                    }
+                }
+                catch (err)
+                {
+                    logDebug(`_doRefreshParagraphCache: error for ${paragraphId}`, err);
+                }
+            }
+        }
+
+        // Apply fresh entries only if they are newer than what's in the cache
+        for (let { paragraphId, data } of freshEntries)
+        {
+            let cached = this._mapParagraphCache.get(paragraphId);
+            // Only overwrite if no cached entry exists or the cached entry
+            // was written before we started fetching (prevents overwriting
+            // a fresher entry that getParagraphInfo wrote concurrently)
+            if (cached === undefined || cached.timestamp <= Date.now())
+            {
+                this._mapParagraphCache.set(paragraphId, { data, timestamp: Date.now() });
+            }
+        }
     }
 
     public async runParagraph(cell: vscode.NotebookCell, sync: boolean)
@@ -424,9 +548,27 @@ export class ZeppelinKernel
         });
     }
 
-    public unregisterParagraphUpdate(cell: vscode.NotebookCell)
+    /**
+     * Unregister a cell from paragraph update polling.
+     * Acquires _updateMutex — do NOT call from within _updateMutex.runExclusive.
+     * For internal use (already holding the mutex), call _unregisterParagraphUpdateDirect.
+     */
+    public async unregisterParagraphUpdate(cell: vscode.NotebookCell)
     {
         logDebug("unregisterParagraphUpdate", cell);
+        return this._updateMutex.runExclusive(async () =>
+        {
+            return this._mapUpdateParagraph.delete(cell);
+        });
+    }
+
+    /**
+     * Internal version: removes cell from update map without acquiring _updateMutex.
+     * Caller MUST already hold _updateMutex.
+     */
+    private _unregisterParagraphUpdateDirect(cell: vscode.NotebookCell)
+    {
+        logDebug("_unregisterParagraphUpdateDirect", cell);
         return this._mapUpdateParagraph.delete(cell);
     }
 
@@ -468,10 +610,9 @@ export class ZeppelinKernel
                 {
                     logDebug("_doUpdatePollingParagraphs: deleted cell", cell);
                 }
-                this.updateParagraph(cell);
+                await this.updateParagraph(cell);
             }
         }
-        ;
     }
 
     public async replaceNoteCells(
@@ -541,7 +682,7 @@ export class ZeppelinKernel
             let res = await this.replaceNoteCells(
                 cell.notebook, replaceRange, [parsedCell]
             );
-            this._flagRegisterParagraphUpdate = false;
+            this._flagRegisterParagraphUpdate = true;
             return res;
         });
     }
@@ -569,24 +710,26 @@ export class ZeppelinKernel
         cell: vscode.NotebookCell,
         metadata: { [key: string]: any }
     ) {
-        if (cell.index === -1)
-        {
-            this._mapNotebookEdits.delete(cell);
-            return;
-        }
+        return this.editWithoutParagraphUpdate(async () => {
+            if (cell.index === -1)
+            {
+                this._mapNotebookEdits.delete(cell);
+                return;
+            }
 
-        let edit = vscode.NotebookEdit.updateCellMetadata(
-            cell.index,
-            // update based on new metadata provided
-            Object.assign({}, cell.metadata, metadata)
-        );
-        if (this._mapNotebookEdits.has(cell))
-        {
-            this._mapNotebookEdits.get(cell)?.push(edit);
-        }
-        else {
-            this._mapNotebookEdits.set(cell, [edit]);
-        }
+            let edit = vscode.NotebookEdit.updateCellMetadata(
+                cell.index,
+                // update based on new metadata provided
+                Object.assign({}, cell.metadata, metadata)
+            );
+            if (this._mapNotebookEdits.has(cell))
+            {
+                this._mapNotebookEdits.get(cell)?.push(edit);
+            }
+            else {
+                this._mapNotebookEdits.set(cell, [edit]);
+            }
+        })
     }
 
     public async editNote(
@@ -673,9 +816,10 @@ export class ZeppelinKernel
         await this.editWithoutParagraphUpdate(async () =>
         {
             // need to unregister updates of cells to be deleted from syncing
+            // Note: already inside _updateMutex, use direct version
             for (let cell of note.getCells())
             {
-                await this.unregisterParagraphUpdate(cell);
+                this._unregisterParagraphUpdateDirect(cell);
             }
             await this.editNote(
                 note, replaceRange, serverCells,
@@ -712,13 +856,15 @@ export class ZeppelinKernel
     // }
 
     public async applyPolledNotebookEdits() {
-        for (let [cell, edits] of this._mapNotebookEdits)
-        {
-            let editor = new vscode.WorkspaceEdit();
-            editor.set(cell.document.uri, edits);
-            await vscode.workspace.applyEdit(editor);
-        }
-        this._mapNotebookEdits.clear();
+        return this.editWithoutParagraphUpdate(async () => {
+            for (let [cell, edits] of this._mapNotebookEdits)
+            {
+                let editor = new vscode.WorkspaceEdit();
+                editor.set(cell.document.uri, edits);
+                await vscode.workspace.applyEdit(editor);
+            }
+            this._mapNotebookEdits.clear();
+        })
     }
 
     public async createParagraph(cell: vscode.NotebookCell) {
@@ -746,13 +892,15 @@ export class ZeppelinKernel
             throw res;
         }
 
-        await this.updateCellMetadata(
-            cell,
-            {
-                id: res?.data.body,
-                config
-            }
-        );
+        await this.editWithoutParagraphUpdate(async () => {
+            await this.updateCellMetadata(
+                cell,
+                {
+                    id: res?.data.body,
+                    config
+                }
+            );
+        });
         return cell.metadata;
     }
 
@@ -764,7 +912,9 @@ export class ZeppelinKernel
         if (res instanceof AxiosError)
         {
             logDebug("error in updateParagraphText", res);
-            await this.updateCellMetadata(cell, {"status": res.response?.status});
+            await this.editWithoutParagraphUpdate(async () => {
+                await this.updateCellMetadata(cell, {"status": res.response?.status});
+            })
             throw res;
         }
 
@@ -875,7 +1025,8 @@ export class ZeppelinKernel
         }
 
         // unregister cell from poll, as the update is either finished or failed now
-        await this.unregisterParagraphUpdate(cell);
+        // Note: _updateParagraph is always called from within _updateMutex, use direct version
+        this._unregisterParagraphUpdateDirect(cell);
     }
 
     public async updateParagraph(cell: vscode.NotebookCell)
