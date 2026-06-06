@@ -250,3 +250,26 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 - [New cell execution policy: 'by interpreter' dispatches executions to corresponding interpreter, with concurrency determined by interpreter setting on Zeppelin server](https://github.com/allen-li1231/zeppelin-vscode/commit/c642d8e89a7378877a322be11abfa7a4d7ca2e82), hopefully resolving #29.
 - [Improve creating paragraph prompt message](https://github.com/allen-li1231/zeppelin-vscode/commit/af8d9271d1cd15c95f2a57f73aaa1b663c036f60).
 - [Remove duplicated update operation during cell status bar updating](https://github.com/allen-li1231/zeppelin-vscode/commit/ee92a20827263993fab3d764eb134265984382ca).
+
+
+
+## [0.2.19] - 2026-06-05
+
+### Fixed
+- `updateByReplaceCell` permanently disabling autosave due to `_flagRegisterParagraphUpdate` incorrectly set to `false` instead of `true` after cell replacement.
+- `_doUpdatePollingParagraphs` not awaiting `updateParagraph` calls, causing concurrent fire-and-forget updates and stale state in subsequent cell status bar refresh.
+- `doUpdateVisibleCells` in `CellStatusProvider` not awaiting `editWithoutParagraphUpdate`, allowing `_flagRegisterParagraphUpdate` to interleave with other callers.
+- `doUpdateVisibleCells` calling `applyPolledNotebookEdits` per visible range instead of once after all ranges, and without `await`, causing polled edits queued during the loop to be missed.
+- `onWillSaveNotebookDocument` handler not using `event.waitUntil()`, allowing the notebook to be saved before pending paragraph updates and polled edits are flushed.
+- `unregisterParagraphUpdate` accessing `_mapUpdateParagraph` without `_updateMutex` protection; now uses mutex-guarded public method (with a direct internal variant for callers already holding the lock).
+- `CellStatusProvider._timerUpdateCellStatus` interval never disposed: timer started unconditionally in constructor and neither `ZeppelinKernel.deactivate()` nor extension deactivation called `dispose()`, causing the interpreter-status polling loop to leak indefinitely. Now the timer follows `scheduleTracking()`/`unscheduleTracking()` lifecycle, is stopped in `deactivate()`, and the provider is registered as a disposable in `context.subscriptions`.
+- `CellStatusProvider.doUpdateAllInterpreterStatus` non-atomic map update: `_mapInterpreterStatus` was cleared then repopulated one-by-one inside the mutex, allowing `provideCellStatusBarItems()` (which runs outside the mutex) to observe an empty or partially-populated map. Now builds a new `Map` locally and swaps atomically.
+- `CellStatusProvider._cellStatusUpdateMutex` TOCTOU guard: the `isLocked()` check before `runExclusive()` could theoretically allow duplicate entries if the method is called from multiple sites. Replaced with a synchronous `_isUpdatingStatus` flag set before any async gap and cleared in `finally`.
+
+### Added
+- [Paragraph info cache (`zeppelin.paragraphCache.refreshInterval` setting, default 5 seconds). A background interval (`_doRefreshParagraphCache`) pre-fetches paragraph info for visible cells and stores results in `_mapParagraphCache`. `getParagraphInfo` returns cached data when fresh (within the configured TTL), eliminating redundant network calls from `trackExecution`, `_doExecutionAsync`, and `doUpdateVisibleCells`](cde00c5dd67fc495c111c7b34fbf8c1a6a2a5beb).
+- [404 sentinel caching: when a paragraph doesn't exist on the server, the cache stores a `null` sentinel so that subsequent `getParagraphInfo` calls within the TTL silently return cell metadata with `status: 404` instead of repeatedly triggering `promptCreateParagraph` dialogs](cde00c5dd67fc495c111c7b34fbf8c1a6a2a5beb).
+
+### Enhancement
+- Mirgrate to Typescript 6 in accordance to: https://aka.ms/ts6
+- [Anonymous login as default approach if Zeppelin credential is not given](https://github.com/allen-li1231/zeppelin-vscode/commit/2e652f35a704bf043bb9823864c768a1e6dbbd6b) in response to #34.
