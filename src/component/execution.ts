@@ -170,7 +170,7 @@ export class ExecutionManager
         string, Mutex
     >();
 
-    private _timerTrackExecution?: NodeJS.Timer;
+    private _timerTrackExecution?: ReturnType<typeof setInterval>;
 
     public kernel: ZeppelinKernel;
 

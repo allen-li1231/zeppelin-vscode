@@ -477,7 +477,7 @@ export async function promptZeppelinServerURL(
 		}
 
 		// task when remote server is connectable.
-		kernel.checkInService(undefined, async () => {
+		kernel.checkInService(baseURL, async () => {
 			let config = vscode.workspace.getConfiguration('zeppelin');
 			let selection = config.get('alwaysConnectToTheLastServer');
 			if (selection === null) {

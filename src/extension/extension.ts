@@ -31,6 +31,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 	kernel.cellStatusBar = cellStatusBar;
 	context.subscriptions.push(disposable);
+	context.subscriptions.push(cellStatusBar);
 
 	disposable = vscode.commands.registerCommand(
 		'zeppelin-vscode.setZeppelinServerURL',
@@ -174,9 +175,14 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 
 		if (event.notebook.isDirty) {
-			kernel.instantUpdatePollingParagraphs();
+			event.waitUntil(
+				kernel.instantUpdatePollingParagraphs()
+					.then(() => kernel.applyPolledNotebookEdits())
+			);
 		}
-		kernel.applyPolledNotebookEdits();
+		else {
+			event.waitUntil(kernel.applyPolledNotebookEdits());
+		}
 	});
 	context.subscriptions.push(disposable);
 
