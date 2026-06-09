@@ -1,0 +1,14 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"outDir": "../../out/test",
+		"types": ["vitest/globals", "node"],
+		"rootDir": "../.."
+	},
+	"include": [
+		"./**/*.ts",
+		"../component/**/*.ts",
+		"../common/**/*.ts",
+		"../extension/**/*.ts"
+	]
+}
