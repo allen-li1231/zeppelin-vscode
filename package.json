@@ -269,6 +269,16 @@
       {
         "command": "zeppelin-vscode.restartInterpreter",
         "title": "Zeppelin: restart a interpreter"
+      },
+      {
+        "command": "zeppelin-vscode.showCellDiff",
+        "title": "Zeppelin: Show Cell Diff (Local vs Remote)",
+        "enablement": "resourceExtname == .zpln"
+      },
+      {
+        "command": "zeppelin-vscode.acceptRemoteCell",
+        "title": "Zeppelin: Accept Remote Cell Version",
+        "enablement": "resourceExtname == .zpln"
       }
     ],
     "menus": {
@@ -286,6 +296,14 @@
         {
           "command": "zeppelin-vscode.restartInterpreter",
           "when": "resourceExtname == .zpln || resourceExtname == .ipynb"
+        },
+        {
+          "command": "zeppelin-vscode.showCellDiff",
+          "when": "resourceExtname == .zpln"
+        },
+        {
+          "command": "zeppelin-vscode.acceptRemoteCell",
+          "when": "resourceExtname == .zpln"
         }
       ]
     }
@@ -295,32 +313,31 @@
     "compile": "webpack",
     "watch": "webpack --watch",
     "package": "webpack --mode production --devtool hidden-source-map",
-    "compile-tests": "tsc -p . --outDir out",
-    "watch-tests": "tsc -p . -w --outDir out",
-    "pretest": "npm run compile-tests && npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
-    "test": "node ./out/test/runTest.js"
+    "test": "vitest run"
   },
   "devDependencies": {
-    "@types/glob": "^8.1.0",
     "@types/lodash": "^4.17.24",
-    "@types/mocha": "^10.0.10",
-    "@types/node": "25.x",
+    "@types/node": "^25.9.2",
     "@types/vscode": "^1.79.0",
     "@types/vscode-notebook-renderer": "^1.72",
     "@typescript-eslint/eslint-plugin": "^8.60.1",
     "@typescript-eslint/parser": "^8.60.1",
-    "@vscode/test-electron": "^2.5.2",
     "axios": "^1.17.0",
     "eslint": "^10.4.1",
-    "glob": "^13.0.6",
     "lodash": "^4.18.1",
     "ts-loader": "^9.6.0",
     "typescript": "^6.0.3",
+    "vitest": "^4.1.8",
     "webpack": "^5.107.2",
     "webpack-cli": "^7.0.3"
   },
   "dependencies": {
-    "ansi-escapes": "^7.3.0"
+    "ansi-escapes": "^7.3.0",
+    "node": "^26.3.0"
+  },
+  "allowScripts": {
+    "node@26.3.0": true,
+    "esbuild@0.25.12": true
   }
 }

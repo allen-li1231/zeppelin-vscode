@@ -32,6 +32,33 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
         this._setCell.add(cell);
         const items: vscode.NotebookCellStatusBarItem[] = [];
 
+        // Show sync conflict indicator if present
+        if (cell.metadata.syncConflict !== undefined) {
+            const conflictItem = new vscode.NotebookCellStatusBarItem(
+                '$(diff) Remote Changed',
+                vscode.NotebookCellStatusBarAlignment.Right,
+            );
+            conflictItem.command = <vscode.Command> {
+                title: '$(diff) Remote Changed',
+                command: 'zeppelin-vscode.showCellDiff',
+                arguments: [cell],
+            };
+            conflictItem.tooltip = `Cell differs from server (click to view diff)`;
+            items.push(conflictItem);
+
+            const acceptItem = new vscode.NotebookCellStatusBarItem(
+                '$(check)',
+                vscode.NotebookCellStatusBarAlignment.Right,
+            );
+            acceptItem.command = <vscode.Command> {
+                title: '$(check) Accept Remote',
+                command: 'zeppelin-vscode.acceptRemoteCell',
+                arguments: [cell],
+            };
+            acceptItem.tooltip = `Accept remote version of this cell`;
+            items.push(acceptItem);
+        }
+
         // status === string: normal status
         // status === undefined: cannot reach remote server
         // status === number: remote server responds with problem
