@@ -784,6 +784,69 @@ export class ZeppelinKernel
         return this._mapSyncNote.has(note);
     }
 
+    /**
+     * Convert a live NotebookCell to NotebookCellData so it can survive
+     * a full-cell replace operation. Preserves kind, text, language,
+     * metadata and outputs.
+     */
+    private _cellToCellData(cell: vscode.NotebookCell): vscode.NotebookCellData
+    {
+        let cellData = new vscode.NotebookCellData(
+            cell.kind,
+            cell.document.getText(),
+            cell.document.languageId
+        );
+        cellData.metadata = { ...cell.metadata };
+        cellData.outputs = cell.outputs.map(output =>
+            new vscode.NotebookCellOutput(
+                output.items.map(item =>
+                    new vscode.NotebookCellOutputItem(item.data, item.mime)
+                ),
+                output.metadata
+            )
+        );
+        return cellData;
+    }
+
+    /**
+     * Detect whether a local cell differs from its server paragraph.
+     * Compares text, cell kind, language, and execution results.
+     */
+    private _hasSyncConflict(
+        cell: vscode.NotebookCell,
+        serverParagraph: ParagraphData,
+        serverCellData: vscode.NotebookCellData
+    ): boolean
+    {
+        let localText = cell.document.getText();
+        let serverText = serverParagraph.text ?? '';
+        if (localText !== serverText) { return true; }
+
+        if (cell.kind !== serverCellData.kind) { return true; }
+
+        if (cell.document.languageId !== serverCellData.languageId) { return true; }
+
+        // Compare execution results stored in metadata
+        let localResults = cell.metadata.results;
+        let serverResults = serverParagraph.results;
+        if (JSON.stringify(localResults) !== JSON.stringify(serverResults))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Sync local notebook with the server using a non-destructive merge.
+     *
+     * Keeps local cells whose id matches a server paragraph, flagging
+     *  them with `metadata.syncConflict` when content differs.
+     * Inserts server-only paragraphs (not present locally) at the
+     *  correct position.
+     * Preserves local-only cells (no id or id not on server) in their
+     *   relative positions, anchored after the nearest preceding matched cell.
+     */
     public async syncNote(note: vscode.NotebookDocument | undefined) {
         if (note === undefined)
         {
@@ -807,45 +870,126 @@ export class ZeppelinKernel
             return;
         }
 
-        let serverCells = serverNote.paragraphs
-            ? serverNote.paragraphs.map(parseParagraphToCellData)
-            : [];
+        let serverParagraphs = serverNote.paragraphs ?? [];
+
+        // Build lookup structures
+        let serverIdSet = new Set(serverParagraphs.map(p => p.id));
+
+        let localCellMap = new Map<string, vscode.NotebookCell>();
+        for (let cell of note.getCells())
+        {
+            if (cell.metadata.id !== undefined)
+            {
+                localCellMap.set(cell.metadata.id, cell);
+            }
+        }
+
+        // Anchor local-only cells to the nearest preceding matched cell.
+        // Key = id of the anchor cell (null = before any matched cell).
+        let localOnlyAnchored = new Map<string | null, vscode.NotebookCell[]>();
+        let lastMatchedId: string | null = null;
+
+        for (let cell of note.getCells())
+        {
+            let cellId = cell.metadata.id;
+            if (cellId === undefined || !serverIdSet.has(cellId))
+            {
+                // Local-only cell
+                if (!localOnlyAnchored.has(lastMatchedId))
+                {
+                    localOnlyAnchored.set(lastMatchedId, []);
+                }
+                localOnlyAnchored.get(lastMatchedId)!.push(cell);
+            }
+            else
+            {
+                lastMatchedId = cellId;
+            }
+        }
+
+        // Build merged cell list walking server paragraphs in order
+        let mergedCells: vscode.NotebookCellData[] = [];
+        // Track which indices in mergedCells originate from the server
+        // (matched or server-only) so we can resume execution status.
+        let serverCellIndices: number[] = [];
+
+        // Emit local-only cells anchored before the first matched cell
+        for (let cell of localOnlyAnchored.get(null) ?? [])
+        {
+            mergedCells.push(this._cellToCellData(cell));
+        }
+
+        for (let serverParagraph of serverParagraphs)
+        {
+            let localCell = localCellMap.get(serverParagraph.id);
+            let serverCellData = parseParagraphToCellData(serverParagraph);
+
+            if (localCell !== undefined)
+            {
+                // Matched cell — keep local version, detect conflict
+                let localCellData = this._cellToCellData(localCell);
+
+                if (this._hasSyncConflict(localCell, serverParagraph, serverCellData))
+                {
+                    localCellData.metadata = {
+                        ...localCellData.metadata,
+                        syncConflict: serverParagraph
+                    };
+                }
+                else
+                {
+                    // Clear any previous conflict marker
+                    let meta = { ...localCellData.metadata };
+                    delete meta.syncConflict;
+                    localCellData.metadata = meta;
+                }
+
+                serverCellIndices.push(mergedCells.length);
+                mergedCells.push(localCellData);
+            }
+            else
+            {
+                // Server-only cell — insert new
+                serverCellIndices.push(mergedCells.length);
+                mergedCells.push(serverCellData);
+            }
+
+            // Emit local-only cells anchored after this server paragraph
+            for (let cell of localOnlyAnchored.get(serverParagraph.id) ?? [])
+            {
+                mergedCells.push(this._cellToCellData(cell));
+            }
+        }
 
         let replaceRange = new vscode.NotebookRange(0, note.cellCount);
 
         await this.editWithoutParagraphUpdate(async () =>
         {
-            // need to unregister updates of cells to be deleted from syncing
+            // Unregister updates for all current cells
             // Note: already inside _updateMutex, use direct version
             for (let cell of note.getCells())
             {
                 this._unregisterParagraphUpdateDirect(cell);
             }
+
             await this.editNote(
-                note, replaceRange, serverCells,
+                note, replaceRange, mergedCells,
                 undefined, undefined, undefined,
                 serverNote
             );
 
-            for (let [cell, serverCell] of _.zip(note.getCells(), serverCells)) {
-                if (cell === undefined)
+            // Resume execution status only for server-sourced cells
+            for (let idx of serverCellIndices)
+            {
+                if (idx < note.cellCount)
                 {
-                    break;
+                    let cell = note.cellAt(idx);
+                    let serverCellData = mergedCells[idx];
+                    this._executionManager?.resumeExecutionStatus(cell, serverCellData);
                 }
-
-                if (serverCell === undefined)
-                {
-                    logDebug(
-                        "syncNote encounter cell mismatches itself from server",
-                        cell, serverCell
-                    );
-                    continue;
-                }
-
-                this._executionManager?.resumeExecutionStatus(cell, serverCell);
             }
-        }
-    );
+        });
+
         this._unregisterSyncNote(note);
         logDebug("syncNote end");
     });
@@ -854,6 +998,32 @@ export class ZeppelinKernel
     // public async syncNote(note: vscode.NotebookDocument | undefined) {
     //     return this._updateMutex.runExclusive(async () => this._syncNote(note));
     // }
+
+    /**
+     * Accept the remote (server) version of a cell, replacing local content
+     * and clearing the syncConflict marker. Called by the showCellDiff command.
+     */
+    public async acceptRemoteCell(cell: vscode.NotebookCell)
+    {
+        let conflict: ParagraphData | undefined = cell.metadata.syncConflict;
+        if (conflict === undefined)
+        {
+            return;
+        }
+
+        let serverCellData = parseParagraphToCellData(conflict);
+        // Clear the conflict marker on the replacement cell
+        let meta = { ...serverCellData.metadata };
+        delete meta.syncConflict;
+        serverCellData.metadata = meta;
+
+        let replaceRange = new vscode.NotebookRange(cell.index, cell.index + 1);
+
+        await this.editWithoutParagraphUpdate(async () =>
+        {
+            await this.replaceNoteCells(cell.notebook, replaceRange, [serverCellData]);
+        });
+    }
 
     public async applyPolledNotebookEdits() {
         return this.editWithoutParagraphUpdate(async () => {
