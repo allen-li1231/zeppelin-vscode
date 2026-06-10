@@ -334,7 +334,8 @@
   },
   "dependencies": {
     "ansi-escapes": "^7.3.0",
-    "node": "^26.3.0"
+    "node": "^26.3.0",
+    "string-width": "^8.2.1"
   },
   "allowScripts": {
     "node@26.3.0": true,
