@@ -166,6 +166,36 @@ function createWorkspaceConfiguration(defaults: Record<string, unknown> = {}) {
 
 export const workspace = {
     getConfiguration: (_section?: string) => createWorkspaceConfiguration(),
+    applyEdit: (_edit: unknown) => Promise.resolve(true),
+};
+
+export const notebooks = {
+    createNotebookController: (
+        _id: string,
+        _notebookType: string,
+        _label: string
+    ) => ({
+        executeHandler: undefined as any,
+        interruptHandler: undefined as any,
+        label: _label,
+        description: undefined as string | undefined,
+        detail: undefined as string | undefined,
+        supportedLanguages: undefined as string[] | undefined,
+        supportsExecutionOrder: false,
+        onDidChangeSelectedNotebooks: (_listener: any) => ({ dispose: () => {} }),
+        createNotebookCellExecution: (_cell: any) => ({
+            executionOrder: undefined,
+            token: { isCancellationRequested: false, onCancellationRequested: () => ({ dispose: () => {} }) },
+            start: () => {},
+            end: () => {},
+            clearOutput: () => Promise.resolve(),
+            replaceOutput: () => Promise.resolve(),
+            appendOutput: () => Promise.resolve(),
+            replaceOutputItems: () => Promise.resolve(),
+            appendOutputItems: () => Promise.resolve(),
+        }),
+        dispose: () => {},
+    }),
 };
 
 export const window = {
