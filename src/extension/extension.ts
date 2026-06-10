@@ -117,6 +117,14 @@ export async function activate(context: vscode.ExtensionContext) {
 				return;
 			}
 
+			// Mark cell as resolving diff so syncNote preserves the conflict
+			// and paragraph updates / execution are blocked until resolved.
+			if (!cell.metadata.resolvingDiff) {
+				await kernel.editWithoutParagraphUpdate(async () => {
+					await kernel.updateCellMetadata(cell, { resolvingDiff: true });
+				});
+			}
+
 			let noteId = cell.notebook.metadata.id ?? 'unknown';
 			let paragraphId = cell.metadata.id ?? 'unknown';
 			let remoteUri = vscode.Uri.parse(
@@ -142,6 +150,16 @@ export async function activate(context: vscode.ExtensionContext) {
 		'zeppelin-vscode.acceptRemoteCell',
 		async (cell: vscode.NotebookCell) => {
 			await kernel.acceptRemoteCell(cell);
+		}
+	);
+	context.subscriptions.push(disposable);
+
+
+	// Accept the local version of a cell and push to server
+	disposable = vscode.commands.registerCommand(
+		'zeppelin-vscode.acceptLocalCell',
+		async (cell: vscode.NotebookCell) => {
+			await kernel.acceptLocalCell(cell);
 		}
 	);
 	context.subscriptions.push(disposable);

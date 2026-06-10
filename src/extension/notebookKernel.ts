@@ -538,6 +538,12 @@ export class ZeppelinKernel
             return;
         }
 
+        if (cell.metadata.resolvingDiff)
+        {
+            logDebug("registerParagraphUpdate: cell is resolving diff, skipped", cell);
+            return;
+        }
+
         logDebug("registerParagraphUpdate", cell);
         return this._updateMutex.runExclusive(async () =>
         {
@@ -604,6 +610,11 @@ export class ZeppelinKernel
         logDebug("_doUpdatePollingParagraphs", this._mapUpdateParagraph);
         for (let [cell, requestTime] of this._mapUpdateParagraph)
         {
+            if (cell.metadata.resolvingDiff)
+            {
+                logDebug("_doUpdatePollingParagraphs: cell is resolving diff, skipped", cell);
+                continue;
+            }
             if (!this.isNoteSyncing(cell.notebook)   // disregard syncing cells
                 && throttleTime * 1000 < Date.now() - requestTime) {
                 if (cell.index < 0)
@@ -929,7 +940,18 @@ export class ZeppelinKernel
                 // Matched cell — keep local version, detect conflict
                 let localCellData = this._cellToCellData(localCell);
 
-                if (this._hasSyncConflict(localCell, serverParagraph, serverCellData))
+                if (localCell.metadata.resolvingDiff)
+                {
+                    // Cell is in diff-resolution mode — preserve existing
+                    // conflict and resolvingDiff flags untouched so the
+                    // user can finish resolving without the markers vanishing.
+                    localCellData.metadata = {
+                        ...localCellData.metadata,
+                        syncConflict: localCell.metadata.syncConflict,
+                        resolvingDiff: true
+                    };
+                }
+                else if (this._hasSyncConflict(localCell, serverParagraph, serverCellData))
                 {
                     localCellData.metadata = {
                         ...localCellData.metadata,
@@ -941,6 +963,7 @@ export class ZeppelinKernel
                     // Clear any previous conflict marker
                     let meta = { ...localCellData.metadata };
                     delete meta.syncConflict;
+                    delete meta.resolvingDiff;
                     localCellData.metadata = meta;
                 }
 
@@ -1001,7 +1024,7 @@ export class ZeppelinKernel
 
     /**
      * Accept the remote (server) version of a cell, replacing local content
-     * and clearing the syncConflict marker. Called by the showCellDiff command.
+     * and clearing the syncConflict and resolvingDiff markers.
      */
     public async acceptRemoteCell(cell: vscode.NotebookCell)
     {
@@ -1012,9 +1035,10 @@ export class ZeppelinKernel
         }
 
         let serverCellData = parseParagraphToCellData(conflict);
-        // Clear the conflict marker on the replacement cell
+        // Clear the conflict and resolving markers on the replacement cell
         let meta = { ...serverCellData.metadata };
         delete meta.syncConflict;
+        delete meta.resolvingDiff;
         serverCellData.metadata = meta;
 
         let replaceRange = new vscode.NotebookRange(cell.index, cell.index + 1);
@@ -1023,6 +1047,40 @@ export class ZeppelinKernel
         {
             await this.replaceNoteCells(cell.notebook, replaceRange, [serverCellData]);
         });
+    }
+
+    /**
+     * Accept the local version of a cell, pushing local text to the server
+     * and clearing the syncConflict and resolvingDiff markers.
+     */
+    public async acceptLocalCell(cell: vscode.NotebookCell)
+    {
+        if (cell.metadata.syncConflict === undefined)
+        {
+            return;
+        }
+
+        // Clear conflict markers first
+        await this.editWithoutParagraphUpdate(async () =>
+        {
+            let meta = { ...cell.metadata };
+            delete meta.syncConflict;
+            delete meta.resolvingDiff;
+            await this.updateCellMetadata(cell, meta);
+        });
+
+        // Push local text to server
+        try
+        {
+            await this.updateParagraphText(cell);
+        }
+        catch (err)
+        {
+            logDebug("acceptLocalCell: error pushing local text to server", err);
+            vscode.window.showWarningMessage(
+                `Failed to push local changes to server: ${err instanceof Error ? err.message : err}`
+            );
+        }
     }
 
     public async applyPolledNotebookEdits() {

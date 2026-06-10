@@ -35,7 +35,9 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
         // Show sync conflict indicator if present
         if (cell.metadata.syncConflict !== undefined) {
             const conflictItem = new vscode.NotebookCellStatusBarItem(
-                '$(diff) Remote Changed',
+                cell.metadata.resolvingDiff
+                    ? '$(loading~spin) Resolving Diff'
+                    : '$(diff) Remote Changed',
                 vscode.NotebookCellStatusBarAlignment.Right,
             );
             conflictItem.command = <vscode.Command> {
@@ -43,20 +45,34 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
                 command: 'zeppelin-vscode.showCellDiff',
                 arguments: [cell],
             };
-            conflictItem.tooltip = `Cell differs from server (click to view diff)`;
+            conflictItem.tooltip = cell.metadata.resolvingDiff
+                ? `Resolving sync conflict (click to view diff again)`
+                : `Cell differs from server (click to view diff)`;
             items.push(conflictItem);
 
-            const acceptItem = new vscode.NotebookCellStatusBarItem(
-                '$(check)',
+            const acceptRemoteItem = new vscode.NotebookCellStatusBarItem(
+                '$(cloud-download) Accept Remote',
                 vscode.NotebookCellStatusBarAlignment.Right,
             );
-            acceptItem.command = <vscode.Command> {
-                title: '$(check) Accept Remote',
+            acceptRemoteItem.command = <vscode.Command> {
+                title: '$(cloud-download) Accept Remote',
                 command: 'zeppelin-vscode.acceptRemoteCell',
                 arguments: [cell],
             };
-            acceptItem.tooltip = `Accept remote version of this cell`;
-            items.push(acceptItem);
+            acceptRemoteItem.tooltip = `Accept remote (server) version of this cell`;
+            items.push(acceptRemoteItem);
+
+            const acceptLocalItem = new vscode.NotebookCellStatusBarItem(
+                '$(cloud-upload) Keep Local',
+                vscode.NotebookCellStatusBarAlignment.Right,
+            );
+            acceptLocalItem.command = <vscode.Command> {
+                title: '$(cloud-upload) Keep Local',
+                command: 'zeppelin-vscode.acceptLocalCell',
+                arguments: [cell],
+            };
+            acceptLocalItem.tooltip = `Keep local version and push to server`;
+            items.push(acceptLocalItem);
         }
 
         // status === string: normal status
