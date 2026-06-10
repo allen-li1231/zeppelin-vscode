@@ -484,6 +484,14 @@ export class ExecutionManager
             return false;
         }
 
+        if (cell.metadata.resolvingDiff)
+        {
+            vscode.window.showWarningMessage(
+                'Resolve the sync conflict before executing this cell.'
+            );
+            return false;
+        }
+
         await this.kernel.instantUpdatePollingParagraphs();
 
         if (cell.metadata.status === 404)
@@ -545,6 +553,14 @@ export class ExecutionManager
         if (!this.kernel.isActive()
             || this.getExecutionByParagraphId(cell.metadata.id))
         {
+            return;
+        }
+
+        if (cell.metadata.resolvingDiff)
+        {
+            vscode.window.showWarningMessage(
+                'Resolve the sync conflict before executing this cell.'
+            );
             return;
         }
 
