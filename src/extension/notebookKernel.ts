@@ -47,6 +47,7 @@ export class ZeppelinKernel
     private _flagRegisterParagraphUpdate = true;
     private _mapParagraphCache = new Map<string, { data: ParagraphData | null, timestamp: number }>();
     private _timerRefreshParagraphCache?: ReturnType<typeof setInterval>;
+    private _sessionExpiredPromptActive = false;
 
     public cellStatusBar: CellStatusProvider | undefined = undefined;
 
@@ -201,8 +202,39 @@ export class ZeppelinKernel
         let service = new NotebookService(baseURL, userAgent, getProxy(), timeout);
         service.setHttpsAgent(caPath, keyPath, passphase, rejectUnauthorized);
 
+        service.onSessionExpired = this._onSessionExpired.bind(this);
         this._service = service;
         return service;
+    }
+
+    private async _onSessionExpired()
+    {
+        // debounce: only show one prompt at a time
+        if (this._sessionExpiredPromptActive)
+        {
+            return;
+        }
+        this._sessionExpiredPromptActive = true;
+
+        // cancel all running executions
+        this._executionManager?.cancelAllExecutions();
+        this.deactivate();
+
+        const selection = await vscode.window.showWarningMessage(
+            'Your Zeppelin session has expired. Please log in again.',
+            'Login', 'Change Server'
+        );
+
+        this._sessionExpiredPromptActive = false;
+
+        if (selection === 'Login')
+        {
+            this.checkInService(this._service?.baseURL);
+        }
+        else if (selection === 'Change Server')
+        {
+            this.checkInService(undefined);
+        }
     }
 
     getService()

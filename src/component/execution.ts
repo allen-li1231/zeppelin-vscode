@@ -239,6 +239,25 @@ export class ExecutionManager
         }
     }
 
+    public cancelAllExecutions()
+    {
+        for (let [_, execution] of this._mapTrackExecution)
+        {
+            if (execution.state === ZeppelinExecutionState.init)
+            {
+                execution.start(Date.now());
+            }
+            if (execution.state === ZeppelinExecutionState.started)
+            {
+                execution.end(false, Date.now());
+            }
+        }
+        this._mapTrackExecution.clear();
+
+        // cancel in-flight HTTP requests
+        this.kernel.getService()?.cancelConnect();
+    }
+
     public registerTrackExecution(execution: ZeppelinExecution)
     {
         this._mapTrackExecution.set(
@@ -430,7 +449,15 @@ export class ExecutionManager
     ) {
         if (!this.kernel.isActive())
         {
-            promptZeppelinServerURL(this.kernel);
+            vscode.window.showWarningMessage(
+                'Zeppelin extension is not activated. Please connect to a server first.',
+                'Connect'
+            ).then(selection => {
+                if (selection === 'Connect')
+                {
+                    promptZeppelinServerURL(this.kernel);
+                }
+            });
             return;
         }
 
