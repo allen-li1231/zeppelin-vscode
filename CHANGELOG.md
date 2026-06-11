@@ -293,3 +293,13 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 
 ### Enhancement
 - [Refactor syncNote from destructive replace to merge](https://github.com/allen-li1231/zeppelin-vscode/commit/079cbb74dc564ebd3d74f37aed4eaf2062d95003).
+
+
+
+## [0.2.21] - 2026-06-12
+
+### Added
+- [Local git support](https://github.com/allen-li1231/zeppelin-vscode/commit/1c73aa6e4844ae076d7c997e769b980b7d6294b9).
+
+### Fixed
+[Bug that causes Remote Changes buttons to show up when a notebook is edited and quickly switched away then back](https://github.com/allen-li1231/zeppelin-vscode/commit/4299ab6ba67720e0596631a0f82fca224701ba37).
