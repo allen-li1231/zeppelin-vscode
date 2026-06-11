@@ -592,6 +592,16 @@ export class ZeppelinKernel
     }
 
     /**
+     * Check whether a cell has a pending (unsynced) paragraph update.
+     * Used by CellStatusProvider to avoid false sync-conflict detection
+     * when a local edit has not yet been pushed to the server.
+     */
+    public hasPendingParagraphUpdate(cell: vscode.NotebookCell): boolean
+    {
+        return this._mapUpdateParagraph.has(cell);
+    }
+
+    /**
      * Unregister a cell from paragraph update polling.
      * Acquires _updateMutex — do NOT call from within _updateMutex.runExclusive.
      * For internal use (already holding the mutex), call _unregisterParagraphUpdateDirect.
@@ -917,11 +927,7 @@ export class ZeppelinKernel
      * Preserves local-only cells (no id or id not on server) in their
      *   relative positions, anchored after the nearest preceding matched cell.
      */
-    public async syncNote(note: vscode.NotebookDocument | undefined) {
-        if (note === undefined)
-        {
-            return;
-        }
+    public async syncNote(note: vscode.NotebookDocument) {
         if (!!!note.metadata || !!!note.metadata.id)
         {
             vscode.window.showWarningMessage("Unable to sync note as note id is not found");
@@ -932,6 +938,7 @@ export class ZeppelinKernel
 
         this._registerSyncNote(note);
         logDebug("syncNote start");
+
         let serverNote = await this.getNoteInfo(note);
         if (serverNote === undefined)
         {

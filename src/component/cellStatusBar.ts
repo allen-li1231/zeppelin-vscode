@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { AxiosError } from 'axios';
 import { ZeppelinKernel } from '../extension/notebookKernel';
-import { logDebug } from '../common/common';
+import { logDebug, isLocalNotebook } from '../common/common';
 import { Mutex } from './mutex';
 import { parseCellInterpreter } from '../common/parser';
 
@@ -24,8 +24,13 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
 
     provideCellStatusBarItems(cell: vscode.NotebookCell):
         vscode.ProviderResult<vscode.NotebookCellStatusBarItem | vscode.NotebookCellStatusBarItem[]> {
-
-        if (!this.kernel.isActive() || cell.kind === vscode.NotebookCellKind.Markup) {
+        logDebug(`provideCellStatusBarItems check pending paragraph update`,
+            this.kernel.hasPendingParagraphUpdate(cell), cell)
+        if (!this.kernel.isActive()
+            || !isLocalNotebook(cell.notebook.uri)
+            || cell.kind === vscode.NotebookCellKind.Markup
+            || this.kernel.isNoteSyncing(cell.notebook)
+            || this.kernel.hasPendingParagraphUpdate(cell)) {
             return [];
         }
 
@@ -201,10 +206,6 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
 
     public async doUpdateVisibleCells() {
         const activeNotebook = vscode.window.activeNotebookEditor;
-        if (activeNotebook !== undefined) {
-            const t = await this.kernel.doesNotebookExist(activeNotebook.notebook);
-            logDebug(t);
-        }
         if (activeNotebook === undefined
             || activeNotebook.notebook.cellCount === 0
             || !(await this.kernel.doesNotebookExist(activeNotebook.notebook))) {
@@ -237,7 +238,12 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
                     // notebooks.
                     // Also clear stale syncConflict markers when the server
                     // and local texts now match (e.g. after "Keep Local").
-                    if (paragraph !== undefined && !cell.metadata.resolvingDiff)
+                    // Skip conflict detection when the cell has a pending
+                    // local edit that hasn't been pushed to the server yet,
+                    // to avoid false "Remote Changed" indicators after
+                    // quick tab switches.
+                    if (paragraph !== undefined && !cell.metadata.resolvingDiff
+                        && !this.kernel.hasPendingParagraphUpdate(cell))
                     {
                         let serverText = paragraph.text ?? '';
                         let localText = cell.document.getText();
