@@ -179,7 +179,7 @@ export class ExecutionManager
         this.kernel = kernel;
 		kernel.getController().executeHandler = 
             this._executeAll.bind(this);
-		// this._controller.interruptHandler = this._interruptAll.bind(this);
+		kernel.getController().interruptHandler = this._interruptAll.bind(this);
         this._mapInterpreterQueue.set('', new Mutex("interpreter default"));
     }
 
@@ -471,6 +471,15 @@ export class ExecutionManager
                 continue;
             }
 
+            if (cell.metadata.resolvingDiff || cell.metadata.syncConflict !== undefined)
+            {
+                logDebug("executeAll skips a cell in resolving diff", cell);
+                vscode.window.showWarningMessage(
+                    `Please resolve the conflict before executing cell ${cell.index + 1}.`
+                );
+                continue;
+            }
+
             if (concurrency === "parallel")
             {
                 this._doExecutionAsync(cell);
@@ -498,7 +507,7 @@ export class ExecutionManager
             return;
         }
 
-        await this.kernel.instantUpdatePollingParagraphs();
+        await this.kernel.updatePollingParagraphsDirect();
 
         let res = await this.kernel.getService()?.stopAll(note.metadata.id);
         return res?.data;
@@ -511,15 +520,7 @@ export class ExecutionManager
             return false;
         }
 
-        if (cell.metadata.resolvingDiff)
-        {
-            vscode.window.showWarningMessage(
-                'Resolve the sync conflict before executing this cell.'
-            );
-            return false;
-        }
-
-        await this.kernel.instantUpdatePollingParagraphs();
+        await this.kernel.updatePollingParagraphsDirect();
 
         if (cell.metadata.status === 404)
         {
@@ -591,7 +592,7 @@ export class ExecutionManager
             return;
         }
 
-        await this.kernel.instantUpdatePollingParagraphs();
+        await this.kernel.updatePollingParagraphsDirect();
 
         if (cell.metadata.status === 404)
         {
