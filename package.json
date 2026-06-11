@@ -86,7 +86,7 @@
         "displayName": "Zeppelin Notebook",
         "selector": [
           {
-            "filenamePattern": "{*.zpln}"
+            "filenamePattern": "*.zpln"
           }
         ]
       }
