@@ -21,6 +21,8 @@ class BasicService {
     public session: AxiosInstance;
     public cancelTokenSource: CancelTokenSource;
     public config: AxiosRequestConfig;
+    public onSessionExpired?: () => void;
+    private _sessionExpired = false;
 
     constructor(
         baseURL: string,
@@ -72,12 +74,23 @@ class BasicService {
                 );
                 let url = error.request?.path;
 
+                // When session has expired, suppress all error messages
+                // since the user is already being prompted to re-login
+                if (this._sessionExpired) {
+                    return error;
+                }
+
                 if (!error.response) {
                     window.showErrorMessage(`Error calling ${url}: ${error.message}
                         possibly due to local network issue`);
                 }
                 else if (error.response?.status === 302) {
-                    logDebug(`Redirected access to ${url}`);
+                    const redirectUrl = error.response.headers.location;
+                    logDebug(`Redirected access from ${url} to ${redirectUrl}`);
+                    if (redirectUrl && redirectUrl.endsWith('/api/login')) {
+                        this._sessionExpired = true;
+                        this.onSessionExpired?.();
+                    }
                 }
                 else if (error.response?.status === 401) {
                     window.showWarningMessage(
@@ -140,6 +153,10 @@ class BasicService {
         this.resetCancelToken();
     }
 
+    resetSessionExpired() {
+        this._sessionExpired = false;
+    }
+
     async anonymousLogin() {
         let res = await this.session.get(
             '/api/security/ticket',
@@ -156,6 +173,7 @@ class BasicService {
             return res;
         }
 
+        this._sessionExpired = false;
         // store cookies to default headers
         if (res.headers['set-cookie']) {
             for (let cookie of res.headers['set-cookie']) {
@@ -190,6 +208,7 @@ class BasicService {
             return res;
         }
 
+        this._sessionExpired = false;
         // store cookies to default headers
         if (res.headers['set-cookie']) {
             for (let cookie of res.headers['set-cookie']) {

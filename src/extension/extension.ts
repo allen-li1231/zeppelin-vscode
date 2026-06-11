@@ -6,7 +6,37 @@ import { CellStatusProvider} from '../component/cellStatusBar';
 import { ZeppelinSerializer } from './notebookSerializer';
 import { ZeppelinKernel } from './notebookKernel';
 import { EXTENSION_NAME, NOTEBOOK_SUFFIX, mapZeppelinLanguage, logDebug } from '../common/common';
+import { ParagraphData } from '../common/types';
 const _ = require('lodash');
+
+
+/**
+ * Virtual document provider that serves the remote (server) version
+ * of a cell's text so we can open a VS Code diff editor against it.
+ *
+ * URI format:  zeppelin-remote:/<noteId>/<paragraphId>
+ * The actual text is stashed in the provider before opening the diff.
+ */
+class ZeppelinRemoteContentProvider implements vscode.TextDocumentContentProvider {
+	private _contents = new Map<string, string>();
+
+	onDidChangeEmitter = new vscode.EventEmitter<vscode.Uri>();
+	onDidChange = this.onDidChangeEmitter.event;
+
+	/** Store remote text so provideTextDocumentContent can return it. */
+	setContent(uri: vscode.Uri, text: string) {
+		this._contents.set(uri.toString(), text);
+	}
+
+	/** Remove cached content after the diff is closed. */
+	clearContent(uri: vscode.Uri) {
+		this._contents.delete(uri.toString());
+	}
+
+	provideTextDocumentContent(uri: vscode.Uri): string {
+		return this._contents.get(uri.toString()) ?? '';
+	}
+}
 
 
 // This method is called when your extension is activated
@@ -32,6 +62,13 @@ export async function activate(context: vscode.ExtensionContext) {
 	kernel.cellStatusBar = cellStatusBar;
 	context.subscriptions.push(disposable);
 	context.subscriptions.push(cellStatusBar);
+
+	// Register virtual document provider for remote cell content (diff view)
+	const remoteProvider = new ZeppelinRemoteContentProvider();
+	disposable = vscode.workspace.registerTextDocumentContentProvider(
+		'zeppelin-remote', remoteProvider
+	);
+	context.subscriptions.push(disposable);
 
 	disposable = vscode.commands.registerCommand(
 		'zeppelin-vscode.setZeppelinServerURL',
@@ -66,6 +103,64 @@ export async function activate(context: vscode.ExtensionContext) {
 	disposable = vscode.commands.registerCommand(
 		'zeppelin-vscode.createMissingParagraph',
 		_.partial(interact.promptCreateParagraph, kernel)
+	);
+	context.subscriptions.push(disposable);
+
+
+	// Show diff between local cell and remote (server) version
+	disposable = vscode.commands.registerCommand(
+		'zeppelin-vscode.showCellDiff',
+		async (cell: vscode.NotebookCell) => {
+			let conflict: ParagraphData | undefined = cell.metadata?.syncConflict;
+			if (conflict === undefined) {
+				vscode.window.showInformationMessage('No sync conflict on this cell.');
+				return;
+			}
+
+			// Mark cell as resolving diff so syncNote preserves the conflict
+			// and paragraph updates / execution are blocked until resolved.
+			if (!cell.metadata.resolvingDiff) {
+				await kernel.editWithoutParagraphUpdate(async () => {
+					await kernel.updateCellMetadata(cell, { resolvingDiff: true });
+				});
+			}
+
+			let noteId = cell.notebook.metadata.id ?? 'unknown';
+			let paragraphId = cell.metadata.id ?? 'unknown';
+			let remoteUri = vscode.Uri.parse(
+				`zeppelin-remote:/${noteId}/${paragraphId}.txt`
+			);
+
+			remoteProvider.setContent(remoteUri, conflict.text ?? '');
+			remoteProvider.onDidChangeEmitter.fire(remoteUri);
+
+			await vscode.commands.executeCommand(
+				'vscode.diff',
+				remoteUri,
+				cell.document.uri,
+				`Remote ↔ Local  [${paragraphId}]`
+			);
+		}
+	);
+	context.subscriptions.push(disposable);
+
+
+	// Accept the remote (server) version of a cell
+	disposable = vscode.commands.registerCommand(
+		'zeppelin-vscode.acceptRemoteCell',
+		async (cell: vscode.NotebookCell) => {
+			await kernel.acceptRemoteCell(cell);
+		}
+	);
+	context.subscriptions.push(disposable);
+
+
+	// Accept the local version of a cell and push to server
+	disposable = vscode.commands.registerCommand(
+		'zeppelin-vscode.acceptLocalCell',
+		async (cell: vscode.NotebookCell) => {
+			await kernel.acceptLocalCell(cell);
+		}
 	);
 	context.subscriptions.push(disposable);
 
@@ -176,7 +271,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 		if (event.notebook.isDirty) {
 			event.waitUntil(
-				kernel.instantUpdatePollingParagraphs()
+				kernel.updatePollingParagraphsDirect()
 					.then(() => kernel.applyPolledNotebookEdits())
 			);
 		}

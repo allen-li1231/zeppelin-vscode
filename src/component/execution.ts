@@ -179,7 +179,7 @@ export class ExecutionManager
         this.kernel = kernel;
 		kernel.getController().executeHandler = 
             this._executeAll.bind(this);
-		// this._controller.interruptHandler = this._interruptAll.bind(this);
+		kernel.getController().interruptHandler = this._interruptAll.bind(this);
         this._mapInterpreterQueue.set('', new Mutex("interpreter default"));
     }
 
@@ -237,6 +237,25 @@ export class ExecutionManager
             clearInterval(this._timerTrackExecution);
             this._timerTrackExecution = undefined;
         }
+    }
+
+    public cancelAllExecutions()
+    {
+        for (let [_, execution] of this._mapTrackExecution)
+        {
+            if (execution.state === ZeppelinExecutionState.init)
+            {
+                execution.start(Date.now());
+            }
+            if (execution.state === ZeppelinExecutionState.started)
+            {
+                execution.end(false, Date.now());
+            }
+        }
+        this._mapTrackExecution.clear();
+
+        // cancel in-flight HTTP requests
+        this.kernel.getService()?.cancelConnect();
     }
 
     public registerTrackExecution(execution: ZeppelinExecution)
@@ -430,7 +449,15 @@ export class ExecutionManager
     ) {
         if (!this.kernel.isActive())
         {
-            promptZeppelinServerURL(this.kernel);
+            vscode.window.showWarningMessage(
+                'Zeppelin extension is not activated. Please connect to a server first.',
+                'Connect'
+            ).then(selection => {
+                if (selection === 'Connect')
+                {
+                    promptZeppelinServerURL(this.kernel);
+                }
+            });
             return;
         }
 
@@ -441,6 +468,15 @@ export class ExecutionManager
             logDebug(`execute in ${concurrency}`, cell);
             if (cell.index === -1) {
                 logDebug("executeAll skips a deleted cell", cell);
+                continue;
+            }
+
+            if (cell.metadata.resolvingDiff || cell.metadata.syncConflict !== undefined)
+            {
+                logDebug("executeAll skips a cell in resolving diff", cell);
+                vscode.window.showWarningMessage(
+                    `Please resolve the conflict before executing cell ${cell.index + 1}.`
+                );
                 continue;
             }
 
@@ -471,7 +507,7 @@ export class ExecutionManager
             return;
         }
 
-        await this.kernel.instantUpdatePollingParagraphs();
+        await this.kernel.updatePollingParagraphsDirect();
 
         let res = await this.kernel.getService()?.stopAll(note.metadata.id);
         return res?.data;
@@ -484,7 +520,7 @@ export class ExecutionManager
             return false;
         }
 
-        await this.kernel.instantUpdatePollingParagraphs();
+        await this.kernel.updatePollingParagraphsDirect();
 
         if (cell.metadata.status === 404)
         {
@@ -548,7 +584,15 @@ export class ExecutionManager
             return;
         }
 
-        await this.kernel.instantUpdatePollingParagraphs();
+        if (cell.metadata.resolvingDiff)
+        {
+            vscode.window.showWarningMessage(
+                'Resolve the sync conflict before executing this cell.'
+            );
+            return;
+        }
+
+        await this.kernel.updatePollingParagraphsDirect();
 
         if (cell.metadata.status === 404)
         {

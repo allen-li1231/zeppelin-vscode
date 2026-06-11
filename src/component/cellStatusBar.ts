@@ -32,6 +32,49 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
         this._setCell.add(cell);
         const items: vscode.NotebookCellStatusBarItem[] = [];
 
+        // Show sync conflict indicator if present
+        if (cell.metadata.syncConflict !== undefined) {
+            const conflictItem = new vscode.NotebookCellStatusBarItem(
+                cell.metadata.resolvingDiff
+                    ? '$(loading~spin) Resolving Diff'
+                    : '$(diff) Remote Changed',
+                vscode.NotebookCellStatusBarAlignment.Right,
+            );
+            conflictItem.command = <vscode.Command> {
+                title: '$(diff) Remote Changed',
+                command: 'zeppelin-vscode.showCellDiff',
+                arguments: [cell],
+            };
+            conflictItem.tooltip = cell.metadata.resolvingDiff
+                ? `Resolving sync conflict (click to view diff again)`
+                : `Cell differs from server (click to view diff)`;
+            items.push(conflictItem);
+
+            const acceptRemoteItem = new vscode.NotebookCellStatusBarItem(
+                '$(cloud-download) Accept Remote',
+                vscode.NotebookCellStatusBarAlignment.Right,
+            );
+            acceptRemoteItem.command = <vscode.Command> {
+                title: '$(cloud-download) Accept Remote',
+                command: 'zeppelin-vscode.acceptRemoteCell',
+                arguments: [cell],
+            };
+            acceptRemoteItem.tooltip = `Accept remote (server) version of this cell`;
+            items.push(acceptRemoteItem);
+
+            const acceptLocalItem = new vscode.NotebookCellStatusBarItem(
+                '$(cloud-upload) Keep Local',
+                vscode.NotebookCellStatusBarAlignment.Right,
+            );
+            acceptLocalItem.command = <vscode.Command> {
+                title: '$(cloud-upload) Keep Local',
+                command: 'zeppelin-vscode.acceptLocalCell',
+                arguments: [cell],
+            };
+            acceptLocalItem.tooltip = `Keep local version and push to server`;
+            items.push(acceptLocalItem);
+        }
+
         // status === string: normal status
         // status === undefined: cannot reach remote server
         // status === number: remote server responds with problem
@@ -185,7 +228,42 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
                     continue;
                 }
                 try {
-                    await this.kernel.getParagraphInfo(cell);
+                    let paragraph = await this.kernel.getParagraphInfo(cell);
+
+                    // Detect server-only changes: if the server text differs
+                    // from local document text and no conflict is already
+                    // flagged, mark a sync conflict so the user sees a
+                    // "Remote Changed" indicator without needing to switch
+                    // notebooks.
+                    // Also clear stale syncConflict markers when the server
+                    // and local texts now match (e.g. after "Keep Local").
+                    if (paragraph !== undefined && !cell.metadata.resolvingDiff)
+                    {
+                        let serverText = paragraph.text ?? '';
+                        let localText = cell.document.getText();
+                        if (serverText !== localText
+                            && cell.metadata.syncConflict?.text !== serverText)
+                        {
+                            await this.kernel.editWithoutParagraphUpdate(async () => {
+                                await this.kernel.updateCellMetadata(cell, {
+                                    syncConflict: paragraph
+                                });
+                            });
+                        }
+                        else if (serverText === localText
+                            && cell.metadata.syncConflict !== undefined)
+                        {
+                            // Server and local now match — clear the conflict marker
+                            // let meta = { ...cell.metadata };
+                            // delete meta.syncConflict;
+                            // delete meta.resolvingDiff;
+                            await this.kernel.editWithoutParagraphUpdate(async () => {
+                                await this.kernel.removeCellMetadata(
+                                    cell, ["syncConflict", "resolvingDiff"]
+                                );
+                            });
+                        }
+                    }
                 }
                 catch (err) {
                     let status = err instanceof AxiosError
