@@ -1,4 +1,4 @@
-import { ExtensionContext, workspace } from "vscode";
+import { ExtensionContext, workspace, Uri } from "vscode";
 import { AxiosProxyConfig } from 'axios';
 
 export const DEBUG_MODE = true;
@@ -116,4 +116,13 @@ export function getProxy() {
         }
     }
     return proxy;
+}
+
+/**
+ * Returns true when the URI belongs to a local `.zpln` file (scheme === 'file').
+ * Non-local schemes (git, gitfs, vscode-scm, untitled, …) are read-only
+ * history/diff views and must NOT trigger server-side operations.
+ */
+export function isLocalNotebook(uri: Uri): boolean {
+	return uri.fsPath.endsWith(NOTEBOOK_SUFFIX) && uri.scheme === 'file';
 }
