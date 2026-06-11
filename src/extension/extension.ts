@@ -5,7 +5,12 @@ import * as interact from '../common/interaction';
 import { CellStatusProvider} from '../component/cellStatusBar';
 import { ZeppelinSerializer } from './notebookSerializer';
 import { ZeppelinKernel } from './notebookKernel';
-import { EXTENSION_NAME, NOTEBOOK_SUFFIX, mapZeppelinLanguage, logDebug } from '../common/common';
+import { EXTENSION_NAME,
+	NOTEBOOK_SUFFIX,
+	mapZeppelinLanguage,
+	logDebug,
+	isLocalNotebook
+} from '../common/common';
 import { ParagraphData } from '../common/types';
 const _ = require('lodash');
 
@@ -166,8 +171,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 
 	disposable = vscode.workspace.onDidOpenNotebookDocument(async note => {
-		if (!note.uri.fsPath.endsWith(NOTEBOOK_SUFFIX) 
-			|| note.uri.scheme === 'git') {
+		if (!isLocalNotebook(note.uri)) {
 			return;
 		}
 		logDebug("onDidOpenNotebookDocument:", note);
@@ -220,7 +224,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 
 	disposable = vscode.workspace.onDidChangeNotebookDocument(event => {
-		if (!event.notebook.uri.fsPath.endsWith(NOTEBOOK_SUFFIX)
+		if (!isLocalNotebook(event.notebook.uri)
 			|| !kernel.isActive()) {
 			return;
 		}
@@ -264,7 +268,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 
 	disposable = vscode.workspace.onWillSaveNotebookDocument(event => {
-		if (!event.notebook.uri.fsPath.endsWith(NOTEBOOK_SUFFIX)
+		if (!isLocalNotebook(event.notebook.uri)
 			|| !kernel.isActive()) {
 			return;
 		}
@@ -283,7 +287,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
 
 	disposable = vscode.window.onDidChangeTextEditorOptions(async event => {
-		if (!event.textEditor.document.uri.fsPath.endsWith(NOTEBOOK_SUFFIX)
+		if (event.textEditor.document.uri.scheme !== 'file'
+			|| !event.textEditor.document.uri.fsPath.endsWith(NOTEBOOK_SUFFIX)
 			|| !kernel.isActive()) {
 			return;
 		}
@@ -329,22 +334,24 @@ export async function activate(context: vscode.ExtensionContext) {
 
 
 	disposable = vscode.window.onDidChangeActiveNotebookEditor(async event => {
-		if (!event?.notebook.uri.fsPath.endsWith(NOTEBOOK_SUFFIX)
-			|| !kernel.isActive()) {
+		if (event?.notebook === undefined
+			|| !kernel.isActive()
+			|| !isLocalNotebook(event.notebook.uri)) {
 			return;
 		}
 		logDebug("onDidChangeActiveNotebookEditor", event);
 
-		if (await kernel.doesNotebookExist(event?.notebook)) {
+		if (await kernel.doesNotebookExist(event.notebook)) {
 			let config = vscode.workspace.getConfiguration('zeppelin');
 			let selection = config.get('autosave.syncActiveNotebook');
 
-			if (selection && !kernel.isNoteSyncing(event?.notebook)) {
-				await kernel.syncNote(event?.notebook);
+			if (selection && !kernel.isNoteSyncing(event.notebook)) {
+        		await kernel.updatePollingParagraphsDirect();
+				await kernel.syncNote(event.notebook);
 			}
 		}
 		else {
-			interact.promptCreateNotebook(kernel, event?.notebook);
+			interact.promptCreateNotebook(kernel, event.notebook);
 		}
 	});
 	context.subscriptions.push(disposable);

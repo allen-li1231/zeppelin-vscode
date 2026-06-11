@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { AxiosError } from 'axios';
 import { Mutex } from './mutex';
 import { Progress } from './superProgress/super-progress';
-import { logDebug } from '../common/common';
+import { logDebug, isLocalNotebook } from '../common/common';
 import { promptZeppelinServerURL, promptCreateParagraph
 } from '../common/interaction';
 import { parseCellInterpreter,
@@ -458,6 +458,13 @@ export class ExecutionManager
                     promptZeppelinServerURL(this.kernel);
                 }
             });
+            return;
+        }
+        else if (!isLocalNotebook(_notebook.uri))
+        {
+            vscode.window.showWarningMessage(
+                'Please run the corresponding cells in the source Zeppelin notebook.',
+            )
             return;
         }
 
