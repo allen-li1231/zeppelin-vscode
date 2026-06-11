@@ -189,7 +189,7 @@ export interface MockKernel {
     doesNotebookExist: (note: any) => Promise<boolean>;
     runParagraph: (cell: any, sync: boolean) => Promise<any>;
     stopParagraph: (cell: any) => Promise<boolean>;
-    instantUpdatePollingParagraphs: () => Promise<void>;
+    updatePollingParagraphsDirect: () => Promise<void>;
     editWithoutParagraphUpdate: (fn: () => Promise<void>) => Promise<void>;
     updateCellMetadata: (cell: any, metadata: any) => Promise<boolean>;
     applyPolledNotebookEdits: () => Promise<void>;
@@ -243,7 +243,7 @@ export function createMockKernel(opts: MockKernelOptions = {}): MockKernel {
         doesNotebookExist: async (_note: any) => true,
         runParagraph: async (_cell: any, _sync: boolean) => ({}),
         stopParagraph: async (_cell: any) => true,
-        instantUpdatePollingParagraphs: async () => {},
+        updatePollingParagraphsDirect: async () => {},
         editWithoutParagraphUpdate: async (fn: () => Promise<void>) => { await fn(); },
         updateCellMetadata: async (_cell: any, _metadata: any) => true,
         applyPolledNotebookEdits: async () => {},
