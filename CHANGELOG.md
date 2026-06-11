@@ -302,4 +302,4 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 - [Local git support](https://github.com/allen-li1231/zeppelin-vscode/commit/1c73aa6e4844ae076d7c997e769b980b7d6294b9).
 
 ### Fixed
-[Bug that causes Remote Changes buttons to show up when a notebook is edited and quickly switched away then back](https://github.com/allen-li1231/zeppelin-vscode/commit/4299ab6ba67720e0596631a0f82fca224701ba37).
+- [Bug that causes Remote Changes buttons to show up when a notebook is edited and quickly switched away then back](https://github.com/allen-li1231/zeppelin-vscode/commit/4299ab6ba67720e0596631a0f82fca224701ba37).
