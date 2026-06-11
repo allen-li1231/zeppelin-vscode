@@ -14,6 +14,7 @@ Currently the extension development does not consider notebook permission, versi
 * Download Zeppelin notebook file (either .json or .zpln) from Zeppelin web server.
 * Rename file suffix into ".zpln" if it is ".json".
 * Open it using VS Code, during first cell run you will be prompted to provide server url and credential.
+* This extension works seamlessly with Remote SSH and git.
 
 ## How to Use
 * Want to create a notebook (.zpln file) that doesn't exist on the server? Just create and open it locally and specify the saving path as prompted.
@@ -33,7 +34,6 @@ Click the "Remote Changed" button to open a side-by-side diff view. While the di
   and local notebook file will be completely replaced by the server version __every time it is opened or activated__. You may disable this in settings.
 * If you cannot see the progress bar, it is in the text output, you can toggle output type by clicking "..." button at the left side of the cell output.
 * Please avoid modifying a running cell (i.e., editing, moving cell, cut/copy and paste cell. Deleting is allowed) as Zeppelin doesn't support this while VSCode does. If you accidentally did this, close and reopen the notebook to ensure the notebook is synced.
-* The interaction with local git is still under development, use with caution!
 
 ## Feedback
 __Desperately needed! Please do report bugs or advise any improvements.__
