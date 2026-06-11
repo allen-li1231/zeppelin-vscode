@@ -273,3 +273,23 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 ### Enhancement
 - Mirgrate to Typescript 6 in accordance to: https://aka.ms/ts6
 - [Anonymous login as default approach if Zeppelin credential is not given](https://github.com/allen-li1231/zeppelin-vscode/commit/2e652f35a704bf043bb9823864c768a1e6dbbd6b) in response to #34.
+
+
+
+## [0.2.20] - 2026-06-11
+
+### Added
+- [Sync conflict resolution workflow](https://github.com/allen-li1231/zeppelin-vscode/commit/21bf06e66e1fac6bee16bed70501bea18d173366): When a cell differs from the server, the status bar now shows three buttons — "Remote Changed" (opens diff view), "Accept Remote" (replaces local with server version), and "Keep Local" (pushes local version to server).
+- `resolvingDiff` metadata flag: Opening the diff view marks the cell as "resolving". While in this state:
+  - Local changes are **not pushed** to the server (paragraph updates are blocked).
+  - [The cell **cannot be executed**](refrain diff-detected cells from execution) (a warning message is shown instead).
+  - `syncNote` **preserves** the conflict markers so they survive notebook re-focus.
+- [Interrupt handler for paragraph execution](https://github.com/allen-li1231/zeppelin-vscode/commit/08707aca46113e9870549580deceb17aad7808b4).
+- New command `zeppelin-vscode.acceptLocalCell`: accepts the local version and pushes it to the server, clearing all conflict flags.
+- [Test suite for extension development](https://github.com/allen-li1231/zeppelin-vscode/commit/cc9cbe5f83ef0ca5ff183a7e07719178fd3c3585).
+
+### Fixed
+- [Local cell text silently overwriting the remote version when saving or the user was still reviewing a diff](https://github.com/allen-li1231/zeppelin-vscode/commit/049fbbe21d892aecfb3dc34f17c5a634cd22ecef).
+
+### Enhancement
+- [Refactor syncNote from destructive replace to merge](https://github.com/allen-li1231/zeppelin-vscode/commit/079cbb74dc564ebd3d74f37aed4eaf2062d95003).
