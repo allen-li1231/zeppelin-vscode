@@ -164,7 +164,7 @@ export function createMockCell(opts: MockCellOptions = {}): MockNotebookCell {
         notebook: {
             isClosed: opts.notebookClosed ?? false,
             metadata: { id: opts.notebookId ?? 'note_001', name: 'test-note' },
-            uri: vscode.Uri.parse('untitled:notebook_1'),
+            uri: vscode.Uri.parse('file:///tmp/test-note.zpln'),
         },
         index: opts.index ?? 0,
         outputs: [],
@@ -194,6 +194,7 @@ export interface MockKernel {
     updateCellMetadata: (cell: any, metadata: any) => Promise<boolean>;
     applyPolledNotebookEdits: () => Promise<void>;
     isNoteSyncing: (note: any) => boolean;
+    hasPendingParagraphUpdate: (cell: any) => boolean;
 
     // internal controller
     _controller: MockNotebookController;
@@ -248,6 +249,7 @@ export function createMockKernel(opts: MockKernelOptions = {}): MockKernel {
         updateCellMetadata: async (_cell: any, _metadata: any) => true,
         applyPolledNotebookEdits: async () => {},
         isNoteSyncing: (_note: any) => false,
+        hasPendingParagraphUpdate: (_cell: any) => false,
     };
 
     return kernel;

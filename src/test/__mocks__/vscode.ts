@@ -132,11 +132,13 @@ export class Uri {
     readonly scheme: string;
     readonly authority: string;
     readonly path: string;
+    readonly fsPath: string;
 
     private constructor(scheme: string, authority: string, path: string) {
         this.scheme = scheme;
         this.authority = authority;
         this.path = path;
+        this.fsPath = path;
     }
 
     static parse(value: string): Uri {
