@@ -228,7 +228,42 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
                     continue;
                 }
                 try {
-                    await this.kernel.getParagraphInfo(cell);
+                    let paragraph = await this.kernel.getParagraphInfo(cell);
+
+                    // Detect server-only changes: if the server text differs
+                    // from local document text and no conflict is already
+                    // flagged, mark a sync conflict so the user sees a
+                    // "Remote Changed" indicator without needing to switch
+                    // notebooks.
+                    // Also clear stale syncConflict markers when the server
+                    // and local texts now match (e.g. after "Keep Local").
+                    if (paragraph !== undefined && !cell.metadata.resolvingDiff)
+                    {
+                        let serverText = paragraph.text ?? '';
+                        let localText = cell.document.getText();
+                        if (serverText !== localText
+                            && cell.metadata.syncConflict?.text !== serverText)
+                        {
+                            await this.kernel.editWithoutParagraphUpdate(async () => {
+                                await this.kernel.updateCellMetadata(cell, {
+                                    syncConflict: paragraph
+                                });
+                            });
+                        }
+                        else if (serverText === localText
+                            && cell.metadata.syncConflict !== undefined)
+                        {
+                            // Server and local now match — clear the conflict marker
+                            // let meta = { ...cell.metadata };
+                            // delete meta.syncConflict;
+                            // delete meta.resolvingDiff;
+                            await this.kernel.editWithoutParagraphUpdate(async () => {
+                                await this.kernel.removeCellMetadata(
+                                    cell, ["syncConflict", "resolvingDiff"]
+                                );
+                            });
+                        }
+                    }
                 }
                 catch (err) {
                     let status = err instanceof AxiosError
