@@ -43,7 +43,7 @@ export class ZeppelinKernel
         vscode.NotebookDocument, number
     >();
     private _mapNotebookEdits = new Map<vscode.NotebookCell, vscode.NotebookEdit[]>();
-    private _mapUpdateParagraph = new Map<vscode.NotebookCell, number>();
+    private _mapUpdateParagraph = new Map<vscode.NotebookCell, { requestTime: number, baseText: string }>();
     private _flagRegisterParagraphUpdate = true;
     private _mapParagraphCache = new Map<string, { data: ParagraphData | null, timestamp: number }>();
     private _timerRefreshParagraphCache?: ReturnType<typeof setInterval>;
@@ -142,7 +142,7 @@ export class ZeppelinKernel
             // run registered update paragraph task immediately
             // and unregister it after completed
             clearInterval(this._timerUpdateCell);
-            this.instantUpdatePollingParagraphs();
+            this.updatePollingParagraphsDirect();
             this._timerUpdateCell = undefined;
         }
 
@@ -581,7 +581,12 @@ export class ZeppelinKernel
         {
             if (!this._mapUpdateParagraph.has(cell))
             {
-                this._mapUpdateParagraph.set(cell, Date.now());
+                // Snapshot the server text at registration time so we can
+                // detect independent server-side changes before pushing.
+                this._mapUpdateParagraph.set(cell, {
+                    requestTime: Date.now(),
+                    baseText: cell.metadata.text ?? ''
+                });
             }
         });
     }
@@ -610,16 +615,21 @@ export class ZeppelinKernel
         return this._mapUpdateParagraph.delete(cell);
     }
 
-    public async instantUpdatePollingParagraphs() {
-        logDebug("instantUpdatePollingParagraphs", this._mapUpdateParagraph);
+    public async updatePollingParagraphsDirect() {
+        logDebug("updatePollingParagraphsDirect", this._mapUpdateParagraph);
         // let notebookCells = Array.from(this._mapUpdateParagraph.keys());
         return this._updateMutex.runExclusive(async () => {
             // Promise.all(notebookCells.map(this.updateParagraph.bind(this)))
             for (let cell of this._mapUpdateParagraph.keys())
             {
+                if (cell.metadata.resolvingDiff
+                    || cell.metadata.syncConflict !== undefined)
+                {
+                    continue
+                }
                 await this._updateParagraph(cell);
             }
-            logDebug("instantUpdatePollingParagraphs ends");
+            logDebug("updatePollingParagraphsDirect ends");
         });
     }
 
@@ -640,13 +650,14 @@ export class ZeppelinKernel
         let throttleTime: number = config.get('autosave.throttleTime', 3);
 
         logDebug("_doUpdatePollingParagraphs", this._mapUpdateParagraph);
-        for (let [cell, requestTime] of this._mapUpdateParagraph)
+        for (let [cell, entry] of this._mapUpdateParagraph)
         {
-            if (cell.metadata.resolvingDiff)
+            if (cell.metadata.resolvingDiff || cell.metadata.syncConflict !== undefined)
             {
-                logDebug("_doUpdatePollingParagraphs: cell is resolving diff, skipped", cell);
+                logDebug("_doUpdatePollingParagraphs: cell has conflict or resolving diff, skipped", cell);
                 continue;
             }
+            let requestTime = entry.requestTime;
             if (!this.isNoteSyncing(cell.notebook)   // disregard syncing cells
                 && throttleTime * 1000 < Date.now() - requestTime) {
                 if (cell.index < 0)
@@ -734,15 +745,31 @@ export class ZeppelinKernel
         cell: vscode.NotebookCell,
         metadata: { [key: string]: any }
     ) {
-        if (cell.index < 0)
-        {
-            console.log(cell);
-        }
         const editor = new vscode.WorkspaceEdit();
         let edit = vscode.NotebookEdit.updateCellMetadata(
             cell.index,
             // update based on new metadata provided
             Object.assign({}, cell.metadata, metadata)
+        );
+        editor.set(cell.document.uri, [edit]);
+
+        return vscode.workspace.applyEdit(editor);
+    }
+
+    public async removeCellMetadata(
+        cell: vscode.NotebookCell,
+        keys: string[]
+    ) {
+        const editor = new vscode.WorkspaceEdit();
+        let meta = {...cell.metadata};
+        for (let k of keys)
+        {
+            delete meta[k]; 
+        }
+        let edit = vscode.NotebookEdit.updateCellMetadata(
+            cell.index,
+            // update based on revised metadata
+            meta
         );
         editor.set(cell.document.uri, [edit]);
 
@@ -1065,6 +1092,7 @@ export class ZeppelinKernel
         {
             return;
         }
+        logDebug(`remote cell revision accepted`, cell);
 
         let serverCellData = parseParagraphToCellData(conflict);
         // Clear the conflict and resolving markers on the replacement cell
@@ -1091,14 +1119,15 @@ export class ZeppelinKernel
         {
             return;
         }
+        logDebug(`local cell revision accepted`, cell);
 
-        // Clear conflict markers first
+        // Clear conflict markers
         await this.editWithoutParagraphUpdate(async () =>
         {
-            let meta = { ...cell.metadata };
-            delete meta.syncConflict;
-            delete meta.resolvingDiff;
-            await this.updateCellMetadata(cell, meta);
+            // let meta = {...cell.metadata}
+            // delete meta.syncConflict;
+            // delete meta.resolvingDiff;
+            await this.removeCellMetadata(cell, ["syncConflict", "resolvingDiff"]);
         });
 
         // Push local text to server
@@ -1109,7 +1138,7 @@ export class ZeppelinKernel
         catch (err)
         {
             logDebug("acceptLocalCell: error pushing local text to server", err);
-            vscode.window.showWarningMessage(
+            vscode.window.showErrorMessage(
                 `Failed to push local changes to server: ${err instanceof Error ? err.message : err}`
             );
         }
@@ -1119,6 +1148,12 @@ export class ZeppelinKernel
         return this.editWithoutParagraphUpdate(async () => {
             for (let [cell, edits] of this._mapNotebookEdits)
             {
+                if (cell.metadata.resolvingDiff
+                    || cell.metadata.syncConflict !== undefined)
+                {
+                    continue
+                }
+
                 let editor = new vscode.WorkspaceEdit();
                 editor.set(cell.document.uri, edits);
                 await vscode.workspace.applyEdit(editor);
@@ -1213,6 +1248,15 @@ export class ZeppelinKernel
 
     private async _updateParagraph(cell: vscode.NotebookCell) {
         try {
+            // Skip cells with an unresolved sync conflict — don't push
+            // local changes until the user resolves the conflict.
+            if (cell.metadata.syncConflict !== undefined)
+            {
+                logDebug("updateParagraph: cell has sync conflict, skipped", cell);
+                this._unregisterParagraphUpdateDirect(cell);
+                return;
+            }
+
             // index = -1: cell has been deleted from notebook
             if (cell.index === -1)
             {
@@ -1261,6 +1305,38 @@ export class ZeppelinKernel
             }
             else
             {
+                // Before pushing local changes, check whether the server
+                // paragraph has changed independently since the edit was
+                // registered.  If so, flag a sync conflict instead of
+                // blindly overwriting the server version.
+                let mapEntry = this._mapUpdateParagraph.get(cell);
+                let baseText = mapEntry?.baseText ?? '';
+
+                let freshRes = await this.getService()?.getParagraphInfo(
+                    cell.notebook.metadata.id, cell.metadata.id
+                );
+                if (freshRes !== undefined && !(freshRes instanceof AxiosError))
+                {
+                    let serverParagraph: ParagraphData = freshRes.data.body ?? freshRes.data;
+                    let serverText = serverParagraph.text ?? '';
+                    let localText = cell.document.getText();
+
+                    if (serverText !== baseText && localText !== serverText)
+                    {
+                        // Server changed independently — flag conflict
+                        // instead of pushing.
+                        logDebug("updateParagraph: server changed independently, flagging sync conflict");
+                        await this.editWithoutParagraphUpdate(async () => {
+                            await this.updateCellMetadata(cell, {
+                                syncConflict: serverParagraph
+                            });
+                        });
+                        // Unregister without pushing
+                        this._unregisterParagraphUpdateDirect(cell);
+                        return;
+                    }
+                }
+
                 logDebug("updateParagraph: updateParagraphConfig");
                 let res = await this.updateParagraphConfig(cell);
                 logDebug("updateParagraph: updateParagraphText");

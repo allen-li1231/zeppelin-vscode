@@ -271,7 +271,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 		if (event.notebook.isDirty) {
 			event.waitUntil(
-				kernel.instantUpdatePollingParagraphs()
+				kernel.updatePollingParagraphsDirect()
 					.then(() => kernel.applyPolledNotebookEdits())
 			);
 		}
