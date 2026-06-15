@@ -6,7 +6,6 @@ import { CellStatusProvider} from '../component/cellStatusBar';
 import { ZeppelinSerializer } from './notebookSerializer';
 import { ZeppelinKernel } from './notebookKernel';
 import { EXTENSION_NAME,
-	NOTEBOOK_SUFFIX,
 	mapZeppelinLanguage,
 	logDebug,
 	isLocalNotebook,
