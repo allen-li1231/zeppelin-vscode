@@ -426,7 +426,7 @@ export class ExecutionManager
 
     private async _dispatchInterpreter(cell: vscode.NotebookCell)
     {
-        let interpreterId = parseCellInterpreter(cell) ?? '';
+        let interpreterId = parseCellInterpreter(cell, false) ?? '';
         if (!this._mapInterpreterQueue.has(interpreterId))
         {
             this._mapInterpreterQueue.set(

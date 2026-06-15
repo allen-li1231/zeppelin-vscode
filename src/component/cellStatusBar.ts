@@ -112,7 +112,7 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
             }
         }
 
-        let interpreterId = parseCellInterpreter(cell);
+        let interpreterId = parseCellInterpreter(cell, false);
         if (interpreterId === undefined) {
             return items;
         }
@@ -178,7 +178,7 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
                         continue;
                     }
 
-                    let interpreterId = parseCellInterpreter(cell);
+                    let interpreterId = parseCellInterpreter(cell, false);
                     if (interpreterId === undefined) {
                         continue;
                     }
