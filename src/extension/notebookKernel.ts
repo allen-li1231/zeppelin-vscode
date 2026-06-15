@@ -904,7 +904,7 @@ export class ZeppelinKernel
 
         if (cell.kind !== serverCellData.kind) { return true; }
 
-        if (cell.document.languageId !== serverCellData.languageId) { return true; }
+        // if (cell.document.languageId !== serverCellData.languageId) { return true; }
 
         // Compare execution results stored in metadata
         let localResults = cell.metadata.results;
