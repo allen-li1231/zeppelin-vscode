@@ -448,6 +448,12 @@ export class NotebookService extends BasicService {
         );
     }
 
+    listInterpreters() {
+        return this.session.get(
+            `/api/interpreter`
+        );
+    }
+
     getInterpreterSetting(interpreterId: string) {
         return this.session.get(
             `/api/interpreter/setting/${encodeURIComponent(interpreterId)}`
