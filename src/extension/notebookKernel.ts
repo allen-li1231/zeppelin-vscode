@@ -4,7 +4,10 @@ import { AxiosError } from 'axios';
 import { NotebookService } from '../common/api';
 import { EXTENSION_NAME,
     SUPPORTED_LANGUAGE,
+    mapLanguage,
+    mapLanguageKind,
     mapZeppelinLanguage,
+    mapVSCodeLanguage,
     logDebug,
     getProxy,
     getVersion } from '../common/common';
@@ -14,7 +17,8 @@ import { NoteData,
 import { showQuickPickURL,
     doLogin,
     promptCreateParagraph } from '../common/interaction';
-import { parseParagraphToCellData,
+import { parseCellInterpreter,
+    parseParagraphToCellData,
     parseParagraphResultToCellOutput } from '../common/parser';
 import { Mutex } from '../component/mutex';
 import { ExecutionManager } from '../component/execution';
@@ -46,6 +50,7 @@ export class ZeppelinKernel
     private _mapUpdateParagraph = new Map<vscode.NotebookCell, { requestTime: number, baseText: string }>();
     private _flagRegisterParagraphUpdate = true;
     private _mapParagraphCache = new Map<string, { data: ParagraphData | null, timestamp: number }>();
+    private _mapInterpreterCache: Map<string, string> | undefined;
     private _timerRefreshParagraphCache?: ReturnType<typeof setInterval>;
     private _sessionExpiredPromptActive = false;
 
@@ -123,6 +128,16 @@ export class ZeppelinKernel
 
             this._executionManager?.scheduleTracking();
             this.cellStatusBar?.scheduleTracking();
+
+            // Populate interpreter cache on activation
+            this.listInterpreters().then(map =>
+            {
+                this._mapInterpreterCache = map;
+                logDebug("interpreter cache populated", map);
+            }).catch(err =>
+            {
+                logDebug("failed to populate interpreter cache", err);
+            });
         }
         logDebug("activate", this.isActive());
         return this.isActive();
@@ -160,6 +175,8 @@ export class ZeppelinKernel
 
         this._executionManager?.dispose();
         this.cellStatusBar?.dispose();
+
+        this._mapInterpreterCache = undefined;
 
         this._isActive = false;
         logDebug("activate", this.isActive());
@@ -387,6 +404,50 @@ export class ZeppelinKernel
 
         let serverNote: NoteData = res?.data.body;
         return serverNote;
+    }
+
+    public async listInterpreters()
+    {
+		let res = await this.getService()?.listInterpreters();
+        if (res instanceof AxiosError)
+        {
+            vscode.window.showWarningMessage(
+                `Unable to fetch interpreter information, `
+                + `please manually select a language model.`);
+            return;
+        }
+
+        const mapInterpreter = new Map<string, string>();
+        for (let interpreter of res?.data.body)
+        {
+            if (mapVSCodeLanguage.has(interpreter.id))
+            {
+                mapInterpreter.set(
+                    interpreter.id,
+                    mapVSCodeLanguage.get(interpreter.id) ?? ''
+                );
+            }
+
+            for (let subname of interpreter.interpreterGroup)
+            {
+                let lang = subname.editor?.language ?? subname.name;
+                lang = mapVSCodeLanguage.get(lang);
+                if (lang === undefined)
+                {
+                    continue;
+                }
+
+                if (subname.defaultInterpreter)
+                {
+                    mapInterpreter.set(interpreter.id, lang);
+                }
+                mapInterpreter.set(
+                    `${interpreter.id}.${subname.name}`, lang
+                );
+            }
+        }
+
+        return mapInterpreter;
     }
 
     public async getParagraphInfo(
@@ -1380,5 +1441,92 @@ export class ZeppelinKernel
                 return await this._updateParagraph(cell);
             }
         );
+    }
+
+    /**
+     * Auto-detect the cell language from the Magic command (e.g. `%python`, `%spark.sql`)
+     * in the cell text. Uses the cached interpreter map to resolve the interpreter ID
+     * to a VS Code language ID, then applies it via `vscode.languages.setTextDocumentLanguage`.
+     */
+    public async autoDetectCellLanguage(cell: vscode.NotebookCell)
+    {
+        // Extract the full interpreter ID from the Magic command
+        let fullInterpreterId = parseCellInterpreter(cell, false);
+        if (fullInterpreterId === undefined)
+        {
+            return;
+        }
+
+        // Use cached interpreter map; if not available, skip silently
+        let interpreterMap = this._mapInterpreterCache;
+        if (interpreterMap === undefined)
+        {
+            logDebug("autoDetectCellLanguage: interpreter cache not available, skipping");
+            return;
+        }
+
+        // Look up by full ID first (e.g. spark.sql), then by root ID (e.g. spark)
+        let vscLang = interpreterMap.get(fullInterpreterId);
+        if (vscLang === undefined)
+        {
+            let rootInterpreterId = parseCellInterpreter(cell, true);
+            if (rootInterpreterId !== undefined)
+            {
+                vscLang = interpreterMap.get(rootInterpreterId);
+            }
+        }
+
+        if (vscLang === undefined)
+        {
+            logDebug(`autoDetectCellLanguage: unknown interpreter '${fullInterpreterId}'`);
+            return;
+        }
+
+        // Skip if language already matches
+        if (cell.document.languageId === vscLang)
+        {
+            return;
+        }
+
+        await this._applyCellLanguage(cell, vscLang);
+    }
+
+    /**
+     * Apply a VS Code language ID to a notebook cell using
+     * `vscode.languages.setTextDocumentLanguage`, then sync the metadata
+     * config to match.
+     */
+    private async _applyCellLanguage(cell: vscode.NotebookCell, vscLang: string)
+    {
+        try
+        {
+            await vscode.languages.setTextDocumentLanguage(cell.document, vscLang);
+
+            // Sync metadata config to match the new language
+            let zepLang = mapZeppelinLanguage.get(vscLang) ?? 'plain_text';
+            await this.editWithoutParagraphUpdate(async () =>
+            {
+                await this.updateCellMetadata(cell, {
+                    config: {
+                        ...cell.metadata.config,
+                        editorMode: `ace/mode/${zepLang}`,
+                        editorSetting: {
+                            ...cell.metadata.config?.editorSetting,
+                            language: zepLang
+                        }
+                    }
+                });
+            });
+
+            logDebug(`autoDetectCellLanguage: set language to '${vscLang}'`);
+        }
+        catch (err)
+        {
+            logDebug('_applyCellLanguage error', err);
+            vscode.window.showWarningMessage(
+                `Unable to auto-detect cell language '${vscLang}'. `
+                + `Please select it manually.`
+            );
+        }
     }
 }

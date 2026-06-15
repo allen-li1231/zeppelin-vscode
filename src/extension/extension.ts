@@ -234,6 +234,9 @@ export async function activate(context: vscode.ExtensionContext) {
 			if (cellChange.document !== undefined) {
 				logDebug("onDidChangeNotebookDocument: cellChange", cellChange);
 				kernel.registerParagraphUpdate(cellChange.cell);
+				kernel.autoDetectCellLanguage(cellChange.cell).catch(err =>
+					logDebug("autoDetectCellLanguage error", err)
+				);
 			}
 		}
 
