@@ -303,3 +303,10 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 
 ### Fixed
 - [Bug that causes Remote Changes buttons to show up when a notebook is edited and quickly switched away then back](https://github.com/allen-li1231/zeppelin-vscode/commit/4299ab6ba67720e0596631a0f82fca224701ba37).
+
+
+
+## [0.2.22] - 2026-06-15
+
+### Fixed
+- Wrong notebook cell assertion that causes syncing problems.
