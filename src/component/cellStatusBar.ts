@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { AxiosError } from 'axios';
 import { ZeppelinKernel } from '../extension/notebookKernel';
-import { logDebug, isLocalNotebook } from '../common/common';
+import { logDebug, isLocalNotebookCell } from '../common/common';
 import { Mutex } from './mutex';
 import { parseCellInterpreter } from '../common/parser';
 
@@ -27,7 +27,7 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
         logDebug(`provideCellStatusBarItems check pending paragraph update`,
             this.kernel.hasPendingParagraphUpdate(cell), cell)
         if (!this.kernel.isActive()
-            || !isLocalNotebook(cell.notebook.uri)
+            || !isLocalNotebookCell(cell.notebook.uri)
             || cell.kind === vscode.NotebookCellKind.Markup
             || this.kernel.isNoteSyncing(cell.notebook)
             || this.kernel.hasPendingParagraphUpdate(cell)) {

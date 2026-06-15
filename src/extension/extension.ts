@@ -9,7 +9,8 @@ import { EXTENSION_NAME,
 	NOTEBOOK_SUFFIX,
 	mapZeppelinLanguage,
 	logDebug,
-	isLocalNotebook
+	isLocalNotebook,
+	isLocalNotebookCell
 } from '../common/common';
 import { ParagraphData } from '../common/types';
 const _ = require('lodash');
@@ -287,8 +288,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 
 	disposable = vscode.window.onDidChangeTextEditorOptions(async event => {
-		if (event.textEditor.document.uri.scheme !== 'file'
-			|| !event.textEditor.document.uri.fsPath.endsWith(NOTEBOOK_SUFFIX)
+		if (!isLocalNotebookCell(event.textEditor.document.uri)
 			|| !kernel.isActive()) {
 			return;
 		}

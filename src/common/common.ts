@@ -126,3 +126,11 @@ export function getProxy() {
 export function isLocalNotebook(uri: Uri): boolean {
 	return uri.fsPath.endsWith(NOTEBOOK_SUFFIX) && uri.scheme === 'file';
 }
+
+/**
+ * Returns true when the URI belongs to a local `.zpln` file (scheme === 'file').
+ * and is a cell uri
+ */
+export function isLocalNotebookCell(uri: Uri): boolean {
+	return uri.fsPath.endsWith(NOTEBOOK_SUFFIX) && uri.scheme === 'vscode-notebook-cell';
+}
