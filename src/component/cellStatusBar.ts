@@ -32,107 +32,109 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
             return [];
         }
 
-        this._setCell.add(cell);
-        const items: vscode.NotebookCellStatusBarItem[] = [];
+        return this._cellStatusUpdateMutex.runExclusive(async () => {
+            this._setCell.add(cell);
+            const items: vscode.NotebookCellStatusBarItem[] = [];
 
-        // Show sync conflict indicator if present
-        if (cell.metadata.syncConflict !== undefined
-            && !this.kernel.editMutex.isLocked()
-        ) {
-            const conflictItem = new vscode.NotebookCellStatusBarItem(
-                cell.metadata.resolvingDiff
-                    ? '$(loading~spin) Resolving Diff'
-                    : '$(diff) Remote Changed',
-                vscode.NotebookCellStatusBarAlignment.Right,
-            );
-            conflictItem.command = <vscode.Command> {
-                title: '$(diff) Remote Changed',
-                command: 'zeppelin-vscode.showCellDiff',
-                arguments: [cell],
-            };
-            conflictItem.tooltip = cell.metadata.resolvingDiff
-                ? `Resolving sync conflict (click to view diff again)`
-                : `Cell differs from server (click to view diff)`;
-            items.push(conflictItem);
-
-            const acceptRemoteItem = new vscode.NotebookCellStatusBarItem(
-                '$(cloud-download) Accept Remote',
-                vscode.NotebookCellStatusBarAlignment.Right,
-            );
-            acceptRemoteItem.command = <vscode.Command> {
-                title: '$(cloud-download) Accept Remote',
-                command: 'zeppelin-vscode.acceptRemoteCell',
-                arguments: [cell],
-            };
-            acceptRemoteItem.tooltip = `Accept remote (server) version of this cell`;
-            items.push(acceptRemoteItem);
-
-            const acceptLocalItem = new vscode.NotebookCellStatusBarItem(
-                '$(cloud-upload) Keep Local',
-                vscode.NotebookCellStatusBarAlignment.Right,
-            );
-            acceptLocalItem.command = <vscode.Command> {
-                title: '$(cloud-upload) Keep Local',
-                command: 'zeppelin-vscode.acceptLocalCell',
-                arguments: [cell],
-            };
-            acceptLocalItem.tooltip = `Keep local version and push to server`;
-            items.push(acceptLocalItem);
-        }
-
-        // status === string: normal status
-        // status === undefined: cannot reach remote server
-        // status === number: remote server responds with problem
-        if (typeof cell.metadata.status !== 'string') {
-            if (cell.metadata.status === 404) {
-                const item = new vscode.NotebookCellStatusBarItem(
-                    '$(warning)',
+            // Show sync conflict indicator if present
+            if (cell.metadata.syncConflict !== undefined
+                && !this.kernel.editMutex.isLocked()
+            ) {
+                const conflictItem = new vscode.NotebookCellStatusBarItem(
+                    cell.metadata.resolvingDiff
+                        ? '$(loading~spin) Resolving Diff'
+                        : '$(diff) Remote Changed',
                     vscode.NotebookCellStatusBarAlignment.Right,
                 );
-                item.command = <vscode.Command> {
-                    title: '$(warning)',
-                    command: 'zeppelin-vscode.createMissingParagraph',
+                conflictItem.command = <vscode.Command> {
+                    title: '$(diff) Remote Changed',
+                    command: 'zeppelin-vscode.showCellDiff',
                     arguments: [cell],
                 };
-                item.tooltip = `Remote paragraph doesn't exist (click to create)`;
-                items.push(item);
-            }
-            else {
-                const item = new vscode.NotebookCellStatusBarItem(
-                    '$(debug-disconnect)',
+                conflictItem.tooltip = cell.metadata.resolvingDiff
+                    ? `Resolving sync conflict (click to view diff again)`
+                    : `Cell differs from server (click to view diff)`;
+                items.push(conflictItem);
+
+                const acceptRemoteItem = new vscode.NotebookCellStatusBarItem(
+                    '$(cloud-download) Accept Remote',
                     vscode.NotebookCellStatusBarAlignment.Right,
                 );
-                if (cell.metadata.status === undefined) {
-                    item.tooltip = `Sync pending`;
+                acceptRemoteItem.command = <vscode.Command> {
+                    title: '$(cloud-download) Accept Remote',
+                    command: 'zeppelin-vscode.acceptRemoteCell',
+                    arguments: [cell],
+                };
+                acceptRemoteItem.tooltip = `Accept remote (server) version of this cell`;
+                items.push(acceptRemoteItem);
+
+                const acceptLocalItem = new vscode.NotebookCellStatusBarItem(
+                    '$(cloud-upload) Keep Local',
+                    vscode.NotebookCellStatusBarAlignment.Right,
+                );
+                acceptLocalItem.command = <vscode.Command> {
+                    title: '$(cloud-upload) Keep Local',
+                    command: 'zeppelin-vscode.acceptLocalCell',
+                    arguments: [cell],
+                };
+                acceptLocalItem.tooltip = `Keep local version and push to server`;
+                items.push(acceptLocalItem);
+            }
+
+            // status === string: normal status
+            // status === undefined: cannot reach remote server
+            // status === number: remote server responds with problem
+            if (typeof cell.metadata.status !== 'string') {
+                if (cell.metadata.status === 404) {
+                    const item = new vscode.NotebookCellStatusBarItem(
+                        '$(warning)',
+                        vscode.NotebookCellStatusBarAlignment.Right,
+                    );
+                    item.command = <vscode.Command> {
+                        title: '$(warning)',
+                        command: 'zeppelin-vscode.createMissingParagraph',
+                        arguments: [cell],
+                    };
+                    item.tooltip = `Remote paragraph doesn't exist (click to create)`;
+                    items.push(item);
                 }
                 else {
-                    item.tooltip = `Sync pending (${cell.metadata.status})`;
+                    const item = new vscode.NotebookCellStatusBarItem(
+                        '$(debug-disconnect)',
+                        vscode.NotebookCellStatusBarAlignment.Right,
+                    );
+                    if (cell.metadata.status === undefined) {
+                        item.tooltip = `Sync pending`;
+                    }
+                    else {
+                        item.tooltip = `Sync pending (${cell.metadata.status})`;
+                    }
+                    return [item];
                 }
-                return [item];
             }
-        }
 
-        let interpreterId = parseCellInterpreter(cell, false);
-        if (interpreterId === undefined) {
+            let interpreterId = parseCellInterpreter(cell, false);
+            if (interpreterId === undefined) {
+                return items;
+            }
+
+            let status = this._mapInterpreterStatus.get(interpreterId);
+            if (status === undefined) {
+                return items;
+            }
+            const item = new vscode.NotebookCellStatusBarItem(
+                status, vscode.NotebookCellStatusBarAlignment.Right,
+            );
+            item.command = <vscode.Command> {
+                title: status,
+                command: 'zeppelin-vscode.restartInterpreter',
+                arguments: [interpreterId],
+            };
+            item.tooltip = `Interpreter status (click to restart)`;
+            items.push(item);
+
             return items;
-        }
-
-        let status = this._mapInterpreterStatus.get(interpreterId);
-        if (status === undefined) {
-            return items;
-        }
-        const item = new vscode.NotebookCellStatusBarItem(
-            status, vscode.NotebookCellStatusBarAlignment.Right,
-        );
-        item.command = <vscode.Command> {
-            title: status,
-            command: 'zeppelin-vscode.restartInterpreter',
-            arguments: [interpreterId],
-        };
-        item.tooltip = `Interpreter status (click to restart)`;
-        items.push(item);
-
-        return items;
+        });
     }
 
     private async _updateInterpreterStatus(
@@ -188,9 +190,6 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
     }
 
     public async untrackCell(cell: vscode.NotebookCell) {
-        if (cell.kind === vscode.NotebookCellKind.Markup) {
-            return false;
-        }
         return this._setCell.delete(cell);
     }
 
