@@ -498,6 +498,11 @@ export class ExecutionManager
                 );
                 continue;
             }
+            
+            if (this.kernel.hasPendingParagraphUpdate(cell))
+            {
+                await this.kernel.updatePollingParagraphsDirect();
+            }
 
             if (concurrency === "parallel")
             {
