@@ -34,13 +34,13 @@ describe('CellStatusProvider Test Suite', () => {
             assert.deepStrictEqual(items, []);
         });
 
-        it('shows sync conflict indicator when syncConflict is set', () => {
+        it('shows sync conflict indicator when syncConflict is set', async () => {
             const cell = createMockCell({
                 status: 'READY',
                 syncConflict: { text: 'remote text' },
                 text: '%python\nprint("hello")\n',
             });
-            const items = provider.provideCellStatusBarItems(cell as any);
+            const items = await provider.provideCellStatusBarItems(cell as any);
             assert.ok(Array.isArray(items));
             assert.ok((items as any[]).length >= 3,
                 `Expected at least 3 items, got ${(items as any[]).length}`);
@@ -55,9 +55,9 @@ describe('CellStatusProvider Test Suite', () => {
             assert.ok(keepLocalItem.text.includes('Keep Local'));
         });
 
-        it('shows warning item when cell status is 404', () => {
+        it('shows warning item when cell status is 404', async () => {
             const cell = createMockCell({ status: 404 });
-            const items = provider.provideCellStatusBarItems(cell as any);
+            const items = await provider.provideCellStatusBarItems(cell as any);
             assert.ok(Array.isArray(items));
             const warningItem = (items as vscode.NotebookCellStatusBarItem[]).find(
                 i => i.text.includes('$(warning)')
@@ -66,9 +66,9 @@ describe('CellStatusProvider Test Suite', () => {
             assert.ok(warningItem!.tooltip?.toString().includes("doesn't exist"));
         });
 
-        it('shows debug-disconnect with "Sync pending" when status is undefined', () => {
+        it('shows debug-disconnect with "Sync pending" when status is undefined', async () => {
             const cell = createMockCell({ status: undefined });
-            const items = provider.provideCellStatusBarItems(cell as any);
+            const items = await provider.provideCellStatusBarItems(cell as any);
             assert.ok(Array.isArray(items));
             assert.strictEqual((items as any[]).length, 1);
             const item = (items as vscode.NotebookCellStatusBarItem[])[0];
@@ -76,9 +76,9 @@ describe('CellStatusProvider Test Suite', () => {
             assert.strictEqual(item.tooltip, 'Sync pending');
         });
 
-        it('shows debug-disconnect with status code for non-404 numeric status', () => {
+        it('shows debug-disconnect with status code for non-404 numeric status', async () => {
             const cell = createMockCell({ status: 500 });
-            const items = provider.provideCellStatusBarItems(cell as any);
+            const items = await provider.provideCellStatusBarItems(cell as any);
             assert.ok(Array.isArray(items));
             assert.strictEqual((items as any[]).length, 1);
             const item = (items as vscode.NotebookCellStatusBarItem[])[0];
@@ -86,29 +86,29 @@ describe('CellStatusProvider Test Suite', () => {
             assert.ok(item.tooltip?.toString().includes('500'));
         });
 
-        it('returns items without interpreter status when no interpreter found', () => {
+        it('returns items without interpreter status when no interpreter found', async () => {
             const cell = createMockCell({ status: 'READY', text: 'no interpreter here' });
-            const items = provider.provideCellStatusBarItems(cell as any);
+            const items = await provider.provideCellStatusBarItems(cell as any);
             assert.ok(Array.isArray(items));
             assert.strictEqual((items as any[]).length, 0);
         });
 
-        it('returns items without interpreter item when interpreter not tracked', () => {
+        it('returns items without interpreter item when interpreter not tracked', async () => {
             const cell = createMockCell({ status: 'READY', text: '%python\nprint("hello")\n' });
-            const items = provider.provideCellStatusBarItems(cell as any);
+            const items = await provider.provideCellStatusBarItems(cell as any);
             assert.ok(Array.isArray(items));
             assert.strictEqual((items as any[]).length, 0);
         });
 
         // ── NEW: additional provideCellStatusBarItems edge cases ─────────
 
-        it('sync conflict + 404 status shows conflict items then warning', () => {
+        it('sync conflict + 404 status shows conflict items then warning', async () => {
             const cell = createMockCell({
                 status: 404,
                 syncConflict: { text: 'remote text' },
                 text: '%python\nprint("hello")\n',
             });
-            const items = provider.provideCellStatusBarItems(cell as any) as vscode.NotebookCellStatusBarItem[];
+            const items = await provider.provideCellStatusBarItems(cell as any) as vscode.NotebookCellStatusBarItem[];
             assert.ok(Array.isArray(items));
             // Should have: diff item, accept remote item, keep local item, and warning item
             assert.ok(items.length >= 4,
@@ -120,7 +120,7 @@ describe('CellStatusProvider Test Suite', () => {
             assert.ok(warningItem, 'Should include warning for 404');
         });
 
-        it('sync conflict + undefined status returns disconnect item only (early return)', () => {
+        it('sync conflict + undefined status returns disconnect item only (early return)', async () => {
             const cell = createMockCell({
                 status: undefined,
                 syncConflict: { text: 'remote text' },
@@ -131,7 +131,7 @@ describe('CellStatusProvider Test Suite', () => {
             // Actually, looking at the code flow: syncConflict items are pushed first,
             // then the status check for undefined returns early with just [item].
             // The early return replaces items with a single-element array.
-            const items = provider.provideCellStatusBarItems(cell as any) as vscode.NotebookCellStatusBarItem[];
+            const items = await provider.provideCellStatusBarItems(cell as any) as vscode.NotebookCellStatusBarItem[];
             assert.ok(Array.isArray(items));
             assert.strictEqual(items.length, 1, 'Early return produces single disconnect item');
             assert.ok(items[0].text.includes('$(debug-disconnect)'));
@@ -143,11 +143,11 @@ describe('CellStatusProvider Test Suite', () => {
                 text: '%spark.pyspark\ndf.show()\n',
             });
             // First call registers the cell
-            provider.provideCellStatusBarItems(cell as any);
+            await provider.provideCellStatusBarItems(cell as any);
             // Update to populate interpreter map
             await provider.doUpdateAllInterpreterStatus();
             // Second call should find "spark" (root) in the map
-            const items = provider.provideCellStatusBarItems(cell as any) as vscode.NotebookCellStatusBarItem[];
+            const items = await provider.provideCellStatusBarItems(cell as any) as vscode.NotebookCellStatusBarItem[];
             const interpreterItem = items.find(i => i.tooltip === 'Interpreter status (click to restart)');
             assert.ok(interpreterItem, 'Should show interpreter status for spark');
             // Command arguments should reference the root interpreter "spark"
@@ -157,32 +157,31 @@ describe('CellStatusProvider Test Suite', () => {
 
         it('shows interpreter status with correct command for restart', async () => {
             const cell = createMockCell({ status: 'READY', text: '%python\nprint("hello")\n' });
-            provider.provideCellStatusBarItems(cell as any);
+            await provider.provideCellStatusBarItems(cell as any);
             await provider.doUpdateAllInterpreterStatus();
-            const items = provider.provideCellStatusBarItems(cell as any) as vscode.NotebookCellStatusBarItem[];
+            const items = await provider.provideCellStatusBarItems(cell as any) as vscode.NotebookCellStatusBarItem[];
             const interpreterItem = items.find(i => i.tooltip === 'Interpreter status (click to restart)');
             assert.ok(interpreterItem);
             assert.strictEqual((interpreterItem!.command as any).command, 'zeppelin-vscode.restartInterpreter');
             assert.deepStrictEqual((interpreterItem!.command as any).arguments, ['python']);
         });
 
-        it('404 warning item has correct createMissingParagraph command', () => {
+        it('404 warning item has correct createMissingParagraph command', async () => {
             const cell = createMockCell({ status: 404 });
-            const items = provider.provideCellStatusBarItems(cell as any) as vscode.NotebookCellStatusBarItem[];
+            const items = await provider.provideCellStatusBarItems(cell as any) as vscode.NotebookCellStatusBarItem[];
             const warningItem = items.find(i => i.text.includes('$(warning)'));
             assert.ok(warningItem);
             assert.strictEqual((warningItem!.command as any).command, 'zeppelin-vscode.createMissingParagraph');
             assert.deepStrictEqual((warningItem!.command as any).arguments, [cell]);
         });
 
-        it('adds cell to internal tracking set on each call', () => {
+        it('adds cell to internal tracking set on each call', async () => {
             const cell = createMockCell({ status: 'READY' });
-            provider.provideCellStatusBarItems(cell as any);
+            await provider.provideCellStatusBarItems(cell as any);
             // Verify cell is tracked by checking untrackCell returns true
             // (untrackCell uses Set.delete which returns true if element existed)
-            provider.untrackCell(cell as any).then(result => {
-                assert.strictEqual(result, true);
-            });
+            const result = await provider.untrackCell(cell as any);
+            assert.strictEqual(result, true);
         });
     });
 
@@ -192,11 +191,11 @@ describe('CellStatusProvider Test Suite', () => {
 
         it('updates interpreter status from service', async () => {
             const cell = createMockCell({ status: 'READY', text: '%python\nprint("hello")\n' });
-            provider.provideCellStatusBarItems(cell as any);
+            await provider.provideCellStatusBarItems(cell as any);
 
             await provider.doUpdateAllInterpreterStatus();
 
-            const items = provider.provideCellStatusBarItems(cell as any);
+            const items = await provider.provideCellStatusBarItems(cell as any);
             assert.ok(Array.isArray(items));
             const statusItems = (items as vscode.NotebookCellStatusBarItem[]);
             assert.ok(statusItems.length > 0, 'Should have at least one status item after update');
@@ -207,7 +206,7 @@ describe('CellStatusProvider Test Suite', () => {
 
         it('skips when already updating (guard flag)', async () => {
             const cell = createMockCell({ status: 'READY', text: '%python\nprint("hello")\n' });
-            provider.provideCellStatusBarItems(cell as any);
+            await provider.provideCellStatusBarItems(cell as any);
 
             const first = provider.doUpdateAllInterpreterStatus();
             const second = provider.doUpdateAllInterpreterStatus();
@@ -218,7 +217,7 @@ describe('CellStatusProvider Test Suite', () => {
 
         it('removes closed cells from tracking set', async () => {
             const cell = createMockCell({ status: 'READY', text: '%python\nprint("hello")\n', isClosed: true });
-            provider.provideCellStatusBarItems(cell as any);
+            await provider.provideCellStatusBarItems(cell as any);
 
             await provider.doUpdateAllInterpreterStatus();
 
@@ -235,7 +234,7 @@ describe('CellStatusProvider Test Suite', () => {
                 text: '%python\nprint("hello")\n',
                 notebookClosed: true,
             });
-            provider.provideCellStatusBarItems(cell as any);
+            await provider.provideCellStatusBarItems(cell as any);
 
             await provider.doUpdateAllInterpreterStatus();
 
@@ -248,12 +247,12 @@ describe('CellStatusProvider Test Suite', () => {
                 status: 'READY',
                 text: 'no interpreter prefix here\n',
             });
-            provider.provideCellStatusBarItems(cell as any);
+            await provider.provideCellStatusBarItems(cell as any);
 
             await provider.doUpdateAllInterpreterStatus();
 
             // Cell is still tracked but interpreter map has no entry for it
-            const items = provider.provideCellStatusBarItems(cell as any) as vscode.NotebookCellStatusBarItem[];
+            const items = await provider.provideCellStatusBarItems(cell as any) as vscode.NotebookCellStatusBarItem[];
             assert.strictEqual(items.length, 0);
         });
 
@@ -275,8 +274,8 @@ describe('CellStatusProvider Test Suite', () => {
 
             const cell1 = createMockCell({ id: 'para_a', status: 'READY', text: '%python\ncode1\n' });
             const cell2 = createMockCell({ id: 'para_b', status: 'READY', text: '%python\ncode2\n' });
-            provider.provideCellStatusBarItems(cell1 as any);
-            provider.provideCellStatusBarItems(cell2 as any);
+            await provider.provideCellStatusBarItems(cell1 as any);
+            await provider.provideCellStatusBarItems(cell2 as any);
 
             await provider.doUpdateAllInterpreterStatus();
 
@@ -290,13 +289,13 @@ describe('CellStatusProvider Test Suite', () => {
             kernel.getService = () => undefined as any;
 
             const cell = createMockCell({ status: 'READY', text: '%python\nprint("hello")\n' });
-            provider.provideCellStatusBarItems(cell as any);
+            await provider.provideCellStatusBarItems(cell as any);
 
             // Should not throw
             await provider.doUpdateAllInterpreterStatus();
 
             // Interpreter status should remain absent
-            const items = provider.provideCellStatusBarItems(cell as any) as vscode.NotebookCellStatusBarItem[];
+            const items = await provider.provideCellStatusBarItems(cell as any) as vscode.NotebookCellStatusBarItem[];
             const interpreterItem = items.find(i => i.tooltip === 'Interpreter status (click to restart)');
             assert.strictEqual(interpreterItem, undefined);
         });
@@ -308,13 +307,13 @@ describe('CellStatusProvider Test Suite', () => {
             });
 
             const cell = createMockCell({ status: 'READY', text: '%python\nprint("hello")\n' });
-            provider.provideCellStatusBarItems(cell as any);
+            await provider.provideCellStatusBarItems(cell as any);
 
             // Should not throw
             await provider.doUpdateAllInterpreterStatus();
 
             // Interpreter should not appear
-            const items = provider.provideCellStatusBarItems(cell as any) as vscode.NotebookCellStatusBarItem[];
+            const items = await provider.provideCellStatusBarItems(cell as any) as vscode.NotebookCellStatusBarItem[];
             const interpreterItem = items.find(i => i.tooltip === 'Interpreter status (click to restart)');
             assert.strictEqual(interpreterItem, undefined);
         });
@@ -328,11 +327,11 @@ describe('CellStatusProvider Test Suite', () => {
             });
 
             const cell = createMockCell({ status: 'READY', text: '%python\nprint("hello")\n' });
-            provider.provideCellStatusBarItems(cell as any);
+            await provider.provideCellStatusBarItems(cell as any);
 
             await provider.doUpdateAllInterpreterStatus();
 
-            const items = provider.provideCellStatusBarItems(cell as any) as vscode.NotebookCellStatusBarItem[];
+            const items = await provider.provideCellStatusBarItems(cell as any) as vscode.NotebookCellStatusBarItem[];
             const interpreterItem = items.find(i => i.tooltip === 'Interpreter status (click to restart)');
             assert.strictEqual(interpreterItem, undefined, 'Non-OK response should not populate interpreter status');
         });
@@ -340,11 +339,11 @@ describe('CellStatusProvider Test Suite', () => {
         it('atomic swap: previous map is fully replaced, not merged', async () => {
             // First update: populate with python=READY
             const cell = createMockCell({ status: 'READY', text: '%python\nprint("hello")\n' });
-            provider.provideCellStatusBarItems(cell as any);
+            await provider.provideCellStatusBarItems(cell as any);
             await provider.doUpdateAllInterpreterStatus();
 
             // Verify python is tracked
-            let items = provider.provideCellStatusBarItems(cell as any) as vscode.NotebookCellStatusBarItem[];
+            let items = await provider.provideCellStatusBarItems(cell as any) as vscode.NotebookCellStatusBarItem[];
             assert.ok(items.find(i => i.text === 'READY'));
 
             // Now untrack the cell and update again — the new map should be empty
@@ -353,7 +352,7 @@ describe('CellStatusProvider Test Suite', () => {
 
             // Re-add cell to check status — interpreter should no longer be in map
             const cell2 = createMockCell({ status: 'READY', text: '%python\ncode\n' });
-            items = provider.provideCellStatusBarItems(cell2 as any) as vscode.NotebookCellStatusBarItem[];
+            items = await provider.provideCellStatusBarItems(cell2 as any) as vscode.NotebookCellStatusBarItem[];
             const interpreterItem = items.find(i => i.tooltip === 'Interpreter status (click to restart)');
             assert.strictEqual(interpreterItem, undefined, 'Old interpreter status should be gone after atomic swap');
         });
@@ -379,8 +378,8 @@ describe('CellStatusProvider Test Suite', () => {
 
             const pythonCell = createMockCell({ id: 'p1', status: 'READY', text: '%python\ncode\n' });
             const sparkCell = createMockCell({ id: 'p2', status: 'READY', text: '%spark\ncode\n' });
-            provider.provideCellStatusBarItems(pythonCell as any);
-            provider.provideCellStatusBarItems(sparkCell as any);
+            await provider.provideCellStatusBarItems(pythonCell as any);
+            await provider.provideCellStatusBarItems(sparkCell as any);
 
             await provider.doUpdateAllInterpreterStatus();
 
@@ -389,13 +388,13 @@ describe('CellStatusProvider Test Suite', () => {
             assert.ok(queriedIds.includes('spark'));
 
             // Python cell should show READY
-            const pythonItems = provider.provideCellStatusBarItems(pythonCell as any) as vscode.NotebookCellStatusBarItem[];
+            const pythonItems = await provider.provideCellStatusBarItems(pythonCell as any) as vscode.NotebookCellStatusBarItem[];
             const pythonStatus = pythonItems.find(i => i.tooltip === 'Interpreter status (click to restart)');
             assert.ok(pythonStatus);
             assert.strictEqual(pythonStatus!.text, 'READY');
 
             // Spark cell should show RUNNING
-            const sparkItems = provider.provideCellStatusBarItems(sparkCell as any) as vscode.NotebookCellStatusBarItem[];
+            const sparkItems = await provider.provideCellStatusBarItems(sparkCell as any) as vscode.NotebookCellStatusBarItem[];
             const sparkStatus = sparkItems.find(i => i.tooltip === 'Interpreter status (click to restart)');
             assert.ok(sparkStatus);
             assert.strictEqual(sparkStatus!.text, 'RUNNING');
@@ -608,7 +607,7 @@ describe('CellStatusProvider Test Suite', () => {
 
         it('returns true for tracked Code cells and removes them', async () => {
             const cell = createMockCell({ status: 'READY', text: '%python\nprint("hello")\n' });
-            provider.provideCellStatusBarItems(cell as any);
+            await provider.provideCellStatusBarItems(cell as any);
             const result = await provider.untrackCell(cell as any);
             assert.strictEqual(result, true);
         });
@@ -621,7 +620,7 @@ describe('CellStatusProvider Test Suite', () => {
 
         it('returns false on second untrack of same cell', async () => {
             const cell = createMockCell({ status: 'READY' });
-            provider.provideCellStatusBarItems(cell as any);
+            await provider.provideCellStatusBarItems(cell as any);
             await provider.untrackCell(cell as any);
             const result = await provider.untrackCell(cell as any);
             assert.strictEqual(result, false);
