@@ -11,9 +11,7 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
     private _setCell = new Set<vscode.NotebookCell>();
     public kernel: ZeppelinKernel;
     private readonly _cellStatusUpdateMutex = new Mutex("_cellStatusUpdate");
-    // boolean flag to replace TOCTOU isLocked() check
-    private _isUpdatingStatus = false;
-    private _timerUpdateCellStatus?: ReturnType<typeof setInterval>;
+    private _timerUpdateCellStatus?: ReturnType<typeof setTimeout>;
 
     constructor(kernel: ZeppelinKernel) {
         this.kernel = kernel;
@@ -27,8 +25,8 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
         logDebug(`provideCellStatusBarItems check pending paragraph update`,
             this.kernel.hasPendingParagraphUpdate(cell), cell)
         if (!this.kernel.isActive()
-            || !isLocalNotebookCell(cell.notebook.uri)
-            || cell.kind === vscode.NotebookCellKind.Markup
+            || !isLocalNotebookCell(cell.document.uri)
+            // || cell.kind === vscode.NotebookCellKind.Markup
             || this.kernel.isNoteSyncing(cell.notebook)
             || this.kernel.hasPendingParagraphUpdate(cell)) {
             return [];
@@ -38,7 +36,9 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
         const items: vscode.NotebookCellStatusBarItem[] = [];
 
         // Show sync conflict indicator if present
-        if (cell.metadata.syncConflict !== undefined) {
+        if (cell.metadata.syncConflict !== undefined
+            && !this.kernel.editMutex.isLocked()
+        ) {
             const conflictItem = new vscode.NotebookCellStatusBarItem(
                 cell.metadata.resolvingDiff
                     ? '$(loading~spin) Resolving Diff'
@@ -157,43 +157,33 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
     }
 
     public async doUpdateAllInterpreterStatus() {
-        // use a synchronous boolean flag instead of TOCTOU isLocked() check
-        if (this._isUpdatingStatus) {
-            return;
-        }
-        this._isUpdatingStatus = true;
-
         return this._cellStatusUpdateMutex.runExclusive(async () => {
-            try {
-                // build a new map and swap atomically instead of
-                // clear-and-repopulate in place, so provideCellStatusBarItems()
-                // never sees a partially-populated map
-                const newMap = new Map<string, string>();
+            // build a new map and swap atomically instead of
+            // clear-and-repopulate in place, so provideCellStatusBarItems()
+            // never sees a partially-populated map
+            const newMap = new Map<string, string>();
 
-                // It is safe to add elements or remove elements to a set while iterating it.
-                // Supported in JavaScript 2015 (ES6)
-                for (let cell of this._setCell) {
-                    if (cell.document.isClosed || cell.notebook.isClosed) {
-                        this._setCell.delete(cell);
-                        continue;
-                    }
+            // It is safe to add elements or remove elements to a set while iterating it.
+            // Supported in JavaScript 2015 (ES6)
+            for (let cell of this._setCell) {
+                if (cell.document.isClosed || cell.notebook.isClosed) {
+                    this._setCell.delete(cell);
+                    continue;
+                }
 
                     let interpreterId = parseCellInterpreter(cell, false);
                     if (interpreterId === undefined) {
                         continue;
                     }
 
-                    if (!newMap.has(interpreterId)) {
-                        await this._updateInterpreterStatus(interpreterId, newMap);
-                    }
+                if (!newMap.has(interpreterId)) {
+                    await this._updateInterpreterStatus(interpreterId, newMap);
                 }
-
-                // Atomic swap — provideCellStatusBarItems() always sees
-                // either the old complete map or the new complete map
-                this._mapInterpreterStatus = newMap;
-            } finally {
-                this._isUpdatingStatus = false;
             }
+
+            // Atomic swap — provideCellStatusBarItems() always sees
+            // either the old complete map or the new complete map
+            this._mapInterpreterStatus = newMap;
         });
     }
 
@@ -208,7 +198,8 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
         const activeNotebook = vscode.window.activeNotebookEditor;
         if (activeNotebook === undefined
             || activeNotebook.notebook.cellCount === 0
-            || !(await this.kernel.doesNotebookExist(activeNotebook.notebook))) {
+            || !(await this.kernel.doesNotebookExist(activeNotebook.notebook))
+            || this.kernel.isNoteSyncing(activeNotebook.notebook)) {
             return;
         }
             logDebug("doUpdateVisibleCells: updating", activeNotebook.visibleRanges);
@@ -222,11 +213,16 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
                 let cell = activeNotebook?.notebook.cellAt(i);
                 let execution = this.kernel.getExecutionByParagraphId(cell.metadata.id);
                 if (cell === undefined
+                    // || cell.kind === vscode.NotebookCellKind.Markup
                     || execution !== undefined
                     || i < activeNotebook.visibleRanges[0].start
                     || i >= activeNotebook.visibleRanges[0].end)
                 {
                     continue;
+                }
+                if (this.kernel.hasPendingParagraphUpdate(cell)) {
+                    // Apply all polled edits before processing
+                    await this.kernel.updatePollingParagraphsDirect();
                 }
                 try {
                     let paragraph = await this.kernel.getParagraphInfo(cell);
@@ -242,8 +238,7 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
                     // local edit that hasn't been pushed to the server yet,
                     // to avoid false "Remote Changed" indicators after
                     // quick tab switches.
-                    if (paragraph !== undefined && !cell.metadata.resolvingDiff
-                        && !this.kernel.hasPendingParagraphUpdate(cell))
+                    if (paragraph !== undefined)
                     {
                         let serverText = paragraph.text ?? '';
                         let localText = cell.document.getText();
@@ -290,8 +285,6 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
                 }
             }
         }
-        // Apply all polled edits after processing all visible ranges
-        await this.kernel.applyPolledNotebookEdits();
     }
 
     public isTrackingScheduled() {
@@ -306,15 +299,22 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
 
         const trackInterval = vscode.workspace.getConfiguration('zeppelin')
             .get('interpreter.trackInterval', 5);
-        this._timerUpdateCellStatus = setInterval(
-            this.doUpdateAllInterpreterStatus.bind(this),
-            trackInterval * 1000
-        );
+        this._scheduleUpdateCellStatus(trackInterval * 1000);
+    }
+
+    private _scheduleUpdateCellStatus(intervalMs: number) {
+        this._timerUpdateCellStatus = setTimeout(async () => {
+            await this.doUpdateAllInterpreterStatus();
+            // Only reschedule if not cancelled
+            if (this._timerUpdateCellStatus !== undefined) {
+                this._scheduleUpdateCellStatus(intervalMs);
+            }
+        }, intervalMs);
     }
 
     public unscheduleTracking() {
         if (this.isTrackingScheduled()) {
-            clearInterval(this._timerUpdateCellStatus);
+            clearTimeout(this._timerUpdateCellStatus);
             this._timerUpdateCellStatus = undefined;
         }
     }
