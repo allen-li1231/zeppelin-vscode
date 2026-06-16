@@ -207,7 +207,7 @@ export function parseCellToParagraphData(
                 "language": languageId,
                 "editOnDblClick": false,
                 "completionKey": "TAB",
-                "completionSupport": cell.kind !== 1
+                "completionSupport": cell.kind !== vscode.NotebookCellKind.Markup
             }
         };
     }

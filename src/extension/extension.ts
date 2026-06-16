@@ -321,7 +321,7 @@ export async function activate(context: vscode.ExtensionContext) {
 						"language": lang,
 						"editOnDblClick": false,
 						"completionKey": "TAB",
-						"completionSupport": cell.kind !== 1
+						"completionSupport": cell.kind !== vscode.NotebookCellKind.Markup
 					}
 				}
 			});
