@@ -509,7 +509,7 @@ export class ZeppelinKernel
         return this._executionManager?.getExecutionByParagraphId(paragraphId);
     }
 
-    public registerParagraphUpdate(cell: vscode.NotebookCell)
+    public async registerParagraphUpdate(cell: vscode.NotebookCell)
     {
         if (!this._flagRegisterParagraphUpdate)
         {
@@ -517,14 +517,18 @@ export class ZeppelinKernel
             return;
         }
 
-        if (cell.metadata.resolvingDiff
-            || cell.metadata.syncConflict !== undefined)
+        if (cell.metadata.resolvingDiff)
         {
             logDebug("registerParagraphUpdate: cell is resolving diff, skipped", cell);
             return;
         }
 
         logDebug("registerParagraphUpdate", cell);
+        // Flush any deferred metadata updates so cell.metadata.text is current
+        // before snapshotting baseText. This prevents false sync-conflict
+        // detection when the user rapidly edits and executes a cell.
+        await this.applyPolledNotebookEdits();
+
         return this.updateMutex.runExclusive(async () =>
         {
             if (!this._mapUpdateParagraph.has(cell))
@@ -1127,7 +1131,7 @@ export class ZeppelinKernel
                 "language": lang,
                 "editOnDblClick": false,
                 "completionKey": "TAB",
-                "completionSupport": cell.kind !== 1
+                "completionSupport": cell.kind !== vscode.NotebookCellKind.Markup
             }
         };
 
@@ -1181,7 +1185,7 @@ export class ZeppelinKernel
                 "language": lang,
                 "editOnDblClick": false,
                 "completionKey": "TAB",
-                "completionSupport": cell.kind !== 1
+                "completionSupport": cell.kind !== vscode.NotebookCellKind.Markup
             } };
     
         let res = await this._service?.updateParagraphConfig(
@@ -1295,7 +1299,7 @@ export class ZeppelinKernel
                 res = await this.updateParagraphText(cell);
             }
 
-            if (cell.kind <= 1)
+            if (cell.kind <= vscode.NotebookCellKind.Markup)
             {
                 // need to call remote execution for markup paragraph languages
                 // so remote notebook paragraph result could be generated
@@ -1304,7 +1308,7 @@ export class ZeppelinKernel
             }
         } catch (err)
         {
-            logDebug("error in updateParagraph", err);
+            logDebug("error in _updateParagraph", err);
             if (cell.metadata.id === undefined)
             {
                 // retry creating cell
@@ -1315,6 +1319,12 @@ export class ZeppelinKernel
         // unregister cell from poll, as the update is either finished or failed now
         // Note: _updateParagraph is always called from within _updateMutex, use direct version
         this._unregisterParagraphUpdateDirect(cell);
+
+        // Flush deferred metadata updates (queued by pollUpdateCellMetadata)
+        // while still holding updateMutex. This ensures cell.metadata.text is
+        // current before the next registerParagraphUpdate can snapshot baseText,
+        // preventing false sync-conflict detection on rapid edit-execute cycles.
+        await this.applyPolledNotebookEdits();
     }
 
     public async updateParagraph(cell: vscode.NotebookCell)
