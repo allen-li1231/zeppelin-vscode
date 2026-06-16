@@ -37,11 +37,11 @@ export class ZeppelinKernel
     private _service?: NotebookService;
     private readonly _controller: vscode.NotebookController;
     private _isActive = false;
-    private _updateMutex = new Mutex("_updateMutex");
-    private _editMutex = new Mutex("_editMutex");
+    public updateMutex = new Mutex("updateMutex");
+    public editMutex = new Mutex("editMutex");
 
     // private _timerSyncNote?: ReturnType<typeof setInterval>;
-    private _timerUpdateCell?: ReturnType<typeof setInterval>;
+    private _timerUpdateCell?: ReturnType<typeof setTimeout>;
     private _executionManager?: ExecutionManager;
     private _mapSyncNote = new Map<
         vscode.NotebookDocument, number
@@ -49,9 +49,7 @@ export class ZeppelinKernel
     private _mapNotebookEdits = new Map<vscode.NotebookCell, vscode.NotebookEdit[]>();
     private _mapUpdateParagraph = new Map<vscode.NotebookCell, { requestTime: number, baseText: string }>();
     private _flagRegisterParagraphUpdate = true;
-    private _mapParagraphCache = new Map<string, { data: ParagraphData | null, timestamp: number }>();
     private _mapInterpreterCache: Map<string, string> | undefined;
-    private _timerRefreshParagraphCache?: ReturnType<typeof setInterval>;
     private _sessionExpiredPromptActive = false;
 
     public cellStatusBar: CellStatusProvider | undefined = undefined;
@@ -95,24 +93,7 @@ export class ZeppelinKernel
             if (this._timerUpdateCell === undefined)
             {
                 let poolingInterval = config.get('autosave.poolingInterval', 5);
-    
-                this._timerUpdateCell = setInterval(async () =>
-                {
-                    // sync server and local
-                    await this._doUpdatePollingParagraphs.bind(this)();
-                    await this.cellStatusBar?.doUpdateVisibleCells();
-                },
-                poolingInterval * 1000);
-            }
-
-            if (this._timerRefreshParagraphCache === undefined)
-            {
-                let cacheInterval: number = config.get('paragraphCache.refreshInterval', 5);
-
-                this._timerRefreshParagraphCache = setInterval(
-                    this._doRefreshParagraphCache.bind(this),
-                    cacheInterval * 1000
-                );
+                this._scheduleUpdateCell(poolingInterval * 1000);
             }
 
             // if (this._timerSyncNote === undefined) {
@@ -156,16 +137,9 @@ export class ZeppelinKernel
         {
             // run registered update paragraph task immediately
             // and unregister it after completed
-            clearInterval(this._timerUpdateCell);
+            clearTimeout(this._timerUpdateCell);
             this.updatePollingParagraphsDirect();
             this._timerUpdateCell = undefined;
-        }
-
-        if (this._timerRefreshParagraphCache !== undefined)
-        {
-            clearInterval(this._timerRefreshParagraphCache);
-            this._timerRefreshParagraphCache = undefined;
-            this._mapParagraphCache.clear();
         }
 
         // if (this._timerSyncNote !== undefined) {
@@ -453,32 +427,6 @@ export class ZeppelinKernel
     public async getParagraphInfo(
         cell: vscode.NotebookCell
     ) {
-        let config = vscode.workspace.getConfiguration('zeppelin');
-        let cacheInterval: number = config.get('paragraphCache.refreshInterval', 5);
-        let paragraphId = cell.metadata.id;
-
-        // Check cache for fresh data
-        if (paragraphId !== undefined)
-        {
-            let cached = this._mapParagraphCache.get(paragraphId);
-            if (cached !== undefined
-                && (Date.now() - cached.timestamp) < cacheInterval * 1000)
-            {
-                if (cached.data === null)
-                {
-                    // 404 sentinel: paragraph doesn't exist on server
-                    await this.editWithoutParagraphUpdate(async () => {
-                        await this.updateCellMetadata(cell, {"status": 404});
-                    });
-                    return <ParagraphData> cell.metadata;
-                }
-
-                this.pollUpdateCellMetadata(cell, cached.data);
-                return cached.data;
-            }
-        }
-
-        // Cache miss or stale: fetch from network
         let res = await this.getService()?.getParagraphInfo(
             cell.notebook.metadata.id, cell.metadata.id);
         let paragraph: ParagraphData;
@@ -487,11 +435,6 @@ export class ZeppelinKernel
         {
             if (res.response?.status === 404)
             {
-                // Cache the 404 sentinel
-                if (paragraphId !== undefined)
-                {
-                    this._mapParagraphCache.set(paragraphId, { data: null, timestamp: Date.now() });
-                }
                 const res = await promptCreateParagraph(this, cell);
                 paragraph = res?.data.body ?? cell.metadata;
                 return paragraph;
@@ -510,79 +453,22 @@ export class ZeppelinKernel
             paragraph = res?.data.body ?? res?.data;
         }
 
-        // Cache the successful result
-        if (paragraphId !== undefined)
-        {
-            this._mapParagraphCache.set(paragraphId, { data: paragraph, timestamp: Date.now() });
-        }
-
         this.pollUpdateCellMetadata(cell, paragraph);
         return paragraph;
     }
 
-    private async _doRefreshParagraphCache()
+    private _scheduleUpdateCell(intervalMs: number)
     {
-        const activeNotebook = vscode.window.activeNotebookEditor;
-        if (activeNotebook === undefined || activeNotebook.notebook.cellCount === 0)
+        this._timerUpdateCell = setTimeout(async () =>
         {
-            return;
-        }
-
-        const noteId = activeNotebook.notebook.metadata.id;
-        if (noteId === undefined) { return; }
-
-        // Collect fresh data from network first, then apply to cache atomically
-        const freshEntries: { paragraphId: string, data: ParagraphData | null }[] = [];
-
-        for (let range of activeNotebook.visibleRanges)
-        {
-            if (range.isEmpty) { continue; }
-
-            for (let i = range.start; i < range.end; i++)
+            await this._doUpdatePollingParagraphs();
+            await this.cellStatusBar?.doUpdateVisibleCells();
+            // Only reschedule if not cancelled
+            if (this._timerUpdateCell !== undefined)
             {
-                let cell = activeNotebook.notebook.cellAt(i);
-                let paragraphId = cell.metadata.id;
-                if (paragraphId === undefined) { continue; }
-
-                try
-                {
-                    let res = await this.getService()?.getParagraphInfo(noteId, paragraphId);
-                    if (res instanceof AxiosError)
-                    {
-                        if (res.response?.status === 404)
-                        {
-                            freshEntries.push({ paragraphId, data: null });
-                        }
-                        else
-                        {
-                            logDebug(`_doRefreshParagraphCache: error for ${paragraphId}`, res);
-                        }
-                    }
-                    else
-                    {
-                        let paragraph: ParagraphData = res?.data.body ?? res?.data;
-                        freshEntries.push({ paragraphId, data: paragraph });
-                    }
-                }
-                catch (err)
-                {
-                    logDebug(`_doRefreshParagraphCache: error for ${paragraphId}`, err);
-                }
+                this._scheduleUpdateCell(intervalMs);
             }
-        }
-
-        // Apply fresh entries only if they are newer than what's in the cache
-        for (let { paragraphId, data } of freshEntries)
-        {
-            let cached = this._mapParagraphCache.get(paragraphId);
-            // Only overwrite if no cached entry exists or the cached entry
-            // was written before we started fetching (prevents overwriting
-            // a fresher entry that getParagraphInfo wrote concurrently)
-            if (cached === undefined || cached.timestamp <= Date.now())
-            {
-                this._mapParagraphCache.set(paragraphId, { data, timestamp: Date.now() });
-            }
-        }
+        }, intervalMs);
     }
 
     public async runParagraph(cell: vscode.NotebookCell, sync: boolean)
@@ -631,14 +517,15 @@ export class ZeppelinKernel
             return;
         }
 
-        if (cell.metadata.resolvingDiff)
+        if (cell.metadata.resolvingDiff
+            || cell.metadata.syncConflict !== undefined)
         {
             logDebug("registerParagraphUpdate: cell is resolving diff, skipped", cell);
             return;
         }
 
         logDebug("registerParagraphUpdate", cell);
-        return this._updateMutex.runExclusive(async () =>
+        return this.updateMutex.runExclusive(async () =>
         {
             if (!this._mapUpdateParagraph.has(cell))
             {
@@ -670,7 +557,7 @@ export class ZeppelinKernel
     public async unregisterParagraphUpdate(cell: vscode.NotebookCell)
     {
         logDebug("unregisterParagraphUpdate", cell);
-        return this._updateMutex.runExclusive(async () =>
+        return this.updateMutex.runExclusive(async () =>
         {
             return this._mapUpdateParagraph.delete(cell);
         });
@@ -689,15 +576,10 @@ export class ZeppelinKernel
     public async updatePollingParagraphsDirect() {
         logDebug("updatePollingParagraphsDirect", this._mapUpdateParagraph);
         // let notebookCells = Array.from(this._mapUpdateParagraph.keys());
-        return this._updateMutex.runExclusive(async () => {
+        return this.updateMutex.runExclusive(async () => {
             // Promise.all(notebookCells.map(this.updateParagraph.bind(this)))
             for (let cell of this._mapUpdateParagraph.keys())
             {
-                if (cell.metadata.resolvingDiff
-                    || cell.metadata.syncConflict !== undefined)
-                {
-                    continue
-                }
                 await this._updateParagraph(cell);
             }
             logDebug("updatePollingParagraphsDirect ends");
@@ -706,7 +588,7 @@ export class ZeppelinKernel
 
     public async editWithoutParagraphUpdate(func: () => Promise<void>)
     {
-        return this._editMutex.runExclusive(async () =>
+        return this.editMutex.runExclusive(async () =>
         {
             this._flagRegisterParagraphUpdate = false;
             let res = await func();
@@ -797,7 +679,7 @@ export class ZeppelinKernel
     public async updateByReplaceCell(
         cell: vscode.NotebookCell
     ) {
-        return this._editMutex.runExclusive(async () =>
+        return this.editMutex.runExclusive(async () =>
         {
             let paragraph = await this.getParagraphInfo(cell);
             let parsedCell = parseParagraphToCellData(paragraph);
@@ -956,14 +838,15 @@ export class ZeppelinKernel
     private _hasSyncConflict(
         cell: vscode.NotebookCell,
         serverParagraph: ParagraphData,
-        serverCellData: vscode.NotebookCellData
+        // serverCellData: vscode.NotebookCellData
     ): boolean
     {
         let localText = cell.document.getText();
         let serverText = serverParagraph.text ?? '';
         if (localText !== serverText) { return true; }
 
-        if (cell.kind !== serverCellData.kind) { return true; }
+        // For now, disregard differences except for text itself.
+        // if (cell.kind !== serverCellData.kind) { return true; }
 
         // if (cell.document.languageId !== serverCellData.languageId) { return true; }
 
@@ -979,14 +862,18 @@ export class ZeppelinKernel
     }
 
     /**
-     * Sync local notebook with the server using a non-destructive merge.
+     * Sync local notebook with the server using non-destructive in-place
+     * metadata updates — existing cells are never replaced or reordered.
      *
-     * Keeps local cells whose id matches a server paragraph, flagging
-     *  them with `metadata.syncConflict` when content differs.
-     * Inserts server-only paragraphs (not present locally) at the
-     *  correct position.
-     * Preserves local-only cells (no id or id not on server) in their
-     *   relative positions, anchored after the nearest preceding matched cell.
+     * For each local cell whose id matches a server paragraph:
+     *  - Flags `metadata.syncConflict` when content differs.
+     *  - Clears stale conflict markers when content matches.
+     *  - Updates cell metadata (status, results, dates) from the server.
+     *  - Resumes execution status for running/pending paragraphs.
+     *
+     * Server-only paragraphs (not present locally) are inserted at the
+     *  correct position relative to matched cells.
+     * Local-only cells (no id or id not on server) are left untouched.
      */
     public async syncNote(note: vscode.NotebookDocument) {
         if (!!!note.metadata || !!!note.metadata.id)
@@ -995,7 +882,7 @@ export class ZeppelinKernel
             return;
         }
 
-        return await this._updateMutex.runExclusive(async () => {
+        return await this.updateMutex.runExclusive(async () => {
 
         this._registerSyncNote(note);
         logDebug("syncNote start");
@@ -1010,9 +897,14 @@ export class ZeppelinKernel
 
         let serverParagraphs = serverNote.paragraphs ?? [];
 
-        // Build lookup structures
-        let serverIdSet = new Set(serverParagraphs.map(p => p.id));
+        // Build lookup: server paragraph id → ParagraphData
+        let serverParagraphMap = new Map<string, ParagraphData>();
+        for (let p of serverParagraphs)
+        {
+            serverParagraphMap.set(p.id, p);
+        }
 
+        // Build lookup: local cell id → NotebookCell
         let localCellMap = new Map<string, vscode.NotebookCell>();
         for (let cell of note.getCells())
         {
@@ -1022,122 +914,114 @@ export class ZeppelinKernel
             }
         }
 
-        // Anchor local-only cells to the nearest preceding matched cell.
-        // Key = id of the anchor cell (null = before any matched cell).
-        let localOnlyAnchored = new Map<string | null, vscode.NotebookCell[]>();
-        let lastMatchedId: string | null = null;
-
-        for (let cell of note.getCells())
-        {
-            let cellId = cell.metadata.id;
-            if (cellId === undefined || !serverIdSet.has(cellId))
-            {
-                // Local-only cell
-                if (!localOnlyAnchored.has(lastMatchedId))
-                {
-                    localOnlyAnchored.set(lastMatchedId, []);
-                }
-                localOnlyAnchored.get(lastMatchedId)!.push(cell);
-            }
-            else
-            {
-                lastMatchedId = cellId;
-            }
-        }
-
-        // Build merged cell list walking server paragraphs in order
-        let mergedCells: vscode.NotebookCellData[] = [];
-        // Track which indices in mergedCells originate from the server
-        // (matched or server-only) so we can resume execution status.
-        let serverCellIndices: number[] = [];
-
-        // Emit local-only cells anchored before the first matched cell
-        for (let cell of localOnlyAnchored.get(null) ?? [])
-        {
-            mergedCells.push(this._cellToCellData(cell));
-        }
-
-        for (let serverParagraph of serverParagraphs)
-        {
-            let localCell = localCellMap.get(serverParagraph.id);
-            let serverCellData = parseParagraphToCellData(serverParagraph);
-
-            if (localCell !== undefined)
-            {
-                // Matched cell — keep local version, detect conflict
-                let localCellData = this._cellToCellData(localCell);
-
-                if (localCell.metadata.resolvingDiff)
-                {
-                    // Cell is in diff-resolution mode — preserve existing
-                    // conflict and resolvingDiff flags untouched so the
-                    // user can finish resolving without the markers vanishing.
-                    localCellData.metadata = {
-                        ...localCellData.metadata,
-                        syncConflict: localCell.metadata.syncConflict,
-                        resolvingDiff: true
-                    };
-                }
-                else if (this._hasSyncConflict(localCell, serverParagraph, serverCellData))
-                {
-                    localCellData.metadata = {
-                        ...localCellData.metadata,
-                        syncConflict: serverParagraph
-                    };
-                }
-                else
-                {
-                    // Clear any previous conflict marker
-                    let meta = { ...localCellData.metadata };
-                    delete meta.syncConflict;
-                    delete meta.resolvingDiff;
-                    localCellData.metadata = meta;
-                }
-
-                serverCellIndices.push(mergedCells.length);
-                mergedCells.push(localCellData);
-            }
-            else
-            {
-                // Server-only cell — insert new
-                serverCellIndices.push(mergedCells.length);
-                mergedCells.push(serverCellData);
-            }
-
-            // Emit local-only cells anchored after this server paragraph
-            for (let cell of localOnlyAnchored.get(serverParagraph.id) ?? [])
-            {
-                mergedCells.push(this._cellToCellData(cell));
-            }
-        }
-
-        let replaceRange = new vscode.NotebookRange(0, note.cellCount);
-
         await this.editWithoutParagraphUpdate(async () =>
         {
-            // Unregister updates for all current cells
+            // Unregister pending updates for all current cells
             // Note: already inside _updateMutex, use direct version
             for (let cell of note.getCells())
             {
                 this._unregisterParagraphUpdateDirect(cell);
             }
 
-            await this.editNote(
-                note, replaceRange, mergedCells,
-                undefined, undefined, undefined,
-                serverNote
-            );
-
-            // Resume execution status only for server-sourced cells
-            for (let idx of serverCellIndices)
+            // --- Phase 1: In-place updates for matched cells ---
+            for (let cell of note.getCells())
             {
-                if (idx < note.cellCount)
+                let serverParagraph = serverParagraphMap.get(cell.metadata.id);
+                if (serverParagraph === undefined) { continue; }
+
+                let serverCellData = parseParagraphToCellData(serverParagraph);
+
+                if (cell.metadata.resolvingDiff)
                 {
-                    let cell = note.cellAt(idx);
-                    let serverCellData = mergedCells[idx];
-                    this._executionManager?.resumeExecutionStatus(cell, serverCellData);
+                    // Cell is in diff-resolution mode — leave conflict
+                    // and resolvingDiff flags untouched so the user can
+                    // finish resolving without the markers vanishing.
+                }
+                else if (this._hasSyncConflict(
+                    cell,
+                    serverParagraph,
+                    // serverCellData
+                ))
+                {
+                    await this.updateCellMetadata(cell, {
+                        syncConflict: serverParagraph
+                    });
+                }
+                else
+                {
+                    // No conflict — clear any stale conflict markers
+                    if (cell.metadata.syncConflict !== undefined
+                        || cell.metadata.resolvingDiff)
+                    {
+                        await this.removeCellMetadata(
+                            cell, ["syncConflict", "resolvingDiff"]
+                        );
+                    }
+                    // Update cell metadata from server (status, results, dates, etc.)
+                    await this.updateCellMetadata(cell, serverParagraph);
+                }
+
+                // Resume execution status for this cell
+                this._executionManager?.resumeExecutionStatus(cell, serverCellData);
+            }
+
+            // --- Phase 2: Insert server-only paragraphs ---
+            // Walk server paragraphs in order, tracking the last matched
+            // local cell index so we know where to insert server-only ones.
+            let pendingInsertions: {
+                index: number,
+                cellData: vscode.NotebookCellData
+            }[] = [];
+            let lastMatchedLocalIndex = -1;
+
+            for (let serverParagraph of serverParagraphs)
+            {
+                let localCell = localCellMap.get(serverParagraph.id);
+                if (localCell !== undefined)
+                {
+                    lastMatchedLocalIndex = localCell.index;
+                }
+                else
+                {
+                    // Server-only paragraph — schedule insertion after
+                    // the last matched local cell.
+                    let serverCellData = parseParagraphToCellData(serverParagraph);
+                    pendingInsertions.push({
+                        index: lastMatchedLocalIndex + 1,
+                        cellData: serverCellData
+                    });
                 }
             }
+
+            // Insert from bottom to top so earlier insertions don't
+            // shift the indices of later ones.
+            for (let i = pendingInsertions.length - 1; i >= 0; i--)
+            {
+                let { index, cellData } = pendingInsertions[i];
+                await this.insertNoteCells(note, index, [cellData]);
+            }
+
+            // Resume execution status for newly inserted cells
+            for (let ins of pendingInsertions)
+            {
+                // After all insertions, cell indices may have shifted.
+                // Re-locate by paragraph id.
+                let paragraphId = ins.cellData.metadata?.id;
+                if (paragraphId === undefined) { continue; }
+                for (let cell of note.getCells())
+                {
+                    if (cell.metadata.id === paragraphId)
+                    {
+                        this._executionManager?.resumeExecutionStatus(
+                            cell, ins.cellData
+                        );
+                        break;
+                    }
+                }
+            }
+
+            // Update note-level metadata with server info
+            await this.updateNoteMetadata(note, serverNote);
         });
 
         this._unregisterSyncNote(note);
@@ -1435,7 +1319,7 @@ export class ZeppelinKernel
 
     public async updateParagraph(cell: vscode.NotebookCell)
     {
-        return this._updateMutex.runExclusive(
+        return this.updateMutex.runExclusive(
             async () => 
             {
                 return await this._updateParagraph(cell);

@@ -170,7 +170,7 @@ export class ExecutionManager
         string, Mutex
     >();
 
-    private _timerTrackExecution?: ReturnType<typeof setInterval>;
+    private _timerTrackExecution?: ReturnType<typeof setTimeout>;
 
     public kernel: ZeppelinKernel;
 
@@ -220,21 +220,28 @@ export class ExecutionManager
         }
 
         let config = vscode.workspace.getConfiguration('zeppelin');
-        if (this._timerTrackExecution === undefined)
-        {
-            let trackExecutionInterval = config.get('execution.trackInterval', 1);
+        let trackExecutionInterval = config.get('execution.trackInterval', 1);
+        this._scheduleTrackExecution(trackExecutionInterval * 1000);
+    }
 
-            this._timerTrackExecution = setInterval(
-                this._doTrackAllExecution.bind(this),
-                trackExecutionInterval * 1000);
-        }
+    private _scheduleTrackExecution(intervalMs: number)
+    {
+        this._timerTrackExecution = setTimeout(async () =>
+        {
+            await this._doTrackAllExecution();
+            // Only reschedule if not cancelled
+            if (this._timerTrackExecution !== undefined)
+            {
+                this._scheduleTrackExecution(intervalMs);
+            }
+        }, intervalMs);
     }
 
     public unscheduleTracking()
     {
         if (this.isTrackingScheduled())
         {
-            clearInterval(this._timerTrackExecution);
+            clearTimeout(this._timerTrackExecution);
             this._timerTrackExecution = undefined;
         }
     }
@@ -298,6 +305,11 @@ export class ExecutionManager
             logDebug(`trackExecution: unregister as cell deleted`, execution);
             this.unregisterTrackExecution(execution);
             return;
+        }
+
+        if (this.kernel.hasPendingParagraphUpdate(execution.cell))
+        {
+            this.kernel.updatePollingParagraphsDirect();
         }
 
         if (execution.state === ZeppelinExecutionState.resolved)
