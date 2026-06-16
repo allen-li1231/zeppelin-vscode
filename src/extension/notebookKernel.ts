@@ -1500,12 +1500,13 @@ export class ZeppelinKernel
     {
         try
         {
-            await vscode.languages.setTextDocumentLanguage(cell.document, vscLang);
-
-            // Sync metadata config to match the new language
-            let zepLang = mapZeppelinLanguage.get(vscLang) ?? 'plain_text';
             await this.editWithoutParagraphUpdate(async () =>
             {
+                await vscode.languages.setTextDocumentLanguage(cell.document, vscLang);
+
+                // Sync metadata config to match the new language
+                let zepLang = mapZeppelinLanguage.get(vscLang) ?? 'plain_text';
+
                 await this.updateCellMetadata(cell, {
                     config: {
                         ...cell.metadata.config,
