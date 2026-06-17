@@ -285,6 +285,8 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
                         continue;
                     }
                     logDebug("error in doUpdateVisibleCells:" + err);
+                    // trigger cell status bar update
+                    await this.kernel.updateCellMetadata(cell, { status });
                 }
             }
         }
