@@ -310,3 +310,18 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 
 ### Fixed
 - Wrong notebook cell assertion that causes syncing problems.
+
+
+
+## [0.2.23] - 2026-06-16
+
+### Fixed
+- [False "Remote Changed" sync conflict detection triggered by `syncNote`](https://github.com/allen-li1231/zeppelin-vscode/commit/f65870cd182560a598f6ec178cc89b6079f2523c).
+- [False "Remote Changed" sync conflict detection on markdown cells caused by `_updateParagraph` firing `runParagraph` without `await`](https://github.com/allen-li1231/zeppelin-vscode/commit/8416f970aeb514b6750cde43da15a4522891c78c), leading to stale local results vs updated server results on the next sync poll.
+- ["Sync pending" status indicator never clearing for newly added markdown cells](https://github.com/allen-li1231/zeppelin-vscode/commit/f34988b2a5bd7a805a1e0824518cab550db3e6f7): polled metadata updates (including `status`) from `doUpdateVisibleCells` were queued but never flushed because `applyPolledNotebookEdits()` was not called after the visible-cell update cycle.
+- [Staled metadata text that causes wrong remote change detection](https://github.com/allen-li1231/zeppelin-vscode/commit/48063e6c1171b52e37ab699401c392e9ea25dae6).
+- [Staled remote paragraph that executes outdated code](https://github.com/allen-li1231/zeppelin-vscode/commit/4cca6ec79367e00ebb2cd3a197a628b5c65e236c).
+
+### Enhancement
+- [Diff view for sync conflicts upgraded from plain text diff to notebook-level cell diff](https://github.com/allen-li1231/zeppelin-vscode/commit/90e0b61296af162193374d907d5efb544c0312d7), showing both cell text and execution outputs side-by-side using an in-memory `FileSystemProvider` (`zeppelin-diff` scheme).
+- [Centralize cell.metadata.status setting and periodically flush polled notebook edits to keep local metadata updated](https://github.com/allen-li1231/zeppelin-vscode/commit/f34988b2a5bd7a805a1e0824518cab550db3e6f7).
