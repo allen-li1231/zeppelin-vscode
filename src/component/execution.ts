@@ -633,15 +633,17 @@ export class ExecutionManager
         try {
             let paragraph = await this.kernel.getParagraphInfo(cell);
 
-            if ((paragraph.status !== "RUNNING")
-                    && (cell.metadata.status !== "PENDING"))
+            if (paragraph === undefined
+                || (paragraph.status === "RUNNING")
+                || (cell.metadata.status === "PENDING"))
+            {
+                logDebug("_doExecutionAsync omit running/non-existent paragraph",
+                    paragraph);
+                return
+            }
+            else 
             {
                 this.kernel.runParagraph(cell, false);
-            }
-            else
-            {
-                logDebug("_doExecutionAsync register running paragraph",
-                    paragraph);
             }
         }
         catch (err)

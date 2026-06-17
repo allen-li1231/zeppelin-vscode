@@ -556,7 +556,6 @@ Do you wish to create the paragraph?`,
 	try {
 		logDebug("promptCreateParagraph", cell);
 		return await kernel.createParagraph(cell);
-		// await kernel.updateByReplaceCell(cell);
 	}
 	catch (err) {
 		logDebug("promptCreateParagraph abort");

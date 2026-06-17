@@ -695,24 +695,6 @@ export class ZeppelinKernel
         return vscode.workspace.applyEdit(editor);
     }
 
-    public async updateByReplaceCell(
-        cell: vscode.NotebookCell
-    ) {
-        return this.editMutex.runExclusive(async () =>
-        {
-            let paragraph = await this.getParagraphInfo(cell);
-            let parsedCell = parseParagraphToCellData(paragraph);
-            let replaceRange = new vscode.NotebookRange(cell.index, cell.index + 1);
-
-            this._flagRegisterParagraphUpdate = false;
-            let res = await this.replaceNoteCells(
-                cell.notebook, replaceRange, [parsedCell]
-            );
-            this._flagRegisterParagraphUpdate = true;
-            return res;
-        });
-    }
-
     public async updateCellMetadata(
         cell: vscode.NotebookCell,
         metadata: { [key: string]: any }
