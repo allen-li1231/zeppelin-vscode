@@ -23,7 +23,7 @@ export function parseCellInterpreter(
     }
 
     let interpreterId = interpreterIds[1];
-    if (!!return_full) {
+    if (!return_full) {
         let rootIdx = interpreterId.indexOf('.');
         interpreterId = rootIdx > 0
                         ? interpreterId.slice(0, rootIdx)
