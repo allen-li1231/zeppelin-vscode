@@ -391,8 +391,10 @@ export class ZeppelinKernel
             return;
         }
 
-        const mapInterpreter = new Map<string, string>();
-        for (let interpreter of res?.data.body)
+        const interpreters = res?.data?.body as any[];
+
+        const mapInterpreter = new Map<string, string>([]);
+        for (let [_, interpreter] of Object.entries(interpreters))
         {
             if (mapVSCodeLanguage.has(interpreter.id))
             {
