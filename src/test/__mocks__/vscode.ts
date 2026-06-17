@@ -153,6 +153,72 @@ export class Uri {
     }
 }
 
+// ── WorkspaceEdit / NotebookEdit / NotebookRange ──────────────────────────────
+
+export class WorkspaceEdit {
+    private _edits = new Map<string, unknown[]>();
+
+    set(uri: Uri, edits: unknown[]): void {
+        this._edits.set(uri.toString(), edits);
+    }
+
+    get(uri: Uri): unknown[] {
+        return this._edits.get(uri.toString()) ?? [];
+    }
+}
+
+export class NotebookRange {
+    readonly start: number;
+    readonly end: number;
+    readonly isEmpty: boolean;
+
+    constructor(start: number, end: number) {
+        this.start = start;
+        this.end = end;
+        this.isEmpty = start === end;
+    }
+}
+
+export class NotebookEdit {
+    static replaceCells(range: NotebookRange, cells: NotebookCellData[]): NotebookEdit {
+        return new NotebookEdit('replaceCells', { range, cells });
+    }
+    static insertCells(index: number, cells: NotebookCellData[]): NotebookEdit {
+        return new NotebookEdit('insertCells', { index, cells });
+    }
+    static deleteCells(range: NotebookRange): NotebookEdit {
+        return new NotebookEdit('deleteCells', { range });
+    }
+    static updateNotebookMetadata(metadata: Record<string, unknown>): NotebookEdit {
+        return new NotebookEdit('updateNotebookMetadata', { metadata });
+    }
+    static updateCellMetadata(index: number, metadata: Record<string, unknown>): NotebookEdit {
+        return new NotebookEdit('updateCellMetadata', { index, metadata });
+    }
+
+    readonly type: string;
+    readonly data: unknown;
+    private constructor(type: string, data: unknown) {
+        this.type = type;
+        this.data = data;
+    }
+}
+
+export class ThemeIcon {
+    readonly id: string;
+    constructor(id: string) { this.id = id; }
+}
+
+// ── Languages namespace ───────────────────────────────────────────────────────
+
+export const languages = {
+    setTextDocumentLanguage: async (_document: unknown, _languageId: string) => {},
+};
+
+// ── Misc globals ──────────────────────────────────────────────────────────────
+
+export const version = '1.90.0';
+
 // ── Workspace / Window namespaces ─────────────────────────────────────────────
 
 function createWorkspaceConfiguration(defaults: Record<string, unknown> = {}) {

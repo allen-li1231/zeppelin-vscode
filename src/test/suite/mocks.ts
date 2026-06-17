@@ -159,7 +159,7 @@ export function createMockCell(opts: MockCellOptions = {}): MockNotebookCell {
             getText: () => opts.text ?? '%python\nprint("hello")\n',
             isClosed: opts.isClosed ?? false,
             languageId: opts.languageId ?? 'python',
-            uri: vscode.Uri.parse('untitled:cell_1'),
+            uri: vscode.Uri.parse('vscode-notebook-cell:/tmp/test-note.zpln'),
         },
         notebook: {
             isClosed: opts.notebookClosed ?? false,
@@ -192,9 +192,11 @@ export interface MockKernel {
     updatePollingParagraphsDirect: () => Promise<void>;
     editWithoutParagraphUpdate: (fn: () => Promise<void>) => Promise<void>;
     updateCellMetadata: (cell: any, metadata: any) => Promise<boolean>;
+    removeCellMetadata: (cell: any, keys: string[]) => Promise<boolean>;
     applyPolledNotebookEdits: () => Promise<void>;
     isNoteSyncing: (note: any) => boolean;
     hasPendingParagraphUpdate: (cell: any) => boolean;
+    editMutex: { isLocked: () => boolean };
 
     // internal controller
     _controller: MockNotebookController;
@@ -247,9 +249,11 @@ export function createMockKernel(opts: MockKernelOptions = {}): MockKernel {
         updatePollingParagraphsDirect: async () => {},
         editWithoutParagraphUpdate: async (fn: () => Promise<void>) => { await fn(); },
         updateCellMetadata: async (_cell: any, _metadata: any) => true,
+        removeCellMetadata: async (_cell: any, _keys: string[]) => true,
         applyPolledNotebookEdits: async () => {},
         isNoteSyncing: (_note: any) => false,
         hasPendingParagraphUpdate: (_cell: any) => false,
+        editMutex: { isLocked: () => false },
     };
 
     return kernel;
