@@ -11,36 +11,65 @@ import { EXTENSION_NAME,
 	isLocalNotebook,
 	isLocalNotebookCell
 } from '../common/common';
-import { ParagraphData } from '../common/types';
+import { ParagraphData, NoteData } from '../common/types';
+import {
+	parseCellToParagraphData
+} from '../common/parser';
 const _ = require('lodash');
 
 
 /**
- * Virtual document provider that serves the remote (server) version
- * of a cell's text so we can open a VS Code diff editor against it.
+ * In-memory file-system provider used to serve temporary single-cell
+ * notebook files for the notebook diff editor.
  *
- * URI format:  zeppelin-remote:/<noteId>/<paragraphId>
- * The actual text is stashed in the provider before opening the diff.
+ * URI format:  zeppelin-diff:/<side>/<noteId>/<paragraphId>.zpln
+ *   where <side> is "local" or "remote".
  */
-class ZeppelinRemoteContentProvider implements vscode.TextDocumentContentProvider {
-	private _contents = new Map<string, string>();
+class ZeppelinDiffFileSystemProvider implements vscode.FileSystemProvider {
+	private _files = new Map<string, Uint8Array>();
+	private _onDidChangeFile = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
+	readonly onDidChangeFile = this._onDidChangeFile.event;
 
-	onDidChangeEmitter = new vscode.EventEmitter<vscode.Uri>();
-	onDidChange = this.onDidChangeEmitter.event;
-
-	/** Store remote text so provideTextDocumentContent can return it. */
-	setContent(uri: vscode.Uri, text: string) {
-		this._contents.set(uri.toString(), text);
+	watch(): vscode.Disposable {
+		return new vscode.Disposable(() => {});
 	}
 
-	/** Remove cached content after the diff is closed. */
-	clearContent(uri: vscode.Uri) {
-		this._contents.delete(uri.toString());
+	stat(uri: vscode.Uri): vscode.FileStat {
+		const data = this._files.get(uri.toString());
+		if (!data) {
+			throw vscode.FileSystemError.FileNotFound(uri);
+		}
+		return {
+			type: vscode.FileType.File,
+			ctime: Date.now(),
+			mtime: Date.now(),
+			size: data.byteLength,
+		};
 	}
 
-	provideTextDocumentContent(uri: vscode.Uri): string {
-		return this._contents.get(uri.toString()) ?? '';
+	readFile(uri: vscode.Uri): Uint8Array {
+		const data = this._files.get(uri.toString());
+		if (!data) {
+			throw vscode.FileSystemError.FileNotFound(uri);
+		}
+		return data;
 	}
+
+	writeFile(uri: vscode.Uri, content: Uint8Array): void {
+		this._files.set(uri.toString(), content);
+		this._onDidChangeFile.fire([{
+			type: vscode.FileChangeType.Changed,
+			uri
+		}]);
+	}
+
+	delete(uri: vscode.Uri): void {
+		this._files.delete(uri.toString());
+	}
+
+	readDirectory(): [string, vscode.FileType][] { return []; }
+	createDirectory(): void {}
+	rename(): void {}
 }
 
 
@@ -68,10 +97,10 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(disposable);
 	context.subscriptions.push(cellStatusBar);
 
-	// Register virtual document provider for remote cell content (diff view)
-	const remoteProvider = new ZeppelinRemoteContentProvider();
-	disposable = vscode.workspace.registerTextDocumentContentProvider(
-		'zeppelin-remote', remoteProvider
+	// Register in-memory file-system for notebook diff views
+	const diffFsProvider = new ZeppelinDiffFileSystemProvider();
+	disposable = vscode.workspace.registerFileSystemProvider(
+		'zeppelin-diff', diffFsProvider, { isReadonly: true }
 	);
 	context.subscriptions.push(disposable);
 
@@ -112,7 +141,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(disposable);
 
 
-	// Show diff between local cell and remote (server) version
+	// Show notebook-level diff between local cell and remote (server) version
 	disposable = vscode.commands.registerCommand(
 		'zeppelin-vscode.showCellDiff',
 		async (cell: vscode.NotebookCell) => {
@@ -132,17 +161,36 @@ export async function activate(context: vscode.ExtensionContext) {
 
 			let noteId = cell.notebook.metadata.id ?? 'unknown';
 			let paragraphId = cell.metadata.id ?? 'unknown';
-			let remoteUri = vscode.Uri.parse(
-				`zeppelin-remote:/${noteId}/${paragraphId}.txt`
-			);
 
-			remoteProvider.setContent(remoteUri, conflict.text ?? '');
-			remoteProvider.onDidChangeEmitter.fire(remoteUri);
+			// Build a single-cell notebook for the remote (server) version
+			let remoteNote: NoteData = {
+				id: noteId,
+				name: `Remote [${paragraphId}]`,
+				paragraphs: [conflict],
+			};
+			let remoteBytes = new TextEncoder().encode(JSON.stringify(remoteNote));
+			let remoteUri = vscode.Uri.parse(
+				`zeppelin-diff:/remote/${noteId}/${paragraphId}.zpln`
+			);
+			diffFsProvider.writeFile(remoteUri, remoteBytes);
+
+			// Build a single-cell notebook for the local version
+			let localParagraph = parseCellToParagraphData(cell);
+			let localNote: NoteData = {
+				id: noteId,
+				name: `Local [${paragraphId}]`,
+				paragraphs: [localParagraph],
+			};
+			let localBytes = new TextEncoder().encode(JSON.stringify(localNote));
+			let localUri = vscode.Uri.parse(
+				`zeppelin-diff:/local/${noteId}/${paragraphId}.zpln`
+			);
+			diffFsProvider.writeFile(localUri, localBytes);
 
 			await vscode.commands.executeCommand(
 				'vscode.diff',
 				remoteUri,
-				cell.document.uri,
+				localUri,
 				`Remote ↔ Local  [${paragraphId}]`
 			);
 		}
@@ -234,6 +282,9 @@ export async function activate(context: vscode.ExtensionContext) {
 			if (cellChange.document !== undefined) {
 				logDebug("onDidChangeNotebookDocument: cellChange", cellChange);
 				kernel.registerParagraphUpdate(cellChange.cell);
+				kernel.autoDetectCellLanguage(cellChange.cell).catch(err =>
+					logDebug("autoDetectCellLanguage error", err)
+				);
 			}
 		}
 
@@ -318,7 +369,7 @@ export async function activate(context: vscode.ExtensionContext) {
 						"language": lang,
 						"editOnDblClick": false,
 						"completionKey": "TAB",
-						"completionSupport": cell.kind !== 1
+						"completionSupport": cell.kind !== vscode.NotebookCellKind.Markup
 					}
 				}
 			});

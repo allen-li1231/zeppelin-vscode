@@ -243,12 +243,6 @@
           "type": "number",
           "default": 10,
           "description": "Set global http timeout value."
-        },
-        "zeppelin.paragraphCache.refreshInterval": {
-          "order": 18,
-          "type": "number",
-          "default": 5,
-          "description": "Set paragraph cache refresh interval and TTL (in seconds). Paragraph info fetched within this interval is served from cache to reduce network overhead."
         }
       }
     },

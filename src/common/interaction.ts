@@ -4,6 +4,7 @@ import { reURL, logDebug } from './common';
 import * as vscode from 'vscode';
 import { ZeppelinKernel } from '../extension/notebookKernel';
 import { parseCellToParagraphData } from './parser';
+import { ParagraphData } from './types';
 import { Mutex } from '../component/mutex';
 
 let mutex = new Mutex();
@@ -537,8 +538,8 @@ export async function promptZeppelinCredential(kernel: ZeppelinKernel) {
 // function that prompts user to create a missing paragraph
 export async function promptCreateParagraph(
 	kernel: ZeppelinKernel, cell: vscode.NotebookCell
-) {
-	if (typeof cell.metadata.status === "string") {
+): Promise<ParagraphData | undefined> {
+	if (cell.index === -1) {
 		return;
 	}
 
@@ -555,7 +556,6 @@ Do you wish to create the paragraph?`,
 	try {
 		logDebug("promptCreateParagraph", cell);
 		return await kernel.createParagraph(cell);
-		// await kernel.updateByReplaceCell(cell);
 	}
 	catch (err) {
 		logDebug("promptCreateParagraph abort");

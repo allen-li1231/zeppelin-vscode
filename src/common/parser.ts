@@ -13,15 +13,22 @@ import {
 } from './types';
 
 
-export function parseCellInterpreter(cell: vscode.NotebookCell) {
+export function parseCellInterpreter(
+    cell: vscode.NotebookCell,
+    return_full: Boolean | undefined
+) {
     let interpreterIds = cell.document.getText().match(reInterpreter);
     if (interpreterIds === null || interpreterIds.length === 0) {
         return undefined;
     }
 
     let interpreterId = interpreterIds[1];
-    let rootIdx = interpreterId.indexOf('.');
-    interpreterId = rootIdx > 0 ? interpreterId.slice(0, rootIdx) : interpreterId;
+    if (!!return_full) {
+        let rootIdx = interpreterId.indexOf('.');
+        interpreterId = rootIdx > 0
+                        ? interpreterId.slice(0, rootIdx)
+                        : interpreterId;
+    }
     return interpreterId;
 }
 
@@ -200,7 +207,7 @@ export function parseCellToParagraphData(
                 "language": languageId,
                 "editOnDblClick": false,
                 "completionKey": "TAB",
-                "completionSupport": cell.kind !== 1
+                "completionSupport": cell.kind !== vscode.NotebookCellKind.Markup
             }
         };
     }
