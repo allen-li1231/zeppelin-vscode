@@ -1319,7 +1319,7 @@ export class ZeppelinKernel
                 // need to call remote execution for markup paragraph languages
                 // so remote notebook paragraph result could be generated
                 // as markup languages are rendered locally
-                this.runParagraph(cell, false);
+                await this.runParagraph(cell, false);
             }
         } catch (err)
         {
