@@ -201,21 +201,33 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
             || this.kernel.isNoteSyncing(activeNotebook.notebook)) {
             return;
         }
-            logDebug("doUpdateVisibleCells: updating", activeNotebook.visibleRanges);
+        // Snapshot visibleRanges so that cells added/removed during the
+        // async loop don't cause us to read a stale or shifted range list.
+        const visibleRanges = [...activeNotebook.visibleRanges];
+        const notebook = activeNotebook.notebook;
+            logDebug("doUpdateVisibleCells: updating", visibleRanges);
 
-        for (let range of activeNotebook.visibleRanges) {
+        for (let range of visibleRanges) {
             if (range.isEmpty) {
                 continue;
             }
 
             for (let i = range.start; i < range.end; i ++) {
-                let cell = activeNotebook?.notebook.cellAt(i);
-                let execution = this.kernel.getExecutionByParagraphId(cell.metadata.id);
+                // Guard against cells removed during async iteration
+                if (i >= notebook.cellCount) {
+                    break;
+                }
+                let cell = notebook.cellAt(i);
+                // Skip freshly added/removed cells
                 if (cell === undefined
-                    // || cell.kind === vscode.NotebookCellKind.Markup
-                    || execution !== undefined
-                    || i < activeNotebook.visibleRanges[0].start
-                    || i >= activeNotebook.visibleRanges[0].end)
+                    || cell.metadata.id === undefined
+                    || cell.index === -1) {
+                    continue;
+                }
+                let execution = this.kernel.getExecutionByParagraphId(cell.metadata.id);
+                if (execution !== undefined
+                    || i < visibleRanges[0].start
+                    || i >= visibleRanges[0].end)
                 {
                     continue;
                 }

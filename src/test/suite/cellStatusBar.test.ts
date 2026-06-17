@@ -589,6 +589,74 @@ describe('CellStatusProvider Test Suite', () => {
             assert.strictEqual(applyCalled, true, 'Should call applyPolledNotebookEdits');
         });
 
+        it('skips cells without a paragraph ID (freshly added cells)', async () => {
+            let paragraphInfoCalled = false;
+            kernel.getParagraphInfo = async () => {
+                paragraphInfoCalled = true;
+                return {};
+            };
+
+            // Cell with no paragraph ID (metadata.id is undefined)
+            const cell = createMockCell({ status: 'READY' });
+            (cell.metadata as any).id = undefined;
+
+            (vscode.window as any).activeNotebookEditor = {
+                notebook: {
+                    cellCount: 1,
+                    cellAt: (_i: number) => cell,
+                    metadata: { id: 'note_001' },
+                    uri: vscode.Uri.parse('untitled:notebook_1'),
+                    isClosed: false,
+                },
+                visibleRanges: [{ start: 0, end: 1, isEmpty: false }],
+            };
+
+            await provider.doUpdateVisibleCells();
+            assert.strictEqual(paragraphInfoCalled, false,
+                'Should skip cells without a paragraph ID');
+        });
+
+        it('handles stale visibleRanges when cells are removed during iteration', async () => {
+            let processedIds: string[] = [];
+            kernel.getParagraphInfo = async (cell: any) => {
+                processedIds.push(cell.metadata.id);
+                return { id: cell.metadata.id, status: 'READY', text: cell.document.getText() };
+            };
+
+            const cells = [
+                createMockCell({ id: 'para_0', status: 'READY', index: 0 }),
+                createMockCell({ id: 'para_1', status: 'READY', index: 1 }),
+                createMockCell({ id: 'para_2', status: 'READY', index: 2 }),
+            ];
+
+            // Simulate: visibleRanges says 3 cells, but cellCount drops to 2
+            // after we start iterating (cells removed fast).
+            let cellCount = 3;
+            (vscode.window as any).activeNotebookEditor = {
+                notebook: {
+                    get cellCount() { return cellCount; },
+                    cellAt: (i: number) => {
+                        // After first cell is processed, simulate removal
+                        if (i === 1) { cellCount = 2; }
+                        return cells[i];
+                    },
+                    metadata: { id: 'note_001' },
+                    uri: vscode.Uri.parse('untitled:notebook_1'),
+                    isClosed: false,
+                },
+                visibleRanges: [{ start: 0, end: 3, isEmpty: false }],
+            };
+
+            // Should not throw even though range.end (3) > final cellCount (2)
+            await provider.doUpdateVisibleCells();
+            // para_0 and para_1 should be processed; para_2 should be skipped
+            // because i(2) >= cellCount(2)
+            assert.ok(processedIds.includes('para_0'), 'Should process first cell');
+            assert.ok(processedIds.includes('para_1'), 'Should process second cell');
+            assert.ok(!processedIds.includes('para_2'),
+                'Should skip third cell after cellCount shrinks');
+        });
+
         afterEach(() => {
             // Reset activeNotebookEditor to undefined after each test
             (vscode.window as any).activeNotebookEditor = undefined;
