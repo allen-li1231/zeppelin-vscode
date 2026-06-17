@@ -437,9 +437,19 @@ export class ZeppelinKernel
         {
             if (res.response?.status === 404)
             {
-                const res = await promptCreateParagraph(this, cell);
-                paragraph = res?.data.body ?? cell.metadata;
-                return paragraph;
+                const paragraph = await promptCreateParagraph(this, cell);
+
+                if (paragraph !== undefined)
+                {
+                    return paragraph;
+                }
+
+                await this.editWithoutParagraphUpdate(async () => {
+                    await this.updateCellMetadata(
+                        cell, {"status": res.response?.status}
+                    );
+                });
+                throw res;
             }
             else
             {
@@ -465,6 +475,9 @@ export class ZeppelinKernel
         {
             await this._doUpdatePollingParagraphs();
             await this.cellStatusBar?.doUpdateVisibleCells();
+            // Flush deferred metadata updates (e.g. status from
+            // getParagraphInfo) so cell status bar picks them up.
+            await this.applyPolledNotebookEdits();
             // Only reschedule if not cancelled
             if (this._timerUpdateCell !== undefined)
             {
@@ -1154,7 +1167,7 @@ export class ZeppelinKernel
                 }
             );
         });
-        return cell.metadata;
+        return <ParagraphData>{...cell.metadata};
     }
 
     public async updateParagraphText(cell: vscode.NotebookCell) {

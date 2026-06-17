@@ -22,8 +22,7 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
 
     provideCellStatusBarItems(cell: vscode.NotebookCell):
         vscode.ProviderResult<vscode.NotebookCellStatusBarItem | vscode.NotebookCellStatusBarItem[]> {
-        logDebug(`provideCellStatusBarItems check pending paragraph update`,
-            this.kernel.hasPendingParagraphUpdate(cell), cell)
+
         if (!this.kernel.isActive()
             || !isLocalNotebookCell(cell.document.uri)
             // || cell.kind === vscode.NotebookCellKind.Markup
@@ -287,12 +286,6 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
                     }
                     logDebug("error in doUpdateVisibleCells:" + err);
                     // trigger cell status bar update
-
-                    await this.kernel.editWithoutParagraphUpdate(async () => {
-                        await this.kernel.updateCellMetadata(
-                            cell, {"status": status}
-                        );
-                    });
                 }
             }
         }
