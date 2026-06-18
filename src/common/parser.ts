@@ -144,21 +144,27 @@ export function parseCellOutputsToParagraphResult(
                     case 'text/plain': 
                         code = 'SUCCESS';
                         msgType = 'TEXT';
+                        break;
                     case 'text/html': 
                         code = 'SUCCESS';
                         msgType = 'HTML';
+                        break;
                     case 'application/vnd.code.notebook.stdout': 
                         code = 'SUCCESS';
                         msgType = 'TEXT';
+                        break;
                     case 'application/vnd.code.notebook.stderr': 
                         code = 'ERROR';
                         msgType = 'TEXT';
+                        break;
                     case 'application/vnd.code.notebook.error': 
                         code = 'ERROR';
                         msgType = 'TEXT';
+                        break;
                     default:
                         code = 'SUCCESS';
                         msgType = 'TEXT';
+                        break;
                 }
                 results.push({
                     data: outputContents,
