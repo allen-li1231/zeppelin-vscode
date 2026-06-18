@@ -48,9 +48,10 @@ export class ZeppelinKernel
     >();
     private _mapNotebookEdits = new Map<vscode.NotebookCell, vscode.NotebookEdit[]>();
     private _mapUpdateParagraph = new Map<vscode.NotebookCell, { requestTime: number, baseText: string }>();
-    private _flagRegisterParagraphUpdate = true;
+    private _editWithoutParagraphUpdateDepth = 0;
     private _mapInterpreterCache: Map<string, string> | undefined;
     private _sessionExpiredPromptActive = false;
+    private _activationPromise?: Promise<void>;
 
     public cellStatusBar: CellStatusProvider | undefined = undefined;
 
@@ -110,14 +111,21 @@ export class ZeppelinKernel
             this._executionManager?.scheduleTracking();
             this.cellStatusBar?.scheduleTracking();
 
-            // Populate interpreter cache on activation
-            this.listInterpreters().then(map =>
+            // Populate interpreter cache on activation, tracking the promise
+            // so dispose() can guard against late writes.
+            this._activationPromise = this.listInterpreters().then(map =>
             {
-                this._mapInterpreterCache = map;
-                logDebug("interpreter cache populated", map);
+                if (this._isActive)
+                {
+                    this._mapInterpreterCache = map;
+                    logDebug("interpreter cache populated", map);
+                }
             }).catch(err =>
             {
                 logDebug("failed to populate interpreter cache", err);
+            }).finally(() =>
+            {
+                this._activationPromise = undefined;
             });
         }
         logDebug("activate", this.isActive());
@@ -151,6 +159,7 @@ export class ZeppelinKernel
         this.cellStatusBar?.dispose();
 
         this._mapInterpreterCache = undefined;
+        this._activationPromise = undefined;
 
         this._isActive = false;
         logDebug("activate", this.isActive());
@@ -486,6 +495,14 @@ export class ZeppelinKernel
         }, intervalMs);
     }
 
+    /**
+     * Run a paragraph on the Zeppelin server.
+     *
+     * @param sync  When `true`, waits for completion and returns parsed
+     *              `NotebookCellOutputItem[]`.  When `false`, fires and
+     *              returns the raw response data (caller should poll for
+     *              results via execution tracking).
+     */
     public async runParagraph(cell: vscode.NotebookCell, sync: boolean)
     {
         let res = await this.getService()?.runParagraph(
@@ -526,7 +543,7 @@ export class ZeppelinKernel
 
     public async registerParagraphUpdate(cell: vscode.NotebookCell)
     {
-        if (!this._flagRegisterParagraphUpdate)
+        if (this._editWithoutParagraphUpdateDepth > 0)
         {
             logDebug("registerParagraphUpdate: cell not to be updated", cell);
             return;
@@ -539,13 +556,14 @@ export class ZeppelinKernel
         }
 
         logDebug("registerParagraphUpdate", cell);
-        // Flush any deferred metadata updates so cell.metadata.text is current
-        // before snapshotting baseText. This prevents false sync-conflict
-        // detection when the user rapidly edits and executes a cell.
-        await this.applyPolledNotebookEdits();
 
         return this.updateMutex.runExclusive(async () =>
         {
+            // Flush any deferred metadata updates inside the mutex so
+            // cell.metadata.text is current and the snapshot is atomic
+            // with respect to other updateMutex holders.
+            await this.applyPolledNotebookEdits();
+
             if (!this._mapUpdateParagraph.has(cell))
             {
                 // Snapshot the server text at registration time so we can
@@ -609,10 +627,15 @@ export class ZeppelinKernel
     {
         return this.editMutex.runExclusive(async () =>
         {
-            this._flagRegisterParagraphUpdate = false;
-            let res = await func();
-            this._flagRegisterParagraphUpdate = true;
-            return res;
+            this._editWithoutParagraphUpdateDepth++;
+            try
+            {
+                return await func();
+            }
+            finally
+            {
+                this._editWithoutParagraphUpdateDepth--;
+            }
         });
     }
 
@@ -1191,7 +1214,9 @@ export class ZeppelinKernel
         if (res instanceof AxiosError)
         {
             logDebug("error in updateParagraphConfig", res);
-            await this.updateCellMetadata(cell, {"status": res.response?.status});
+            await this.editWithoutParagraphUpdate(async () => {
+                await this.updateCellMetadata(cell, {"status": res.response?.status});
+            });
             throw res;
         }
 
@@ -1262,6 +1287,14 @@ export class ZeppelinKernel
                 // paragraph has changed independently since the edit was
                 // registered.  If so, flag a sync conflict instead of
                 // blindly overwriting the server version.
+                //
+                // NOTE (TOCTOU): There is an inherent time-of-check to
+                // time-of-use gap between this fetch and the subsequent
+                // updateParagraphConfig/updateParagraphText calls.  The
+                // server paragraph could change again in that window.
+                // True atomic conflict resolution would require server-
+                // side locking or optimistic concurrency (e.g. ETags),
+                // which the Zeppelin REST API does not currently support.
                 let mapEntry = this._mapUpdateParagraph.get(cell);
                 let baseText = mapEntry?.baseText ?? '';
 
@@ -1311,6 +1344,12 @@ export class ZeppelinKernel
                 // retry creating cell
                 return;
             }
+            // Notify the user about the failed update so errors
+            // are not silently swallowed for existing paragraphs.
+            vscode.window.showWarningMessage(
+                `Failed to update paragraph ${cell.metadata.id}: `
+                + `${err instanceof Error ? err.message : err}`
+            );
         }
 
         // unregister cell from poll, as the update is either finished or failed now
