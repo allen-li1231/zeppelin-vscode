@@ -372,8 +372,8 @@ export class ZeppelinKernel
         if (res instanceof AxiosError)
         {
             vscode.window.showWarningMessage(
-                `Unable to get info for note ${noteId}, ` +
-                res.response ? res.response?.data : `${res.code}: ${res.message}`
+                `Unable to get info for note ${noteId}, `
+                + (res.response ? res.response?.data : `${res.code}: ${res.message}`)
             );
             return;
         }
