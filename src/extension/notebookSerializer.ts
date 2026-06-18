@@ -18,7 +18,7 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 		let raw: NoteData;
 
 		var contents = new TextDecoder().decode(content);
-		let reEmpty = new RegExp('^[\s\n\t\r]*$');
+		let reEmpty = /^\s*$/;
 		if (reEmpty.test(contents)) {
 			logDebug(contents);
 			raw = {};
