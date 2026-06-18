@@ -718,12 +718,12 @@ describe('ZeppelinKernel Test Suite', () => {
 
         it('updateMutex is not locked initially', () => {
             kernel = new ZeppelinKernel(context);
-            assert.strictEqual(kernel.updateMutex.isLocked(), false);
+            assert.strictEqual(kernel.isUpdateLocked(), false);
         });
 
         it('editMutex is not locked initially', () => {
             kernel = new ZeppelinKernel(context);
-            assert.strictEqual(kernel.editMutex.isLocked(), false);
+            assert.strictEqual(kernel.isEditLocked(), false);
         });
     });
 

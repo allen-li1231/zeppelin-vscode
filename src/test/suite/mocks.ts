@@ -196,7 +196,8 @@ export interface MockKernel {
     applyPolledNotebookEdits: () => Promise<void>;
     isNoteSyncing: (note: any) => boolean;
     hasPendingParagraphUpdate: (cell: any) => boolean;
-    editMutex: { isLocked: () => boolean };
+    isEditLocked: () => boolean;
+    isUpdateLocked: () => boolean;
 
     // internal controller
     _controller: MockNotebookController;
@@ -253,7 +254,8 @@ export function createMockKernel(opts: MockKernelOptions = {}): MockKernel {
         applyPolledNotebookEdits: async () => {},
         isNoteSyncing: (_note: any) => false,
         hasPendingParagraphUpdate: (_cell: any) => false,
-        editMutex: { isLocked: () => false },
+        isEditLocked: () => false,
+        isUpdateLocked: () => false,
     };
 
     return kernel;

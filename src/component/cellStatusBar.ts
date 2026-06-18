@@ -37,7 +37,7 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
 
             // Show sync conflict indicator if present
             if (cell.metadata.syncConflict !== undefined
-                && !this.kernel.editMutex.isLocked()
+                && !this.kernel.isEditLocked()
             ) {
                 const conflictItem = new vscode.NotebookCellStatusBarItem(
                     cell.metadata.resolvingDiff

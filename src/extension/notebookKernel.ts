@@ -37,8 +37,13 @@ export class ZeppelinKernel
     private _service?: NotebookService;
     private readonly _controller: vscode.NotebookController;
     private _isActive = false;
-    public updateMutex = new Mutex("updateMutex");
-    public editMutex = new Mutex("editMutex");
+    private _updateMutex = new Mutex("updateMutex");
+    private _editMutex = new Mutex("editMutex");
+
+    /** Whether the edit mutex is currently held. */
+    public isEditLocked(): boolean { return this._editMutex.isLocked(); }
+    /** Whether the update mutex is currently held. */
+    public isUpdateLocked(): boolean { return this._updateMutex.isLocked(); }
 
     // private _timerSyncNote?: ReturnType<typeof setInterval>;
     private _timerUpdateCell?: ReturnType<typeof setTimeout>;
@@ -557,11 +562,11 @@ export class ZeppelinKernel
 
         logDebug("registerParagraphUpdate", cell);
 
-        return this.updateMutex.runExclusive(async () =>
+        return this._updateMutex.runExclusive(async () =>
         {
             // Flush any deferred metadata updates inside the mutex so
             // cell.metadata.text is current and the snapshot is atomic
-            // with respect to other updateMutex holders.
+            // with respect to other _updateMutex holders.
             await this.applyPolledNotebookEdits();
 
             if (!this._mapUpdateParagraph.has(cell))
@@ -594,7 +599,7 @@ export class ZeppelinKernel
     public async unregisterParagraphUpdate(cell: vscode.NotebookCell)
     {
         logDebug("unregisterParagraphUpdate", cell);
-        return this.updateMutex.runExclusive(async () =>
+        return this._updateMutex.runExclusive(async () =>
         {
             return this._mapUpdateParagraph.delete(cell);
         });
@@ -613,7 +618,7 @@ export class ZeppelinKernel
     public async updatePollingParagraphsDirect() {
         logDebug("updatePollingParagraphsDirect", this._mapUpdateParagraph);
         // let notebookCells = Array.from(this._mapUpdateParagraph.keys());
-        return this.updateMutex.runExclusive(async () => {
+        return this._updateMutex.runExclusive(async () => {
             // Promise.all(notebookCells.map(this.updateParagraph.bind(this)))
             for (let cell of this._mapUpdateParagraph.keys())
             {
@@ -625,7 +630,7 @@ export class ZeppelinKernel
 
     public async editWithoutParagraphUpdate(func: () => Promise<void>)
     {
-        return this.editMutex.runExclusive(async () =>
+        return this._editMutex.runExclusive(async () =>
         {
             this._editWithoutParagraphUpdateDepth++;
             try
@@ -906,7 +911,7 @@ export class ZeppelinKernel
             return;
         }
 
-        return await this.updateMutex.runExclusive(async () => {
+        return await this._updateMutex.runExclusive(async () => {
 
         this._registerSyncNote(note);
         logDebug("syncNote start");
@@ -1365,7 +1370,7 @@ export class ZeppelinKernel
 
     public async updateParagraph(cell: vscode.NotebookCell)
     {
-        return this.updateMutex.runExclusive(
+        return this._updateMutex.runExclusive(
             async () => 
             {
                 return await this._updateParagraph(cell);
