@@ -1,7 +1,7 @@
 import { ExtensionContext, workspace, Uri } from "vscode";
 import { AxiosProxyConfig } from 'axios';
 
-export const DEBUG_MODE = true;
+import { logger } from './logger';
 
 export const EXTENSION_NAME = 'zeppelin-notebook';
 export const NOTEBOOK_SUFFIX = '.zpln';
@@ -125,10 +125,11 @@ export function formatURL(url: string): string {
     return url;
 }
 
+/**
+ * @deprecated Use `logger.debug()`, `logger.info()`, `logger.warn()`, or `logger.error()` instead.
+ */
 export function logDebug(item: string | any, ...optionalParams: any[]) {
-    if (DEBUG_MODE) {
-        console.log(`Zeppelin ${item}`, optionalParams);
-    }
+    logger.debug(String(item), ...optionalParams);
 }
 
 export function getProxy() {

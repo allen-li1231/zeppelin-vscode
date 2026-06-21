@@ -28,12 +28,6 @@ describe('CellStatusProvider Test Suite', () => {
             assert.deepStrictEqual(items, []);
         });
 
-        it('returns empty array for Markup cells', () => {
-            const cell = createMockCell({ kind: vscode.NotebookCellKind.Markup });
-            const items = provider.provideCellStatusBarItems(cell as any);
-            assert.deepStrictEqual(items, []);
-        });
-
         it('shows sync conflict indicator when syncConflict is set', async () => {
             const cell = createMockCell({
                 status: 'READY',

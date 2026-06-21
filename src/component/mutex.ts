@@ -1,4 +1,4 @@
-import { logDebug } from "../common/common";
+import { logger } from "../common/logger";
 
 /**
  * A lock for synchronizing async operations.
@@ -80,7 +80,7 @@ export class Mutex {
         }
         // The resource is available.
         this._isLocked = true; // Lock it.
-        logDebug(`mutex ${this._name} locked`);
+        logger.debug(`mutex ${this._name} locked`);
         // and give access to the next operation
         // in the queue.
         nextEntry.resolve(this._buildRelease());
@@ -96,7 +96,7 @@ export class Mutex {
             // Each release function make
             // the resource available again
             this._isLocked = false;
-            logDebug(`mutex ${this._name} releases`);
+            logger.debug(`mutex ${this._name} releases`);
             // and call dispatch.
             this._dispatch();
         };

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { logDebug } from '../common/common';
+import { logger } from '../common/logger';
 import {
 	parseParagraphToCellData,
 	parseCellToParagraphData
@@ -18,16 +18,16 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 		let raw: NoteData;
 
 		var contents = new TextDecoder().decode(content);
-		let reEmpty = new RegExp('^[\s\n\t\r]*$');
+		let reEmpty = /^\s*$/;
 		if (reEmpty.test(contents)) {
-			logDebug(contents);
+			logger.debug(contents);
 			raw = {};
 		}
 		else {
 			try {
 				raw = <NoteData>JSON.parse(contents);
 			} catch(err) {
-				logDebug("error serializing note file to JSON", err);
+				logger.error("error serializing note file to JSON", err);
 				throw err;
 			}
 		}
@@ -36,6 +36,7 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 		const cells = raw.paragraphs
 						? raw.paragraphs.map(parseParagraphToCellData)
 						: [];
+		logger.info(`deserializeNotebook: loaded ${cells.length} cells from note '${raw.name ?? '(unnamed)'}'`);
 
 		let note = new vscode.NotebookData(cells);
 		note.metadata = raw;

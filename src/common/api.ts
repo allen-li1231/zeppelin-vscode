@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 import { window } from 'vscode';
-import { logDebug, formatURL, reCookies } from './common';
+import { formatURL, reCookies } from './common';
+import { logger } from './logger';
 import {
     ParagraphData,
     ParagraphConfig
@@ -57,7 +58,7 @@ class BasicService {
       // create request session based on config
       this.session.interceptors.response.use(
             (response) => {
-                logDebug(
+                logger.debug(
                     `api: ${response.request.method} ${response.request.path}`,
                     response.data
                 );
@@ -68,7 +69,7 @@ class BasicService {
                     return error;
                 }
 
-                logDebug(
+                logger.error(
                     `api error: ${error.request.method} ${error.request.path}`,
                     error
                 );
@@ -86,7 +87,7 @@ class BasicService {
                 }
                 else if (error.response?.status === 302) {
                     const redirectUrl = error.response.headers.location;
-                    logDebug(`Redirected access from ${url} to ${redirectUrl}`);
+                    logger.warn(`Redirected access from ${url} to ${redirectUrl}`);
                     if (redirectUrl && redirectUrl.endsWith('/api/login')) {
                         this._sessionExpired = true;
                         this.onSessionExpired?.();
@@ -98,7 +99,7 @@ class BasicService {
                     );
                 }
                 else if (error.response?.status === 404) {
-                    logDebug(`Resource '${error.request.path}' not found`);
+                    logger.warn(`Resource '${error.request.path}' not found`);
                 }
                 else if (error.response?.status !== 403
                         && error.response.data.exception !== 'UnavailableSecurityManagerException') {
@@ -158,6 +159,7 @@ class BasicService {
     }
 
     async anonymousLogin() {
+        logger.info(`anonymousLogin: attempting anonymous login to ${this.baseURL}`);
         let res = await this.session.get(
             '/api/security/ticket',
             {
@@ -174,6 +176,7 @@ class BasicService {
         }
 
         this._sessionExpired = false;
+        logger.info("anonymousLogin: success");
         // store cookies to default headers
         if (res.headers['set-cookie']) {
             for (let cookie of res.headers['set-cookie']) {
@@ -189,6 +192,7 @@ class BasicService {
     }
 
     async login(username: string, password: string) {
+        logger.info(`login: attempting login for user '${username}' to ${this.baseURL}`);
         let res = await this.session.post(
             '/api/login',
             {
@@ -209,6 +213,7 @@ class BasicService {
         }
 
         this._sessionExpired = false;
+        logger.info(`login: success for user '${username}'`);
         // store cookies to default headers
         if (res.headers['set-cookie']) {
             for (let cookie of res.headers['set-cookie']) {

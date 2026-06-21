@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { AxiosError } from 'axios';
 import { ZeppelinKernel } from '../extension/notebookKernel';
-import { logDebug, isLocalNotebookCell } from '../common/common';
+import { isLocalNotebookCell } from '../common/common';
+import { logger } from '../common/logger';
 import { Mutex } from './mutex';
 import { parseCellInterpreter } from '../common/parser';
 
@@ -37,7 +38,7 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
 
             // Show sync conflict indicator if present
             if (cell.metadata.syncConflict !== undefined
-                && !this.kernel.editMutex.isLocked()
+                && !this.kernel.isEditLocked()
             ) {
                 const conflictItem = new vscode.NotebookCellStatusBarItem(
                     cell.metadata.resolvingDiff
@@ -144,7 +145,7 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
             var res = await this.kernel.getService()?.getInterpreterSetting(interpreterId);
         }
         catch (error) {
-            logDebug(`error in _updateInterpreterStatus for '${interpreterId}'`);
+            logger.error(`error in _updateInterpreterStatus for '${interpreterId}'`);
             return undefined;
         }
 
@@ -204,7 +205,7 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
         // async loop don't cause us to read a stale or shifted range list.
         const visibleRanges = [...activeNotebook.visibleRanges];
         const notebook = activeNotebook.notebook;
-            logDebug("doUpdateVisibleCells: updating", visibleRanges);
+            logger.debug("doUpdateVisibleCells: updating", visibleRanges);
 
         for (let range of visibleRanges) {
             if (range.isEmpty) {
@@ -284,11 +285,14 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
                         // ignore the same error
                         continue;
                     }
-                    logDebug("error in doUpdateVisibleCells:" + err);
+                    logger.error("error in doUpdateVisibleCells:" + err);
                     // trigger cell status bar update
+                    await this.kernel.updateCellMetadata(cell, { status });
                 }
             }
         }
+
+        await this.kernel.applyPolledNotebookEdits();
     }
 
     public isTrackingScheduled() {
@@ -297,7 +301,7 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
 
     public scheduleTracking() {
         if (this.isTrackingScheduled()) {
-            logDebug("cellStatusBar omits duplicated scheduling");
+            logger.debug("cellStatusBar omits duplicated scheduling");
             return;
         }
 

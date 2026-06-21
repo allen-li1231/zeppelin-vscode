@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
+import { logger } from './logger';
 import {
     mapLanguage,
     mapLanguageKind,
     mapZeppelinLanguage,
     reInterpreter,
-    logDebug
 } from '../common/common';
 import {
     ParagraphData,
@@ -23,7 +23,7 @@ export function parseCellInterpreter(
     }
 
     let interpreterId = interpreterIds[1];
-    if (!!return_full) {
+    if (!return_full) {
         let rootIdx = interpreterId.indexOf('.');
         interpreterId = rootIdx > 0
                         ? interpreterId.slice(0, rootIdx)
@@ -135,7 +135,7 @@ export function parseCellOutputsToParagraphResult(
                 outputContents = new TextDecoder().decode(output.data);
             } catch(err) {
                 // pass
-                logDebug("error in decoding output data", err);
+                logger.error("error in decoding output data", err);
                 throw err;
             }
 
@@ -144,28 +144,34 @@ export function parseCellOutputsToParagraphResult(
                     case 'text/plain': 
                         code = 'SUCCESS';
                         msgType = 'TEXT';
+                        break;
                     case 'text/html': 
                         code = 'SUCCESS';
                         msgType = 'HTML';
+                        break;
                     case 'application/vnd.code.notebook.stdout': 
                         code = 'SUCCESS';
                         msgType = 'TEXT';
+                        break;
                     case 'application/vnd.code.notebook.stderr': 
                         code = 'ERROR';
                         msgType = 'TEXT';
+                        break;
                     case 'application/vnd.code.notebook.error': 
                         code = 'ERROR';
                         msgType = 'TEXT';
+                        break;
                     default:
                         code = 'SUCCESS';
                         msgType = 'TEXT';
+                        break;
                 }
                 results.push({
                     data: outputContents,
                     type: msgType
                 });
             } catch(err) {
-                logDebug("error in parsing output countents to JSON", err);
+                logger.error("error in parsing output countents to JSON", err);
                 throw err;
             }
         }

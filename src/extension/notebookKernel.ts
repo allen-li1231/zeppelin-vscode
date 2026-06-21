@@ -8,9 +8,9 @@ import { EXTENSION_NAME,
     mapLanguageKind,
     mapZeppelinLanguage,
     mapVSCodeLanguage,
-    logDebug,
     getProxy,
     getVersion } from '../common/common';
+import { logger } from '../common/logger';
 import { CellStatusProvider } from '../component/cellStatusBar';
 import { NoteData,
     ParagraphData, ParagraphResult } from '../common/types';
@@ -37,8 +37,13 @@ export class ZeppelinKernel
     private _service?: NotebookService;
     private readonly _controller: vscode.NotebookController;
     private _isActive = false;
-    public updateMutex = new Mutex("updateMutex");
-    public editMutex = new Mutex("editMutex");
+    private _updateMutex = new Mutex("updateMutex");
+    private _editMutex = new Mutex("editMutex");
+
+    /** Whether the edit mutex is currently held. */
+    public isEditLocked(): boolean { return this._editMutex.isLocked(); }
+    /** Whether the update mutex is currently held. */
+    public isUpdateLocked(): boolean { return this._updateMutex.isLocked(); }
 
     // private _timerSyncNote?: ReturnType<typeof setInterval>;
     private _timerUpdateCell?: ReturnType<typeof setTimeout>;
@@ -48,9 +53,10 @@ export class ZeppelinKernel
     >();
     private _mapNotebookEdits = new Map<vscode.NotebookCell, vscode.NotebookEdit[]>();
     private _mapUpdateParagraph = new Map<vscode.NotebookCell, { requestTime: number, baseText: string }>();
-    private _flagRegisterParagraphUpdate = true;
+    private _editWithoutParagraphUpdateDepth = 0;
     private _mapInterpreterCache: Map<string, string> | undefined;
     private _sessionExpiredPromptActive = false;
+    private _activationPromise?: Promise<void>;
 
     public cellStatusBar: CellStatusProvider | undefined = undefined;
 
@@ -110,17 +116,24 @@ export class ZeppelinKernel
             this._executionManager?.scheduleTracking();
             this.cellStatusBar?.scheduleTracking();
 
-            // Populate interpreter cache on activation
-            this.listInterpreters().then(map =>
+            // Populate interpreter cache on activation, tracking the promise
+            // so dispose() can guard against late writes.
+            this._activationPromise = this.listInterpreters().then(map =>
             {
-                this._mapInterpreterCache = map;
-                logDebug("interpreter cache populated", map);
+                if (this._isActive)
+                {
+                    this._mapInterpreterCache = map;
+                    logger.info("interpreter cache populated", map);
+                }
             }).catch(err =>
             {
-                logDebug("failed to populate interpreter cache", err);
+                logger.warn("failed to populate interpreter cache", err);
+            }).finally(() =>
+            {
+                this._activationPromise = undefined;
             });
         }
-        logDebug("activate", this.isActive());
+        logger.info("activate", this.isActive());
         return this.isActive();
     }
 
@@ -151,9 +164,10 @@ export class ZeppelinKernel
         this.cellStatusBar?.dispose();
 
         this._mapInterpreterCache = undefined;
+        this._activationPromise = undefined;
 
         this._isActive = false;
-        logDebug("activate", this.isActive());
+        logger.info("activate", this.isActive());
         return this.isActive();
     }
 
@@ -181,6 +195,7 @@ export class ZeppelinKernel
 
     setService(baseURL: string)
     {
+        logger.info(`setService: connecting to ${baseURL}`);
         let userAgent = `${EXTENSION_NAME}/${getVersion(this._context)} vscode-extension/${vscode.version}`;
 
         let config = vscode.workspace.getConfiguration('zeppelin');
@@ -205,6 +220,7 @@ export class ZeppelinKernel
         {
             return;
         }
+        logger.warn("session expired — prompting user to re-authenticate");
         this._sessionExpiredPromptActive = true;
 
         // cancel all running executions
@@ -235,6 +251,7 @@ export class ZeppelinKernel
 
     private async _activateService(baseURL: string | undefined)
     {
+        logger.info(`_activateService: baseURL=${baseURL ?? '(none)'}`);
         if (!baseURL)
         {
             return this.deactivate();
@@ -320,7 +337,7 @@ export class ZeppelinKernel
 
         if (res instanceof AxiosError)
         {
-            logDebug("error in createNote", res);
+            logger.error("error in createNote", res);
             if (res.response?.status === 500)
             {
                 vscode.window.showErrorMessage(
@@ -339,7 +356,7 @@ export class ZeppelinKernel
     public async importNote(note: any) {
         let res = await this._service?.importNote(note);
 
-        logDebug("error in importNote", res);
+        logger.debug("importNote response", res);
         if (res instanceof AxiosError)
         {
             return undefined;
@@ -363,14 +380,14 @@ export class ZeppelinKernel
         if (res instanceof AxiosError)
         {
             vscode.window.showWarningMessage(
-                `Unable to get info for note ${noteId}, ` +
-                res.response ? res.response?.data : `${res.code}: ${res.message}`
+                `Unable to get info for note ${noteId}, `
+                + (res.response ? res.response?.data : `${res.code}: ${res.message}`)
             );
             return;
         }
         else if (res?.status === 500 || res?.status === 404)
         {
-            logDebug("error in getNoteInfo", res);
+            logger.error("error in getNoteInfo", res);
             vscode.window.showErrorMessage(
                 `Unable to get note info: '${noteId}' doesn't exist on the server`);
             return;
@@ -453,7 +470,7 @@ export class ZeppelinKernel
             }
             else
             {
-                logDebug(
+                logger.debug(
                     `Unable to get paragraph info ${cell.metadata.id} 
                     in note '${cell.notebook.metadata.name}'`, res
                 );
@@ -465,6 +482,7 @@ export class ZeppelinKernel
             paragraph = res?.data.body ?? res?.data;
         }
 
+        logger.debug(`getParagraphInfo: got paragraph ${cell.metadata.id}, status=${paragraph.status}`);
         this.pollUpdateCellMetadata(cell, paragraph);
         return paragraph;
     }
@@ -486,6 +504,14 @@ export class ZeppelinKernel
         }, intervalMs);
     }
 
+    /**
+     * Run a paragraph on the Zeppelin server.
+     *
+     * @param sync  When `true`, waits for completion and returns parsed
+     *              `NotebookCellOutputItem[]`.  When `false`, fires and
+     *              returns the raw response data (caller should poll for
+     *              results via execution tracking).
+     */
     public async runParagraph(cell: vscode.NotebookCell, sync: boolean)
     {
         let res = await this.getService()?.runParagraph(
@@ -526,26 +552,27 @@ export class ZeppelinKernel
 
     public async registerParagraphUpdate(cell: vscode.NotebookCell)
     {
-        if (!this._flagRegisterParagraphUpdate)
+        if (this._editWithoutParagraphUpdateDepth > 0)
         {
-            logDebug("registerParagraphUpdate: cell not to be updated", cell);
+            logger.debug("registerParagraphUpdate: cell not to be updated", cell);
             return;
         }
 
         if (cell.metadata.resolvingDiff)
         {
-            logDebug("registerParagraphUpdate: cell is resolving diff, skipped", cell);
+            logger.warn("registerParagraphUpdate: cell is resolving diff, skipped", cell);
             return;
         }
 
-        logDebug("registerParagraphUpdate", cell);
-        // Flush any deferred metadata updates so cell.metadata.text is current
-        // before snapshotting baseText. This prevents false sync-conflict
-        // detection when the user rapidly edits and executes a cell.
-        await this.applyPolledNotebookEdits();
+        logger.debug("registerParagraphUpdate", cell);
 
-        return this.updateMutex.runExclusive(async () =>
+        return this._updateMutex.runExclusive(async () =>
         {
+            // Flush any deferred metadata updates inside the mutex so
+            // cell.metadata.text is current and the snapshot is atomic
+            // with respect to other _updateMutex holders.
+            await this.applyPolledNotebookEdits();
+
             if (!this._mapUpdateParagraph.has(cell))
             {
                 // Snapshot the server text at registration time so we can
@@ -575,8 +602,8 @@ export class ZeppelinKernel
      */
     public async unregisterParagraphUpdate(cell: vscode.NotebookCell)
     {
-        logDebug("unregisterParagraphUpdate", cell);
-        return this.updateMutex.runExclusive(async () =>
+        logger.debug("unregisterParagraphUpdate", cell);
+        return this._updateMutex.runExclusive(async () =>
         {
             return this._mapUpdateParagraph.delete(cell);
         });
@@ -588,31 +615,36 @@ export class ZeppelinKernel
      */
     private _unregisterParagraphUpdateDirect(cell: vscode.NotebookCell)
     {
-        logDebug("_unregisterParagraphUpdateDirect", cell);
+        logger.debug("_unregisterParagraphUpdateDirect", cell);
         return this._mapUpdateParagraph.delete(cell);
     }
 
     public async updatePollingParagraphsDirect() {
-        logDebug("updatePollingParagraphsDirect", this._mapUpdateParagraph);
+        logger.debug("updatePollingParagraphsDirect", this._mapUpdateParagraph);
         // let notebookCells = Array.from(this._mapUpdateParagraph.keys());
-        return this.updateMutex.runExclusive(async () => {
+        return this._updateMutex.runExclusive(async () => {
             // Promise.all(notebookCells.map(this.updateParagraph.bind(this)))
             for (let cell of this._mapUpdateParagraph.keys())
             {
                 await this._updateParagraph(cell);
             }
-            logDebug("updatePollingParagraphsDirect ends");
+            logger.debug("updatePollingParagraphsDirect ends");
         });
     }
 
     public async editWithoutParagraphUpdate(func: () => Promise<void>)
     {
-        return this.editMutex.runExclusive(async () =>
+        return this._editMutex.runExclusive(async () =>
         {
-            this._flagRegisterParagraphUpdate = false;
-            let res = await func();
-            this._flagRegisterParagraphUpdate = true;
-            return res;
+            this._editWithoutParagraphUpdateDepth++;
+            try
+            {
+                return await func();
+            }
+            finally
+            {
+                this._editWithoutParagraphUpdateDepth--;
+            }
         });
     }
 
@@ -621,12 +653,12 @@ export class ZeppelinKernel
         let config = vscode.workspace.getConfiguration('zeppelin');
         let throttleTime: number = config.get('autosave.throttleTime', 3);
 
-        logDebug("_doUpdatePollingParagraphs", this._mapUpdateParagraph);
+        logger.debug("_doUpdatePollingParagraphs", this._mapUpdateParagraph);
         for (let [cell, entry] of this._mapUpdateParagraph)
         {
             if (cell.metadata.resolvingDiff || cell.metadata.syncConflict !== undefined)
             {
-                logDebug("_doUpdatePollingParagraphs: cell has conflict or resolving diff, skipped", cell);
+                logger.warn("_doUpdatePollingParagraphs: cell has conflict or resolving diff, skipped", cell);
                 continue;
             }
             let requestTime = entry.requestTime;
@@ -634,7 +666,7 @@ export class ZeppelinKernel
                 && throttleTime * 1000 < Date.now() - requestTime) {
                 if (cell.index < 0)
                 {
-                    logDebug("_doUpdatePollingParagraphs: deleted cell", cell);
+                    logger.debug("_doUpdatePollingParagraphs: deleted cell", cell);
                 }
                 await this.updateParagraph(cell);
             }
@@ -883,15 +915,15 @@ export class ZeppelinKernel
             return;
         }
 
-        return await this.updateMutex.runExclusive(async () => {
+        return await this._updateMutex.runExclusive(async () => {
 
         this._registerSyncNote(note);
-        logDebug("syncNote start");
+        logger.info("syncNote start");
 
         let serverNote = await this.getNoteInfo(note);
         if (serverNote === undefined)
         {
-            logDebug("syncNote failed");
+            logger.warn("syncNote failed");
             this._unregisterSyncNote(note);
             return;
         }
@@ -1026,7 +1058,7 @@ export class ZeppelinKernel
         });
 
         this._unregisterSyncNote(note);
-        logDebug("syncNote end");
+        logger.info("syncNote end");
     });
     }
 
@@ -1045,7 +1077,7 @@ export class ZeppelinKernel
         {
             return;
         }
-        logDebug(`remote cell revision accepted`, cell);
+        logger.info(`remote cell revision accepted`, cell);
 
         let serverCellData = parseParagraphToCellData(conflict);
         // Clear the conflict and resolving markers on the replacement cell
@@ -1072,7 +1104,7 @@ export class ZeppelinKernel
         {
             return;
         }
-        logDebug(`local cell revision accepted`, cell);
+        logger.info(`local cell revision accepted`, cell);
 
         // Clear conflict markers
         await this.editWithoutParagraphUpdate(async () =>
@@ -1090,7 +1122,7 @@ export class ZeppelinKernel
         }
         catch (err)
         {
-            logDebug("acceptLocalCell: error pushing local text to server", err);
+            logger.error("acceptLocalCell: error pushing local text to server", err);
             vscode.window.showErrorMessage(
                 `Failed to push local changes to server: ${err instanceof Error ? err.message : err}`
             );
@@ -1159,7 +1191,7 @@ export class ZeppelinKernel
         );
         if (res instanceof AxiosError)
         {
-            logDebug("error in updateParagraphText", res);
+            logger.error("error in updateParagraphText", res);
             await this.editWithoutParagraphUpdate(async () => {
                 await this.updateCellMetadata(cell, {"status": res.response?.status});
             })
@@ -1190,12 +1222,14 @@ export class ZeppelinKernel
         );
         if (res instanceof AxiosError)
         {
-            logDebug("error in updateParagraphConfig", res);
-            await this.updateCellMetadata(cell, {"status": res.response?.status});
+            logger.error("error in updateParagraphConfig", res);
+            await this.editWithoutParagraphUpdate(async () => {
+                await this.updateCellMetadata(cell, {"status": res.response?.status});
+            });
             throw res;
         }
 
-        logDebug(`UpdateParagraphConfig: pollUpdateCellMetadata`);
+        logger.debug(`UpdateParagraphConfig: pollUpdateCellMetadata`);
         await this.pollUpdateCellMetadata(cell, res?.data.body);
     }
 
@@ -1205,7 +1239,7 @@ export class ZeppelinKernel
             // local changes until the user resolves the conflict.
             if (cell.metadata.syncConflict !== undefined)
             {
-                logDebug("updateParagraph: cell has sync conflict, skipped", cell);
+                logger.warn("updateParagraph: cell has sync conflict, skipped", cell);
                 this._unregisterParagraphUpdateDirect(cell);
                 return;
             }
@@ -1213,7 +1247,7 @@ export class ZeppelinKernel
             // index = -1: cell has been deleted from notebook
             if (cell.index === -1)
             {
-                logDebug(`updateParagraph: cell to be deleted`, cell);
+                logger.debug(`updateParagraph: cell to be deleted`, cell);
                 this.cellStatusBar?.untrackCell(cell);
                 this._service?.deleteParagraph(
                     cell.notebook.metadata.id, cell.metadata.id
@@ -1221,7 +1255,7 @@ export class ZeppelinKernel
 
                 this._mapUpdateParagraph.delete(cell);
 
-                logDebug(`updateParagraph: sync cell metadata`, cell);
+                logger.debug(`updateParagraph: sync cell metadata`, cell);
                 await this.updateNoteMetadata(
                     cell.notebook,
                     await this.getNoteInfo(cell.notebook) ?? {}
@@ -1232,9 +1266,9 @@ export class ZeppelinKernel
             // create corresponding paragraph when a cell is newly created
             if (cell.metadata.id === undefined)
             {
-                logDebug(`updateParagraph: cell to be created`, cell);
+                logger.debug(`updateParagraph: cell to be created`, cell);
                 await this.createParagraph(cell);
-                logDebug(`updateParagraph: sync cell metadata`, cell);
+                logger.debug(`updateParagraph: sync cell metadata`, cell);
                 await this.updateNoteMetadata(
                     cell.notebook,
                     await this.getNoteInfo(cell.notebook) ?? {}
@@ -1245,12 +1279,12 @@ export class ZeppelinKernel
                 cell.notebook.metadata.paragraphs.findIndex(
                     (paragraph: ParagraphData) => paragraph.id === cell.metadata.id))
             {
-                logDebug(`updateParagraph: cell position to be changed`, cell);
+                logger.debug(`updateParagraph: cell position to be changed`, cell);
                 // cell index has changed, update to server
                 await this.getService()?.moveParagraphToIndex(
                     cell.notebook.metadata.id, cell.metadata.id, cell.index
                 );
-                logDebug(`updateParagraph: sync cell metadata`, cell);
+                logger.debug(`updateParagraph: sync cell metadata`, cell);
                 await this.updateNoteMetadata(
                     cell.notebook,
                     await this.getNoteInfo(cell.notebook) ?? {}
@@ -1262,6 +1296,14 @@ export class ZeppelinKernel
                 // paragraph has changed independently since the edit was
                 // registered.  If so, flag a sync conflict instead of
                 // blindly overwriting the server version.
+                //
+                // NOTE (TOCTOU): There is an inherent time-of-check to
+                // time-of-use gap between this fetch and the subsequent
+                // updateParagraphConfig/updateParagraphText calls.  The
+                // server paragraph could change again in that window.
+                // True atomic conflict resolution would require server-
+                // side locking or optimistic concurrency (e.g. ETags),
+                // which the Zeppelin REST API does not currently support.
                 let mapEntry = this._mapUpdateParagraph.get(cell);
                 let baseText = mapEntry?.baseText ?? '';
 
@@ -1278,7 +1320,7 @@ export class ZeppelinKernel
                     {
                         // Server changed independently — flag conflict
                         // instead of pushing.
-                        logDebug("updateParagraph: server changed independently, flagging sync conflict");
+                        logger.warn("updateParagraph: server changed independently, flagging sync conflict");
                         await this.editWithoutParagraphUpdate(async () => {
                             await this.updateCellMetadata(cell, {
                                 syncConflict: serverParagraph
@@ -1290,9 +1332,9 @@ export class ZeppelinKernel
                     }
                 }
 
-                logDebug("updateParagraph: updateParagraphConfig");
+                logger.debug("updateParagraph: updateParagraphConfig");
                 let res = await this.updateParagraphConfig(cell);
-                logDebug("updateParagraph: updateParagraphText");
+                logger.debug("updateParagraph: updateParagraphText");
                 res = await this.updateParagraphText(cell);
             }
 
@@ -1305,12 +1347,18 @@ export class ZeppelinKernel
             }
         } catch (err)
         {
-            logDebug("error in _updateParagraph", err);
+            logger.error("error in _updateParagraph", err);
             if (cell.metadata.id === undefined)
             {
                 // retry creating cell
                 return;
             }
+            // Notify the user about the failed update so errors
+            // are not silently swallowed for existing paragraphs.
+            vscode.window.showWarningMessage(
+                `Failed to update paragraph ${cell.metadata.id}: `
+                + `${err instanceof Error ? err.message : err}`
+            );
         }
 
         // unregister cell from poll, as the update is either finished or failed now
@@ -1326,7 +1374,7 @@ export class ZeppelinKernel
 
     public async updateParagraph(cell: vscode.NotebookCell)
     {
-        return this.updateMutex.runExclusive(
+        return this._updateMutex.runExclusive(
             async () => 
             {
                 return await this._updateParagraph(cell);
@@ -1352,7 +1400,7 @@ export class ZeppelinKernel
         let interpreterMap = this._mapInterpreterCache;
         if (interpreterMap === undefined)
         {
-            logDebug("autoDetectCellLanguage: interpreter cache not available, skipping");
+            logger.warn("autoDetectCellLanguage: interpreter cache not available, skipping");
             return;
         }
 
@@ -1369,7 +1417,7 @@ export class ZeppelinKernel
 
         if (vscLang === undefined)
         {
-            logDebug(`autoDetectCellLanguage: unknown interpreter '${fullInterpreterId}'`);
+            logger.warn(`autoDetectCellLanguage: unknown interpreter '${fullInterpreterId}'`);
             return;
         }
 
@@ -1410,11 +1458,11 @@ export class ZeppelinKernel
                 });
             });
 
-            logDebug(`autoDetectCellLanguage: set language to '${vscLang}'`);
+            logger.debug(`autoDetectCellLanguage: set language to '${vscLang}'`);
         }
         catch (err)
         {
-            logDebug('_applyCellLanguage error', err);
+            logger.error('_applyCellLanguage error', err);
             vscode.window.showWarningMessage(
                 `Unable to auto-detect cell language '${vscLang}'. `
                 + `Please select it manually.`
