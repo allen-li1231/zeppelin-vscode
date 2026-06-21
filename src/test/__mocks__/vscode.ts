@@ -273,6 +273,14 @@ export const window = {
         Promise.resolve(undefined as string | undefined),
     showErrorMessage: (_message: string, ..._args: unknown[]) =>
         Promise.resolve(undefined as string | undefined),
+    createOutputChannel: (_name: string) => ({
+        appendLine: (_value: string) => {},
+        append: (_value: string) => {},
+        clear: () => {},
+        show: () => {},
+        hide: () => {},
+        dispose: () => {},
+    }),
     activeNotebookEditor: undefined as unknown,
 };
 
