@@ -325,3 +325,23 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 ### Enhancement
 - [Diff view for sync conflicts upgraded from plain text diff to notebook-level cell diff](https://github.com/allen-li1231/zeppelin-vscode/commit/90e0b61296af162193374d907d5efb544c0312d7), showing both cell text and execution outputs side-by-side using an in-memory `FileSystemProvider` (`zeppelin-diff` scheme).
 - [Centralize cell.metadata.status setting and periodically flush polled notebook edits to keep local metadata updated](https://github.com/allen-li1231/zeppelin-vscode/commit/f34988b2a5bd7a805a1e0824518cab550db3e6f7).
+
+
+
+## [0.2.24] - 2026-06-18
+
+### Added
+- [Comprehensive test suite for `notebookKernel.ts`](https://github.com/allen-li1231/zeppelin-vscode/commit/a0f743e1f57a178716ceb7fb90cf7a904c5bef5e) (67 tests covering lifecycle, sync, conflict resolution, paragraph CRUD, mutex guards, and more).
+- Auto-detect cell language from Magic commands using a cached interpreter map populated on kernel activation ([#39](https://github.com/allen-li1231/zeppelin-vscode/issues/39)).
+- Session-expiry handler: prompts re-login or server change when the Zeppelin session expires mid-use.
+
+### Fixed
+- [Operator precedence bug in `getNoteInfo` warning message — ternary was swallowed by string concatenation](https://github.com/allen-li1231/zeppelin-vscode/commit/8e8576b06db632cd2b8c7fad5f4b4c44efc9f239).
+- [Missing `break` statements in `parseCellOutputsToParagraphResult` switch](https://github.com/allen-li1231/zeppelin-vscode/commit/76b3f620314648d762974ba31848319edf501aa8), causing fall-through to wrong output types.
+- [Regex in `notebookSerializer` using `new RegExp` string constructor that silently matched nothing (replaced with regex literal)](https://github.com/allen-li1231/zeppelin-vscode/commit/d1ff6e668eedb39bd36e65ec4b175b1748269d6c).
+- [Race conditions in notebook kernel: metadata updates applied instantly after `doUpdateVisibleCells`](https://github.com/allen-li1231/zeppelin-vscode/commit/e1da17d7371fca7a4072bfcf8d905a90971bdcdb); cell status bar triggered immediately on network errors.
+- [Incorrect interpreter ID format in cell status detection](https://github.com/allen-li1231/zeppelin-vscode/commit/0ebed4ae2773bee72018c59da3f506eb64e2651c).
+
+### Enhancement
+- [Refactor multi-level logging, configurable in settings and instead of printing to console, outputs are now in VSCode output channel](https://github.com/allen-li1231/zeppelin-vscode/commit/a0f743e1f57a178716ceb7fb90cf7a904c5bef5e).
+- [`updateMutex` and `editMutex` made private; developer now use `isEditLocked()` / `isUpdateLocked()` accessor methods](https://github.com/allen-li1231/zeppelin-vscode/commit/76471af69fcf77b137e0fbc807636d1d45480fbe).
