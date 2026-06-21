@@ -1,6 +1,7 @@
 import { AxiosError } from 'axios';
 import { NotebookService } from './api';
-import { reURL, logDebug } from './common';
+import { reURL } from './common';
+import { logger } from './logger';
 import * as vscode from 'vscode';
 import { ZeppelinKernel } from '../extension/notebookKernel';
 import { parseCellToParagraphData } from './parser';
@@ -35,7 +36,7 @@ export async function showInputURL() {
 	if (label === undefined) {
 		return undefined;
 	}
-	logDebug(`received server name: ${label}`);
+	logger.debug(`received server name: ${label}`);
 
 	// create dict and return as result
 	const result = {
@@ -101,7 +102,7 @@ export async function showQuickPickURL(
 		if (picked.label === `$(server-environment)Existing`) {
 			context.workspaceState.update('currentZeppelinServerName', undefined);
 			context.workspaceState.update('currentZeppelinServerURL', '');
-			let pickedPair = await showInputURL().catch(logDebug);
+			let pickedPair = await showInputURL().catch(logger.debug);
 			if (!pickedPair) {
 				// user aborted, pass
 				quickPick.hide();
@@ -121,12 +122,12 @@ export async function showQuickPickURL(
 		}
 		else {
 			if (!picked.description) {
-				logDebug('got unexpected empty url from pickItem.description');
+				logger.debug('got unexpected empty url from pickItem.description');
 				quickPick.hide();
 				return;
 			}
 
-			logDebug("URL picked from history", picked);
+			logger.debug("URL picked from history", picked);
 			pickedLabel = picked.label;
 			pickedURL = picked.description;
 			urlHistory = urlHistory.filter(pair => pair.url !== pickedURL);
@@ -191,7 +192,7 @@ export async function showQuickPickURL(
 		];
 		});
 
-	logDebug("showing quick-pick URLs", quickPick);
+	logger.debug("showing quick-pick URLs", quickPick);
 	quickPick.show();
 }
 
@@ -392,7 +393,7 @@ export async function promptCreateNotebook(
 		// remove duplicated paths and sort the rests
 		visiblePaths = [...new Set(visiblePaths)].sort();
 	} catch (err) {
-		logDebug("error in promptCreateNotebook", err);
+		logger.debug("error in promptCreateNotebook", err);
 		return false;
 	}
 
@@ -426,7 +427,7 @@ export async function promptCreateNotebook(
 				}
 			}
 			catch (err) {
-				logDebug("error create/import note", err);
+				logger.debug("error create/import note", err);
 				quickPick.hide();
 				return;
 			}
@@ -456,7 +457,7 @@ export async function promptCreateNotebook(
 		quickPick.dispose();
 	}));
 
-	logDebug("showing quick-pick remote paths", quickPick);
+	logger.debug("showing quick-pick remote paths", quickPick);
 	quickPick.show();
 
 	return true;
@@ -554,11 +555,11 @@ Do you wish to create the paragraph?`,
 	}
 
 	try {
-		logDebug("promptCreateParagraph", cell);
+		logger.debug("promptCreateParagraph", cell);
 		return await kernel.createParagraph(cell);
 	}
 	catch (err) {
-		logDebug("promptCreateParagraph abort");
+		logger.debug("promptCreateParagraph abort");
 		return;
 	}
 }

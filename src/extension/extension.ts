@@ -5,9 +5,9 @@ import * as interact from '../common/interaction';
 import { CellStatusProvider} from '../component/cellStatusBar';
 import { ZeppelinSerializer } from './notebookSerializer';
 import { ZeppelinKernel } from './notebookKernel';
+import { logger, parseLogLevel } from '../common/logger';
 import { EXTENSION_NAME,
 	mapZeppelinLanguage,
-	logDebug,
 	isLocalNotebook,
 	isLocalNotebookCell
 } from '../common/common';
@@ -79,6 +79,23 @@ export async function activate(context: vscode.ExtensionContext) {
 	// The command has been defined in the package.json file
 	// Now provide the implementation of the command with registerCommand
 	// The commandId parameter must match the command field in package.json
+
+	// Initialize logger level from settings
+	const config = vscode.workspace.getConfiguration('zeppelin');
+	logger.setLevel(parseLogLevel(config.get<string>('logLevel')));
+
+	// React to log-level changes at runtime
+	context.subscriptions.push(
+		vscode.workspace.onDidChangeConfiguration(e => {
+			if (e.affectsConfiguration('zeppelin.logLevel')) {
+				const cfg = vscode.workspace.getConfiguration('zeppelin');
+				logger.setLevel(parseLogLevel(cfg.get<string>('logLevel')));
+			}
+		})
+	);
+
+	// Register logger for disposal
+	context.subscriptions.push({ dispose: () => logger.dispose() });
 
 	let kernel = new ZeppelinKernel(context);
 	context.subscriptions.push(kernel);
@@ -222,7 +239,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		if (!isLocalNotebook(note.uri)) {
 			return;
 		}
-		logDebug("onDidOpenNotebookDocument:", note);
+		logger.info("onDidOpenNotebookDocument:", note);
 
 		// lock file before kernel is able to connected to server
 		// vscode.commands.executeCommand(
@@ -280,10 +297,10 @@ export async function activate(context: vscode.ExtensionContext) {
 		// modify paragraph on remote
 		for (let cellChange of event.cellChanges) {
 			if (cellChange.document !== undefined) {
-				logDebug("onDidChangeNotebookDocument: cellChange", cellChange);
+				logger.debug("onDidChangeNotebookDocument: cellChange", cellChange);
 				kernel.registerParagraphUpdate(cellChange.cell);
 				kernel.autoDetectCellLanguage(cellChange.cell).catch(err =>
-					logDebug("autoDetectCellLanguage error", err)
+					logger.warn("autoDetectCellLanguage error", err)
 				);
 			}
 		}
@@ -296,19 +313,19 @@ export async function activate(context: vscode.ExtensionContext) {
 					_.zip(contentChange.addedCells, contentChange.removedCells)) {
 				if (cellAdded?.metadata.id !== undefined
 					&& cellAdded.metadata.id === cellRemoved?.metadata.id) {
-					logDebug("onDidChangeNotebookDocument: cellReplaced", cellAdded);
+					logger.debug("onDidChangeNotebookDocument: cellReplaced", cellAdded);
 					kernel.updateParagraph(cellAdded);
 				}
 				else {
 					// normal add/remove cell registeration
 					if (cellAdded !== undefined) {
-						logDebug("onDidChangeNotebookDocument: cellAdded", cellAdded.index);
+						logger.debug("onDidChangeNotebookDocument: cellAdded", cellAdded.index);
 						// update right away,
 						// otherwise more added cell contaminate the indices
 						kernel.updateParagraph(cellAdded);
 					}
 					if (cellRemoved !== undefined) {
-						logDebug("onDidChangeNotebookDocument: cellRemoved", cellRemoved);
+						logger.debug("onDidChangeNotebookDocument: cellRemoved", cellRemoved);
 						kernel.updateParagraph(cellRemoved);
 					}
 				}
@@ -389,7 +406,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			|| !isLocalNotebook(event.notebook.uri)) {
 			return;
 		}
-		logDebug("onDidChangeActiveNotebookEditor", event);
+		logger.info("onDidChangeActiveNotebookEditor", event);
 
 		if (await kernel.doesNotebookExist(event.notebook)) {
 			let config = vscode.workspace.getConfiguration('zeppelin');
@@ -409,5 +426,5 @@ export async function activate(context: vscode.ExtensionContext) {
 
 // This method is called when your extension is deactivated
 export function deactivate() {
-	logDebug("deactivate");
+	logger.info("deactivate");
 }

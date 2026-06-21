@@ -2,7 +2,8 @@ import * as vscode from 'vscode';
 import { AxiosError } from 'axios';
 import { Mutex } from './mutex';
 import { Progress } from './superProgress/super-progress';
-import { logDebug, isLocalNotebook } from '../common/common';
+import { isLocalNotebook } from '../common/common';
+import { logger } from '../common/logger';
 import { promptZeppelinServerURL, promptCreateParagraph
 } from '../common/interaction';
 import { parseCellInterpreter,
@@ -112,7 +113,7 @@ export class ZeppelinExecution implements vscode.NotebookCellExecution
     {
         if (this._state !== ZeppelinExecutionState.init)
         {
-            logDebug(
+            logger.debug(
                 "execution skip wrong start call",
                 this._state, this._execution
             );
@@ -134,7 +135,7 @@ export class ZeppelinExecution implements vscode.NotebookCellExecution
     {
         if (this._state !== ZeppelinExecutionState.started)
         {
-            logDebug(
+            logger.debug(
                 "execution skip wrong end call",
                 this._state, this._execution
             );
@@ -215,9 +216,10 @@ export class ExecutionManager
     {
         if (this.isTrackingScheduled())
         {
-            logDebug("executionManager omits duplicated scheduling");
+            logger.debug("executionManager omits duplicated scheduling");
             return;
         }
+        logger.info("executionManager: scheduling execution tracking");
 
         let config = vscode.workspace.getConfiguration('zeppelin');
         let trackExecutionInterval = config.get('execution.trackInterval', 1);
@@ -248,6 +250,7 @@ export class ExecutionManager
 
     public cancelAllExecutions()
     {
+        logger.warn(`cancelAllExecutions: cancelling ${this._mapTrackExecution.size} tracked executions`);
         for (let [_, execution] of this._mapTrackExecution)
         {
             if (execution.state === ZeppelinExecutionState.init)
@@ -302,7 +305,7 @@ export class ExecutionManager
     ) {
         if (execution.cell.index < 0)
         {
-            logDebug(`trackExecution: unregister as cell deleted`, execution);
+            logger.debug(`trackExecution: unregister as cell deleted`, execution);
             this.unregisterTrackExecution(execution);
             return;
         }
@@ -314,7 +317,7 @@ export class ExecutionManager
 
         if (execution.state === ZeppelinExecutionState.resolved)
         {
-            logDebug(`trackExecution: unregister as cell resolved`, execution);
+            logger.debug(`trackExecution: unregister as cell resolved`, execution);
             this.unregisterTrackExecution(execution);
             return;
         }
@@ -326,7 +329,7 @@ export class ExecutionManager
         }
         catch (err)
         {
-            logDebug("error in trackExecution:", err);
+            logger.error("error in trackExecution:", err);
             this.unregisterTrackExecution(execution);
             let cellOutput = new vscode.NotebookCellOutput([
                 vscode.NotebookCellOutputItem.error({
@@ -389,7 +392,7 @@ export class ExecutionManager
             }
             catch (err)
             {
-                logDebug("trackExecution error", err, execution);
+                logger.error("trackExecution error", err, execution);
             }
         }
         else if (paragraph.status !== "PENDING")
@@ -403,14 +406,14 @@ export class ExecutionManager
             }
             catch (err)
             {
-                logDebug("trackExecution error", err, execution);
+                logger.error("trackExecution error", err, execution);
             }
         }
 
         if ((paragraph.status !== "RUNNING")
             && (paragraph.status !== "PENDING"))
         {
-            logDebug(`trackExecution: unregister as not running`, execution);
+            logger.debug(`trackExecution: unregister as not running`, execution);
             this.unregisterTrackExecution(execution);
             execution.end(
                 paragraph.status !== "ERROR", Date.now()
@@ -427,7 +430,7 @@ export class ExecutionManager
 
         for (let [_, execution] of this._mapTrackExecution)
         {
-            logDebug(
+            logger.debug(
                 "_doTrackAllExecution: tracking", execution
             );
             aryExecution.push(this.trackExecution(execution));
@@ -484,15 +487,15 @@ export class ExecutionManager
         let concurrency = config.get('execution.concurrency', 'by interpreter');
         for (let cell of cells)
         {
-            logDebug(`execute in ${concurrency}`, cell);
+            logger.debug(`execute in ${concurrency}`, cell);
             if (cell.index === -1) {
-                logDebug("executeAll skips a deleted cell", cell);
+                logger.debug("executeAll skips a deleted cell", cell);
                 continue;
             }
 
             if (cell.metadata.resolvingDiff || cell.metadata.syncConflict !== undefined)
             {
-                logDebug("executeAll skips a cell in resolving diff", cell);
+                logger.warn("executeAll skips a cell in resolving diff", cell);
                 vscode.window.showWarningMessage(
                     `Please resolve the conflict before executing cell ${cell.index + 1}.`
                 );
@@ -557,7 +560,7 @@ export class ExecutionManager
             execution = new ZeppelinExecution(this.kernel, cell);
         }
         catch (error) {
-            logDebug("_doExecutionSync", error);
+            logger.error("_doExecutionSync", error);
             return false;
         }
 
@@ -637,7 +640,7 @@ export class ExecutionManager
                 || (paragraph.status === "RUNNING")
                 || (cell.metadata.status === "PENDING"))
             {
-                logDebug("_doExecutionAsync omit running/non-existent paragraph",
+                logger.debug("_doExecutionAsync omit running/non-existent paragraph",
                     paragraph);
                 return
             }
@@ -706,7 +709,7 @@ export class ExecutionManager
         if (startTime !== undefined
             || serverCell?.metadata?.status === "RUNNING")
         {
-            logDebug("resumeExecutionStatus resuming", cell);
+            logger.debug("resumeExecutionStatus resuming", cell);
             newExecution.start(startTime);
             this.registerTrackExecution(newExecution);
         }

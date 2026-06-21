@@ -1,4 +1,4 @@
-export declare const DEBUG_MODE = false;
-export declare const NAME = "zeppelin-notebook";
+export declare const EXTENSION_NAME: string;
 export declare function formatURL(url: string): string;
-export declare function logDebug(item: string | any): void;
+/** @deprecated Use `logger.debug()`, `logger.info()`, `logger.warn()`, or `logger.error()` instead. */
+export declare function logDebug(item: string | any, ...optionalParams: any[]): void;

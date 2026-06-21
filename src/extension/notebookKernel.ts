@@ -8,9 +8,9 @@ import { EXTENSION_NAME,
     mapLanguageKind,
     mapZeppelinLanguage,
     mapVSCodeLanguage,
-    logDebug,
     getProxy,
     getVersion } from '../common/common';
+import { logger } from '../common/logger';
 import { CellStatusProvider } from '../component/cellStatusBar';
 import { NoteData,
     ParagraphData, ParagraphResult } from '../common/types';
@@ -123,17 +123,17 @@ export class ZeppelinKernel
                 if (this._isActive)
                 {
                     this._mapInterpreterCache = map;
-                    logDebug("interpreter cache populated", map);
+                    logger.info("interpreter cache populated", map);
                 }
             }).catch(err =>
             {
-                logDebug("failed to populate interpreter cache", err);
+                logger.warn("failed to populate interpreter cache", err);
             }).finally(() =>
             {
                 this._activationPromise = undefined;
             });
         }
-        logDebug("activate", this.isActive());
+        logger.info("activate", this.isActive());
         return this.isActive();
     }
 
@@ -167,7 +167,7 @@ export class ZeppelinKernel
         this._activationPromise = undefined;
 
         this._isActive = false;
-        logDebug("activate", this.isActive());
+        logger.info("activate", this.isActive());
         return this.isActive();
     }
 
@@ -195,6 +195,7 @@ export class ZeppelinKernel
 
     setService(baseURL: string)
     {
+        logger.info(`setService: connecting to ${baseURL}`);
         let userAgent = `${EXTENSION_NAME}/${getVersion(this._context)} vscode-extension/${vscode.version}`;
 
         let config = vscode.workspace.getConfiguration('zeppelin');
@@ -219,6 +220,7 @@ export class ZeppelinKernel
         {
             return;
         }
+        logger.warn("session expired — prompting user to re-authenticate");
         this._sessionExpiredPromptActive = true;
 
         // cancel all running executions
@@ -249,6 +251,7 @@ export class ZeppelinKernel
 
     private async _activateService(baseURL: string | undefined)
     {
+        logger.info(`_activateService: baseURL=${baseURL ?? '(none)'}`);
         if (!baseURL)
         {
             return this.deactivate();
@@ -334,7 +337,7 @@ export class ZeppelinKernel
 
         if (res instanceof AxiosError)
         {
-            logDebug("error in createNote", res);
+            logger.error("error in createNote", res);
             if (res.response?.status === 500)
             {
                 vscode.window.showErrorMessage(
@@ -353,7 +356,7 @@ export class ZeppelinKernel
     public async importNote(note: any) {
         let res = await this._service?.importNote(note);
 
-        logDebug("error in importNote", res);
+        logger.debug("importNote response", res);
         if (res instanceof AxiosError)
         {
             return undefined;
@@ -384,7 +387,7 @@ export class ZeppelinKernel
         }
         else if (res?.status === 500 || res?.status === 404)
         {
-            logDebug("error in getNoteInfo", res);
+            logger.error("error in getNoteInfo", res);
             vscode.window.showErrorMessage(
                 `Unable to get note info: '${noteId}' doesn't exist on the server`);
             return;
@@ -467,7 +470,7 @@ export class ZeppelinKernel
             }
             else
             {
-                logDebug(
+                logger.debug(
                     `Unable to get paragraph info ${cell.metadata.id} 
                     in note '${cell.notebook.metadata.name}'`, res
                 );
@@ -479,6 +482,7 @@ export class ZeppelinKernel
             paragraph = res?.data.body ?? res?.data;
         }
 
+        logger.debug(`getParagraphInfo: got paragraph ${cell.metadata.id}, status=${paragraph.status}`);
         this.pollUpdateCellMetadata(cell, paragraph);
         return paragraph;
     }
@@ -550,17 +554,17 @@ export class ZeppelinKernel
     {
         if (this._editWithoutParagraphUpdateDepth > 0)
         {
-            logDebug("registerParagraphUpdate: cell not to be updated", cell);
+            logger.debug("registerParagraphUpdate: cell not to be updated", cell);
             return;
         }
 
         if (cell.metadata.resolvingDiff)
         {
-            logDebug("registerParagraphUpdate: cell is resolving diff, skipped", cell);
+            logger.warn("registerParagraphUpdate: cell is resolving diff, skipped", cell);
             return;
         }
 
-        logDebug("registerParagraphUpdate", cell);
+        logger.debug("registerParagraphUpdate", cell);
 
         return this._updateMutex.runExclusive(async () =>
         {
@@ -598,7 +602,7 @@ export class ZeppelinKernel
      */
     public async unregisterParagraphUpdate(cell: vscode.NotebookCell)
     {
-        logDebug("unregisterParagraphUpdate", cell);
+        logger.debug("unregisterParagraphUpdate", cell);
         return this._updateMutex.runExclusive(async () =>
         {
             return this._mapUpdateParagraph.delete(cell);
@@ -611,12 +615,12 @@ export class ZeppelinKernel
      */
     private _unregisterParagraphUpdateDirect(cell: vscode.NotebookCell)
     {
-        logDebug("_unregisterParagraphUpdateDirect", cell);
+        logger.debug("_unregisterParagraphUpdateDirect", cell);
         return this._mapUpdateParagraph.delete(cell);
     }
 
     public async updatePollingParagraphsDirect() {
-        logDebug("updatePollingParagraphsDirect", this._mapUpdateParagraph);
+        logger.debug("updatePollingParagraphsDirect", this._mapUpdateParagraph);
         // let notebookCells = Array.from(this._mapUpdateParagraph.keys());
         return this._updateMutex.runExclusive(async () => {
             // Promise.all(notebookCells.map(this.updateParagraph.bind(this)))
@@ -624,7 +628,7 @@ export class ZeppelinKernel
             {
                 await this._updateParagraph(cell);
             }
-            logDebug("updatePollingParagraphsDirect ends");
+            logger.debug("updatePollingParagraphsDirect ends");
         });
     }
 
@@ -649,12 +653,12 @@ export class ZeppelinKernel
         let config = vscode.workspace.getConfiguration('zeppelin');
         let throttleTime: number = config.get('autosave.throttleTime', 3);
 
-        logDebug("_doUpdatePollingParagraphs", this._mapUpdateParagraph);
+        logger.debug("_doUpdatePollingParagraphs", this._mapUpdateParagraph);
         for (let [cell, entry] of this._mapUpdateParagraph)
         {
             if (cell.metadata.resolvingDiff || cell.metadata.syncConflict !== undefined)
             {
-                logDebug("_doUpdatePollingParagraphs: cell has conflict or resolving diff, skipped", cell);
+                logger.warn("_doUpdatePollingParagraphs: cell has conflict or resolving diff, skipped", cell);
                 continue;
             }
             let requestTime = entry.requestTime;
@@ -662,7 +666,7 @@ export class ZeppelinKernel
                 && throttleTime * 1000 < Date.now() - requestTime) {
                 if (cell.index < 0)
                 {
-                    logDebug("_doUpdatePollingParagraphs: deleted cell", cell);
+                    logger.debug("_doUpdatePollingParagraphs: deleted cell", cell);
                 }
                 await this.updateParagraph(cell);
             }
@@ -914,12 +918,12 @@ export class ZeppelinKernel
         return await this._updateMutex.runExclusive(async () => {
 
         this._registerSyncNote(note);
-        logDebug("syncNote start");
+        logger.info("syncNote start");
 
         let serverNote = await this.getNoteInfo(note);
         if (serverNote === undefined)
         {
-            logDebug("syncNote failed");
+            logger.warn("syncNote failed");
             this._unregisterSyncNote(note);
             return;
         }
@@ -1054,7 +1058,7 @@ export class ZeppelinKernel
         });
 
         this._unregisterSyncNote(note);
-        logDebug("syncNote end");
+        logger.info("syncNote end");
     });
     }
 
@@ -1073,7 +1077,7 @@ export class ZeppelinKernel
         {
             return;
         }
-        logDebug(`remote cell revision accepted`, cell);
+        logger.info(`remote cell revision accepted`, cell);
 
         let serverCellData = parseParagraphToCellData(conflict);
         // Clear the conflict and resolving markers on the replacement cell
@@ -1100,7 +1104,7 @@ export class ZeppelinKernel
         {
             return;
         }
-        logDebug(`local cell revision accepted`, cell);
+        logger.info(`local cell revision accepted`, cell);
 
         // Clear conflict markers
         await this.editWithoutParagraphUpdate(async () =>
@@ -1118,7 +1122,7 @@ export class ZeppelinKernel
         }
         catch (err)
         {
-            logDebug("acceptLocalCell: error pushing local text to server", err);
+            logger.error("acceptLocalCell: error pushing local text to server", err);
             vscode.window.showErrorMessage(
                 `Failed to push local changes to server: ${err instanceof Error ? err.message : err}`
             );
@@ -1187,7 +1191,7 @@ export class ZeppelinKernel
         );
         if (res instanceof AxiosError)
         {
-            logDebug("error in updateParagraphText", res);
+            logger.error("error in updateParagraphText", res);
             await this.editWithoutParagraphUpdate(async () => {
                 await this.updateCellMetadata(cell, {"status": res.response?.status});
             })
@@ -1218,14 +1222,14 @@ export class ZeppelinKernel
         );
         if (res instanceof AxiosError)
         {
-            logDebug("error in updateParagraphConfig", res);
+            logger.error("error in updateParagraphConfig", res);
             await this.editWithoutParagraphUpdate(async () => {
                 await this.updateCellMetadata(cell, {"status": res.response?.status});
             });
             throw res;
         }
 
-        logDebug(`UpdateParagraphConfig: pollUpdateCellMetadata`);
+        logger.debug(`UpdateParagraphConfig: pollUpdateCellMetadata`);
         await this.pollUpdateCellMetadata(cell, res?.data.body);
     }
 
@@ -1235,7 +1239,7 @@ export class ZeppelinKernel
             // local changes until the user resolves the conflict.
             if (cell.metadata.syncConflict !== undefined)
             {
-                logDebug("updateParagraph: cell has sync conflict, skipped", cell);
+                logger.warn("updateParagraph: cell has sync conflict, skipped", cell);
                 this._unregisterParagraphUpdateDirect(cell);
                 return;
             }
@@ -1243,7 +1247,7 @@ export class ZeppelinKernel
             // index = -1: cell has been deleted from notebook
             if (cell.index === -1)
             {
-                logDebug(`updateParagraph: cell to be deleted`, cell);
+                logger.debug(`updateParagraph: cell to be deleted`, cell);
                 this.cellStatusBar?.untrackCell(cell);
                 this._service?.deleteParagraph(
                     cell.notebook.metadata.id, cell.metadata.id
@@ -1251,7 +1255,7 @@ export class ZeppelinKernel
 
                 this._mapUpdateParagraph.delete(cell);
 
-                logDebug(`updateParagraph: sync cell metadata`, cell);
+                logger.debug(`updateParagraph: sync cell metadata`, cell);
                 await this.updateNoteMetadata(
                     cell.notebook,
                     await this.getNoteInfo(cell.notebook) ?? {}
@@ -1262,9 +1266,9 @@ export class ZeppelinKernel
             // create corresponding paragraph when a cell is newly created
             if (cell.metadata.id === undefined)
             {
-                logDebug(`updateParagraph: cell to be created`, cell);
+                logger.debug(`updateParagraph: cell to be created`, cell);
                 await this.createParagraph(cell);
-                logDebug(`updateParagraph: sync cell metadata`, cell);
+                logger.debug(`updateParagraph: sync cell metadata`, cell);
                 await this.updateNoteMetadata(
                     cell.notebook,
                     await this.getNoteInfo(cell.notebook) ?? {}
@@ -1275,12 +1279,12 @@ export class ZeppelinKernel
                 cell.notebook.metadata.paragraphs.findIndex(
                     (paragraph: ParagraphData) => paragraph.id === cell.metadata.id))
             {
-                logDebug(`updateParagraph: cell position to be changed`, cell);
+                logger.debug(`updateParagraph: cell position to be changed`, cell);
                 // cell index has changed, update to server
                 await this.getService()?.moveParagraphToIndex(
                     cell.notebook.metadata.id, cell.metadata.id, cell.index
                 );
-                logDebug(`updateParagraph: sync cell metadata`, cell);
+                logger.debug(`updateParagraph: sync cell metadata`, cell);
                 await this.updateNoteMetadata(
                     cell.notebook,
                     await this.getNoteInfo(cell.notebook) ?? {}
@@ -1316,7 +1320,7 @@ export class ZeppelinKernel
                     {
                         // Server changed independently — flag conflict
                         // instead of pushing.
-                        logDebug("updateParagraph: server changed independently, flagging sync conflict");
+                        logger.warn("updateParagraph: server changed independently, flagging sync conflict");
                         await this.editWithoutParagraphUpdate(async () => {
                             await this.updateCellMetadata(cell, {
                                 syncConflict: serverParagraph
@@ -1328,9 +1332,9 @@ export class ZeppelinKernel
                     }
                 }
 
-                logDebug("updateParagraph: updateParagraphConfig");
+                logger.debug("updateParagraph: updateParagraphConfig");
                 let res = await this.updateParagraphConfig(cell);
-                logDebug("updateParagraph: updateParagraphText");
+                logger.debug("updateParagraph: updateParagraphText");
                 res = await this.updateParagraphText(cell);
             }
 
@@ -1343,7 +1347,7 @@ export class ZeppelinKernel
             }
         } catch (err)
         {
-            logDebug("error in _updateParagraph", err);
+            logger.error("error in _updateParagraph", err);
             if (cell.metadata.id === undefined)
             {
                 // retry creating cell
@@ -1396,7 +1400,7 @@ export class ZeppelinKernel
         let interpreterMap = this._mapInterpreterCache;
         if (interpreterMap === undefined)
         {
-            logDebug("autoDetectCellLanguage: interpreter cache not available, skipping");
+            logger.warn("autoDetectCellLanguage: interpreter cache not available, skipping");
             return;
         }
 
@@ -1413,7 +1417,7 @@ export class ZeppelinKernel
 
         if (vscLang === undefined)
         {
-            logDebug(`autoDetectCellLanguage: unknown interpreter '${fullInterpreterId}'`);
+            logger.warn(`autoDetectCellLanguage: unknown interpreter '${fullInterpreterId}'`);
             return;
         }
 
@@ -1454,11 +1458,11 @@ export class ZeppelinKernel
                 });
             });
 
-            logDebug(`autoDetectCellLanguage: set language to '${vscLang}'`);
+            logger.debug(`autoDetectCellLanguage: set language to '${vscLang}'`);
         }
         catch (err)
         {
-            logDebug('_applyCellLanguage error', err);
+            logger.error('_applyCellLanguage error', err);
             vscode.window.showWarningMessage(
                 `Unable to auto-detect cell language '${vscLang}'. `
                 + `Please select it manually.`

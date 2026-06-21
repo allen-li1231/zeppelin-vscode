@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
+import { logger } from './logger';
 import {
     mapLanguage,
     mapLanguageKind,
     mapZeppelinLanguage,
     reInterpreter,
-    logDebug
 } from '../common/common';
 import {
     ParagraphData,
@@ -135,7 +135,7 @@ export function parseCellOutputsToParagraphResult(
                 outputContents = new TextDecoder().decode(output.data);
             } catch(err) {
                 // pass
-                logDebug("error in decoding output data", err);
+                logger.error("error in decoding output data", err);
                 throw err;
             }
 
@@ -171,7 +171,7 @@ export function parseCellOutputsToParagraphResult(
                     type: msgType
                 });
             } catch(err) {
-                logDebug("error in parsing output countents to JSON", err);
+                logger.error("error in parsing output countents to JSON", err);
                 throw err;
             }
         }

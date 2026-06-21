@@ -153,6 +153,26 @@
           "default": 5,
           "description": "Set minimum interval (in seconds) to track interpreter status."
         },
+        "zeppelin.logLevel": {
+          "order": 7,
+          "type": "string",
+          "default": "info",
+          "enum": [
+            "debug",
+            "info",
+            "warn",
+            "error",
+            "off"
+          ],
+          "enumDescriptions": [
+            "Verbose internal tracing (mutex locks, paragraph registration, etc.)",
+            "Lifecycle events and notable actions (activation, sync, cache population)",
+            "Recoverable problems and skipped operations",
+            "Failures requiring user attention",
+            "Disable all logging"
+          ],
+          "description": "Controls the verbosity of Zeppelin extension logging in the Output panel."
+        },
         "zeppelin.proxy.loadEnvironmentVariable": {
           "order": 7,
           "type": "boolean",
