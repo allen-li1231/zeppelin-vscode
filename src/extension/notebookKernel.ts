@@ -883,6 +883,14 @@ export class ZeppelinKernel
 
         // if (cell.document.languageId !== serverCellData.languageId) { return true; }
 
+        // Skip results comparison for cells with active executions —
+        // the execution manager handles output updates independently
+        // and cell.metadata.results may be stale until execution ends.
+        if (this._executionManager?.getExecutionByParagraphId(serverParagraph.id))
+        {
+            return false;
+        }
+
         // Compare execution results stored in metadata
         let localResults = cell.metadata.results;
         let serverResults = serverParagraph.results;
