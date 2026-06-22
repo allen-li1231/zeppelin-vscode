@@ -569,9 +569,11 @@ export class ExecutionManager
             return this._cancelToken(execution);
         });
 
+        execution.start(Date.now());
+
         try
         {
-            this.kernel.runParagraph(cell, true);
+            await this.kernel.runParagraph(cell, true);
         }
         catch (err)
         {
@@ -646,7 +648,7 @@ export class ExecutionManager
             }
             else 
             {
-                this.kernel.runParagraph(cell, false);
+                await this.kernel.runParagraph(cell, false);
             }
         }
         catch (err)
