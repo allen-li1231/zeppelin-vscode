@@ -316,6 +316,97 @@ describe('ExecutionManager Test Suite', () => {
         });
     });
 
+    // ── resumeExecutionStatus ────────────────────────────────────────────────
+
+    describe('resumeExecutionStatus', () => {
+
+        it('keeps existing started execution instead of creating a new one', async () => {
+            const cell = createMockCell({ id: 'para_500', status: 'RUNNING' });
+            const execution = new ZeppelinExecution(kernel as any, cell as any);
+            execution.start(Date.now());
+            manager.registerTrackExecution(execution);
+
+            let createCallCount = 0;
+            const origCreate = kernel._controller.createNotebookCellExecution;
+            kernel._controller.createNotebookCellExecution = (c: any) => {
+                createCallCount++;
+                return origCreate(c);
+            };
+
+            const serverCell = new vscode.NotebookCellData(
+                vscode.NotebookCellKind.Code, '%python\\nprint(\"hello\")\\n', 'python'
+            );
+            serverCell.metadata = { id: 'para_500', status: 'RUNNING' };
+
+            await manager.resumeExecutionStatus(cell as any, serverCell);
+
+            // The original execution should still be tracked
+            assert.strictEqual(
+                manager.getExecutionByParagraphId('para_500'),
+                execution
+            );
+            // No new execution should have been created
+            assert.strictEqual(createCallCount, 0);
+            assert.strictEqual(execution.state, STATE_STARTED);
+        });
+
+        it('keeps existing init-state execution instead of creating a new one', async () => {
+            const cell = createMockCell({ id: 'para_501', status: 'PENDING' });
+            const execution = new ZeppelinExecution(kernel as any, cell as any);
+            manager.registerTrackExecution(execution);
+
+            let createCallCount = 0;
+            const origCreate = kernel._controller.createNotebookCellExecution;
+            kernel._controller.createNotebookCellExecution = (c: any) => {
+                createCallCount++;
+                return origCreate(c);
+            };
+
+            const serverCell = new vscode.NotebookCellData(
+                vscode.NotebookCellKind.Code, '%python\\nprint(\"hello\")\\n', 'python'
+            );
+            serverCell.metadata = { id: 'para_501', status: 'PENDING' };
+
+            await manager.resumeExecutionStatus(cell as any, serverCell);
+
+            assert.strictEqual(
+                manager.getExecutionByParagraphId('para_501'),
+                execution
+            );
+            assert.strictEqual(createCallCount, 0);
+            assert.strictEqual(execution.state, STATE_INIT);
+        });
+
+        it('creates new execution when previous one is resolved', async () => {
+            const cell = createMockCell({
+                id: 'para_502', status: 'FINISHED',
+            });
+            (cell.metadata as any).dateStarted = new Date().toISOString();
+            (cell.metadata as any).dateFinished = new Date().toISOString();
+
+            const oldExecution = new ZeppelinExecution(kernel as any, cell as any);
+            oldExecution.start(Date.now());
+            oldExecution.end(true, Date.now());
+            manager.registerTrackExecution(oldExecution);
+
+            const serverCell = new vscode.NotebookCellData(
+                vscode.NotebookCellKind.Code, '%python\\nprint(\"hello\")\\n', 'python'
+            );
+            serverCell.metadata = { id: 'para_502', status: 'FINISHED' };
+            serverCell.outputs = [
+                new vscode.NotebookCellOutput([
+                    vscode.NotebookCellOutputItem.text('hello')
+                ])
+            ];
+
+            await manager.resumeExecutionStatus(cell as any, serverCell);
+
+            const newExecution = manager.getExecutionByParagraphId('para_502');
+            // A new execution should have been created (old one was resolved)
+            assert.ok(newExecution === undefined || newExecution !== oldExecution);
+        });
+    });
+
     // ── trackExecution ──────────────────────────────────────────────────────
 
     describe('trackExecution', () => {
