@@ -312,7 +312,7 @@ export class ExecutionManager
 
         if (this.kernel.hasPendingParagraphUpdate(execution.cell))
         {
-            this.kernel.updatePollingParagraphsDirect();
+            await this.kernel.updatePollingParagraphsDirect();
         }
 
         if (execution.state === ZeppelinExecutionState.resolved)
@@ -353,12 +353,8 @@ export class ExecutionManager
         if (paragraph.status !== "PENDING"
             && execution.state === ZeppelinExecutionState.init)
         {
-            let startTime: number = Date.now();
-            if (execution.state === ZeppelinExecutionState.init)
-            {
-                execution.start(startTime);
-                this.registerTrackExecution(execution);
-            }
+            execution.start(Date.now());
+            this.registerTrackExecution(execution);
         }
 
         let pbText: string = '';
@@ -644,6 +640,10 @@ export class ExecutionManager
             {
                 logger.debug("_doExecutionAsync omit running/non-existent paragraph",
                     paragraph);
+                // Properly dispose the VS Code execution to avoid
+                // a leaked pending spinner and blocking future runs.
+                execution.start(Date.now());
+                execution.end(undefined, Date.now());
                 return
             }
             else 
@@ -717,7 +717,7 @@ export class ExecutionManager
         }
         else if (serverCell?.metadata?.status !== "PENDING")
         {
-            startTime = Date.parse(cell.metadata.dateStarted);
+            startTime = Date.parse(cell.metadata.dateStarted) || Date.now();
             newExecution.start(startTime);
             this.registerTrackExecution(newExecution);
         }
