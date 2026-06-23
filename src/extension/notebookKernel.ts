@@ -113,6 +113,7 @@ export class ZeppelinKernel
             //     }
             // }
 
+            this._executionManager?.attachHandlers();
             this._executionManager?.scheduleTracking();
             this.cellStatusBar?.scheduleTracking();
 

@@ -178,15 +178,26 @@ export class ExecutionManager
     constructor(kernel: ZeppelinKernel)
     {
         this.kernel = kernel;
-		kernel.getController().executeHandler = 
-            this._executeAll.bind(this);
-		kernel.getController().interruptHandler = this._interruptAll.bind(this);
+        this.attachHandlers();
         this._mapInterpreterQueue.set('', new Mutex("interpreter default"));
+    }
+
+    /**
+     * (Re-)install executeHandler and interruptHandler on the notebook
+     * controller.  Called from the constructor and again after
+     * deactivate → activate so the Run / Stop buttons keep working
+     * after a session-expiry cycle.
+     */
+    public attachHandlers(): void
+    {
+        this.kernel.getController().executeHandler =
+            this._executeAll.bind(this);
+        this.kernel.getController().interruptHandler =
+            this._interruptAll.bind(this);
     }
 
     dispose(): void
     {
-        this.kernel.getController().executeHandler = () => {};
         this.unscheduleTracking();
         this._mapTrackExecution.clear();
         this._mapInterpreterQueue.clear();
