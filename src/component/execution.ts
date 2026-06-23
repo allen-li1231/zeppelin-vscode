@@ -215,7 +215,12 @@ export class ExecutionManager
             this.unregisterTrackExecution(execution);
         }
 
-        this.kernel.stopParagraph(execution.cell);
+        this.kernel.stopParagraph(execution.cell).catch(err =>
+        {
+            logger.error("_cancelToken: stopParagraph failed, ending execution", err);
+            this.unregisterTrackExecution(execution);
+            execution.end(false, Date.now());
+        });
     }
 
     public isTrackingScheduled()
