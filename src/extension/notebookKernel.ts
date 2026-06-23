@@ -51,7 +51,7 @@ export class ZeppelinKernel
     private _mapSyncNote = new Map<
         vscode.NotebookDocument, number
     >();
-    private _mapNotebookEdits = new Map<vscode.NotebookCell, vscode.NotebookEdit[]>();
+    private _mapNotebookMetadataPatch = new Map<vscode.NotebookCell, { [key: string]: any }>();
     private _mapUpdateParagraph = new Map<vscode.NotebookCell, { requestTime: number, baseText: string }>();
     private _editWithoutParagraphUpdateDepth = 0;
     private _mapInterpreterCache: Map<string, string> | undefined;
@@ -770,21 +770,21 @@ export class ZeppelinKernel
         return this.editWithoutParagraphUpdate(async () => {
             if (cell.index === -1)
             {
-                this._mapNotebookEdits.delete(cell);
+                this._mapNotebookMetadataPatch.delete(cell);
                 return;
             }
 
-            let edit = vscode.NotebookEdit.updateCellMetadata(
-                cell.index,
-                // update based on new metadata provided
-                Object.assign({}, cell.metadata, metadata)
-            );
-            if (this._mapNotebookEdits.has(cell))
+            // Accumulate partial patches so that successive calls
+            // (e.g. {status} then {results}) merge into one patch
+            // instead of each snapshot overwriting the other's fields.
+            let existing = this._mapNotebookMetadataPatch.get(cell);
+            if (existing !== undefined)
             {
-                this._mapNotebookEdits.get(cell)?.push(edit);
+                Object.assign(existing, metadata);
             }
-            else {
-                this._mapNotebookEdits.set(cell, [edit]);
+            else
+            {
+                this._mapNotebookMetadataPatch.set(cell, { ...metadata });
             }
         })
     }
@@ -1155,7 +1155,7 @@ export class ZeppelinKernel
 
     public async applyPolledNotebookEdits() {
         return this.editWithoutParagraphUpdate(async () => {
-            for (let [cell, edits] of this._mapNotebookEdits)
+            for (let [cell, patch] of this._mapNotebookMetadataPatch)
             {
                 if (cell.metadata.resolvingDiff
                     || cell.metadata.syncConflict !== undefined)
@@ -1163,11 +1163,18 @@ export class ZeppelinKernel
                     continue
                 }
 
+                // Build the edit from the CURRENT cell.metadata merged
+                // with the accumulated patch, so we never overwrite
+                // live fields with a stale snapshot.
+                let edit = vscode.NotebookEdit.updateCellMetadata(
+                    cell.index,
+                    Object.assign({}, cell.metadata, patch)
+                );
                 let editor = new vscode.WorkspaceEdit();
-                editor.set(cell.document.uri, edits);
+                editor.set(cell.document.uri, [edit]);
                 await vscode.workspace.applyEdit(editor);
             }
-            this._mapNotebookEdits.clear();
+            this._mapNotebookMetadataPatch.clear();
         })
     }
 
