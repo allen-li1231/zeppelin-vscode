@@ -765,7 +765,7 @@ export class ExecutionManager
             );
             if (serverCell?.outputs)
             {
-                execution.replaceOutput(serverCell.outputs);
+                await execution.replaceOutput(serverCell.outputs);
             }
             this.registerTrackExecution(execution);
             return;
@@ -798,11 +798,11 @@ export class ExecutionManager
         {
             if (serverCell?.outputs)
             {
-                newExecution.replaceOutput(serverCell?.outputs);
+                await newExecution.replaceOutput(serverCell?.outputs);
             }
             else
             {
-                newExecution.clearOutput();
+                await newExecution.clearOutput();
             }
 
             newExecution.end(
@@ -815,7 +815,7 @@ export class ExecutionManager
             // Still sync remote outputs for RUNNING/PENDING cells
             if (serverCell?.outputs)
             {
-                newExecution.replaceOutput(serverCell.outputs);
+                await newExecution.replaceOutput(serverCell.outputs);
             }
             this.registerTrackExecution(newExecution);
         }

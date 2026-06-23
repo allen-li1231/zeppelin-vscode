@@ -966,6 +966,7 @@ export class ZeppelinKernel
             }
 
             // --- Phase 1: In-place updates for matched cells ---
+            let resumePromises: Promise<void>[] = [];
             for (let cell of note.getCells())
             {
                 let serverParagraph = serverParagraphMap.get(cell.metadata.id);
@@ -1004,7 +1005,12 @@ export class ZeppelinKernel
                 }
 
                 // Resume execution status for this cell
-                this._executionManager?.resumeExecutionStatus(cell, serverCellData);
+                if (this._executionManager)
+                {
+                    resumePromises.push(
+                        this._executionManager.resumeExecutionStatus(cell, serverCellData)
+                    );
+                }
             }
 
             // --- Phase 2: Insert server-only paragraphs ---
@@ -1054,13 +1060,22 @@ export class ZeppelinKernel
                 {
                     if (cell.metadata.id === paragraphId)
                     {
-                        this._executionManager?.resumeExecutionStatus(
-                            cell, ins.cellData
-                        );
+                        if (this._executionManager)
+                        {
+                            resumePromises.push(
+                                this._executionManager.resumeExecutionStatus(
+                                    cell, ins.cellData
+                                )
+                            );
+                        }
                         break;
                     }
                 }
             }
+
+            // Wait for all resumeExecutionStatus calls to complete
+            // before releasing the sync lock.
+            await Promise.all(resumePromises);
 
             // Update note-level metadata with server info
             await this.updateNoteMetadata(note, serverNote);
