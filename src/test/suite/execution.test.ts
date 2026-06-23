@@ -496,4 +496,63 @@ describe('ExecutionManager Test Suite', () => {
             assert.strictEqual(execution.state, STATE_RESOLVED);
         });
     });
+
+    // ── attachHandlers (Fix #1 regression) ───────────────────────────────────
+
+    describe('attachHandlers', () => {
+
+        it('re-installs executeHandler after dispose + attachHandlers', () => {
+            // Simulate session expiry: dispose clears tracking but
+            // should NOT permanently disable the handler.
+            manager.dispose();
+
+            // After dispose, handler is still the bound function (no longer cleared).
+            // But let's explicitly call attachHandlers to simulate activate():
+            manager.attachHandlers();
+
+            // The handler should be a function (not undefined/noop)
+            const handler = kernel._controller.executeHandler;
+            assert.ok(typeof handler === 'function');
+
+            // Verify it's actually the manager's handler by checking
+            // it doesn't throw when called with valid args on inactive kernel
+            kernel._isActive = false;
+            // Should not throw — just show warning (mocked)
+            handler([], { metadata: {} }, kernel._controller);
+        });
+    });
+
+    // ── cancelAllExecutions ──────────────────────────────────────────────────
+
+    describe('cancelAllExecutions', () => {
+
+        it('ends all tracked executions and clears the map', () => {
+            const cell1 = createMockCell({ id: 'para_cancel_1', status: 'READY' });
+            const cell2 = createMockCell({ id: 'para_cancel_2', status: 'READY' });
+            const exec1 = new ZeppelinExecution(kernel as any, cell1 as any);
+            const exec2 = new ZeppelinExecution(kernel as any, cell2 as any);
+            exec1.start(Date.now());
+            exec2.start(Date.now());
+            manager.registerTrackExecution(exec1);
+            manager.registerTrackExecution(exec2);
+
+            manager.cancelAllExecutions();
+
+            assert.strictEqual(exec1.state, STATE_RESOLVED);
+            assert.strictEqual(exec2.state, STATE_RESOLVED);
+            assert.strictEqual(manager.getExecutionByParagraphId('para_cancel_1'), undefined);
+            assert.strictEqual(manager.getExecutionByParagraphId('para_cancel_2'), undefined);
+        });
+
+        it('handles init-state executions (starts then ends them)', () => {
+            const cell = createMockCell({ id: 'para_cancel_init', status: 'READY' });
+            const exec = new ZeppelinExecution(kernel as any, cell as any);
+            // Don't call start — leave in init state
+            manager.registerTrackExecution(exec);
+
+            manager.cancelAllExecutions();
+
+            assert.strictEqual(exec.state, STATE_RESOLVED);
+        });
+    });
 });
