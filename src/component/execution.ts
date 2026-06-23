@@ -801,6 +801,7 @@ export class ExecutionManager
         if ((serverCell?.metadata?.status !== "RUNNING")
             && (serverCell?.metadata?.status !== "PENDING"))
         {
+            this.unregisterTrackExecution(newExecution);
             if (serverCell?.outputs)
             {
                 await newExecution.replaceOutput(serverCell?.outputs);
