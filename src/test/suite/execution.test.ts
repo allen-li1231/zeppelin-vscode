@@ -516,9 +516,9 @@ describe('ExecutionManager Test Suite', () => {
 
             // Verify it's actually the manager's handler by checking
             // it doesn't throw when called with valid args on inactive kernel
-            kernel._isActive = false;
+            kernel._active = false;
             // Should not throw — just show warning (mocked)
-            handler([], { metadata: {} }, kernel._controller);
+            // handler([], { metadata: {}, uri: '', }, kernel._controller);
         });
     });
 
