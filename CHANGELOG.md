@@ -347,6 +347,7 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 - [`updateMutex` and `editMutex` made private; developer now use `isEditLocked()` / `isUpdateLocked()` accessor methods](https://github.com/allen-li1231/zeppelin-vscode/commit/76471af69fcf77b137e0fbc807636d1d45480fbe).
 
 
+
 ## [0.2.25] - 2026-06-22
 
 ### Fixed
@@ -357,3 +358,15 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 - [Leaked `NotebookCellExecution` in `_doExecutionAsync`: when a paragraph was already running or undefined](https://github.com/allen-li1231/zeppelin-vscode/commit/67401170ed3a3618e849d5e5613ce84d0ced67ea), the early return abandoned the VS Code execution object without calling `start()`/`end()`, causing a perpetual pending spinner and blocking future runs on that cell.
 - [Missing `await` on `updatePollingParagraphsDirect()` in `trackExecution`](https://github.com/allen-li1231/zeppelin-vscode/commit/f83a33ca93cfcbee5f3520efc1e0727fd6318bcd), causing `getParagraphInfo()` to read stale server state before pending local edits were pushed.
 - [`NaN` start time passed to `execution.start()` in `resumeExecutionStatus` when `cell.metadata.dateStarted` was undefined; now falls back to `Date.now()`](https://github.com/allen-li1231/zeppelin-vscode/commit/67401170ed3a3618e849d5e5613ce84d0ced67ea).
+
+
+
+## [0.2.26] - 2026-06-23
+
+### Fixed
+- [Missed unregistered execution triggered by `syncNote`](https://github.com/allen-li1231/zeppelin-vscode/commit/b45de34cf790cb6d351d44253d81a5be5a882b58), in response to #38.
+- [`executeHandler` was permanently disabled after session expiry](https://github.com/allen-li1231/zeppelin-vscode/commit/1b50a7b8e876c7cedc64664d4e5fd964111f81c9)
+, now `executeHandler`/`interruptHandler` on `activate()` is re-installed, `dispose()` no longer clears the handlers; `attachHandlers()` is called from the constructor and again on re-activation.
+- [Duplicate `vscode.NotebookCellExecution` for the same cell (TOCTOU)](https://github.com/allen-li1231/zeppelin-vscode/commit/7642bbb6c952bf0afe65d8df619f26078b627fbb), now in `_doExecutionSync`, moved `updatePollingParagraphsDirect()` after the synchronous check→construct→start→register block. In `_doExecutionAsync`, deferred `ZeppelinExecution` construction until after all early-return checks/awaits, then does construct→start→register synchronously. Added a re-check after awaits.
+- [`await Promise.all(...)` for `resumeExecutionStatus` in `syncNote`](https://github.com/allen-li1231/zeppelin-vscode/commit/ca3c96a0171689735854c685306ef17579a99da0) — collected all promises from both phase-1 and phase-2 resume calls, awaited them before releasing the sync lock. Also `await`ed `replaceOutput`/`clearOutput` Thenables inside `resumeExecutionStatus`.
+- [Patch-merge accumulator in `pollUpdateCellMetadata`](https://github.com/allen-li1231/zeppelin-vscode/commit/42be70e3e501e016ced666d7769c1ed39425572c) — replaced `_mapNotebookEdits` (array of pre-built NotebookEdits) with `_mapNotebookMetadataPatch` (accumulated metadata patch object). The `NotebookEdit` is now built at flush time from current `cell.metadata`.
