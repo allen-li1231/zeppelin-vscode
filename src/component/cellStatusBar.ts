@@ -24,15 +24,19 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
     provideCellStatusBarItems(cell: vscode.NotebookCell):
         vscode.ProviderResult<vscode.NotebookCellStatusBarItem | vscode.NotebookCellStatusBarItem[]> {
 
-        if (!this.kernel.isActive()
-            || !isLocalNotebookCell(cell.document.uri)
-            // || cell.kind === vscode.NotebookCellKind.Markup
-            || this.kernel.isNoteSyncing(cell.notebook)
-            || this.kernel.hasPendingParagraphUpdate(cell)) {
+        if (!isLocalNotebookCell(cell.document.uri)) {
             return [];
         }
 
         return this._cellStatusUpdateMutex.runExclusive(async () => {
+            // Re-check kernel state inside the mutex to avoid TOCTOU races
+            // where the state changes between the outer check and lock acquisition.
+            if (!this.kernel.isActive()
+                || this.kernel.isNoteSyncing(cell.notebook)
+                || this.kernel.hasPendingParagraphUpdate(cell)) {
+                return [];
+            }
+
             this._setCell.add(cell);
             const items: vscode.NotebookCellStatusBarItem[] = [];
 
@@ -190,7 +194,9 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
     }
 
     public async untrackCell(cell: vscode.NotebookCell) {
-        return this._setCell.delete(cell);
+        return this._cellStatusUpdateMutex.runExclusive(async () => {
+            return this._setCell.delete(cell);
+        });
     }
 
     public async doUpdateVisibleCells() {
@@ -251,30 +257,33 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
                     // quick tab switches.
                     if (paragraph !== undefined)
                     {
-                        let serverText = paragraph.text ?? '';
-                        let localText = cell.document.getText();
-                        if (serverText !== localText
-                            && cell.metadata.syncConflict?.text !== serverText)
-                        {
-                            await this.kernel.editWithoutParagraphUpdate(async () => {
-                                await this.kernel.updateCellMetadata(cell, {
-                                    syncConflict: paragraph
+                        // Acquire _cellStatusUpdateMutex so that metadata
+                        // reads and writes here are atomic with respect to
+                        // provideCellStatusBarItems(), preventing it from
+                        // seeing half-updated syncConflict / status fields.
+                        await this._cellStatusUpdateMutex.runExclusive(async () => {
+                            let serverText = paragraph.text ?? '';
+                            let localText = cell.document.getText();
+                            if (serverText !== localText
+                                && cell.metadata.syncConflict?.text !== serverText)
+                            {
+                                await this.kernel.editWithoutParagraphUpdate(async () => {
+                                    await this.kernel.updateCellMetadata(cell, {
+                                        syncConflict: paragraph
+                                    });
                                 });
-                            });
-                        }
-                        else if (serverText === localText
-                            && cell.metadata.syncConflict !== undefined)
-                        {
-                            // Server and local now match — clear the conflict marker
-                            // let meta = { ...cell.metadata };
-                            // delete meta.syncConflict;
-                            // delete meta.resolvingDiff;
-                            await this.kernel.editWithoutParagraphUpdate(async () => {
-                                await this.kernel.removeCellMetadata(
-                                    cell, ["syncConflict", "resolvingDiff"]
-                                );
-                            });
-                        }
+                            }
+                            else if (serverText === localText
+                                && cell.metadata.syncConflict !== undefined)
+                            {
+                                // Server and local now match — clear the conflict marker
+                                await this.kernel.editWithoutParagraphUpdate(async () => {
+                                    await this.kernel.removeCellMetadata(
+                                        cell, ["syncConflict", "resolvingDiff"]
+                                    );
+                                });
+                            }
+                        });
                     }
                 }
                 catch (err) {
@@ -287,7 +296,9 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
                     }
                     logger.error("error in doUpdateVisibleCells:" + err);
                     // trigger cell status bar update
-                    await this.kernel.updateCellMetadata(cell, { status });
+                    await this._cellStatusUpdateMutex.runExclusive(async () => {
+                        await this.kernel.updateCellMetadata(cell, { status });
+                    });
                 }
             }
         }
