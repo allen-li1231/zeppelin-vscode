@@ -345,3 +345,14 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 ### Enhancement
 - [Refactor multi-level logging, configurable in settings and instead of printing to console, outputs are now in VSCode output channel](https://github.com/allen-li1231/zeppelin-vscode/commit/a0f743e1f57a178716ceb7fb90cf7a904c5bef5e).
 - [`updateMutex` and `editMutex` made private; developer now use `isEditLocked()` / `isUpdateLocked()` accessor methods](https://github.com/allen-li1231/zeppelin-vscode/commit/76471af69fcf77b137e0fbc807636d1d45480fbe).
+
+
+## [0.2.25] - 2026-06-22
+
+### Fixed
+- Missing `await` on `runParagraph` calls causing no output on remote connections (all concurrency modes).
+- Missing `execution.start()` in the sync execution path.
+- Leaked `NotebookCellExecution` in `_doExecutionAsync`: when a paragraph was already running or undefined, the early return abandoned the VS Code execution object without calling `start()`/`end()`, causing a perpetual pending spinner and blocking future runs on that cell.
+- Missing `await` on `updatePollingParagraphsDirect()` in `trackExecution`, causing `getParagraphInfo()` to read stale server state before pending local edits were pushed.
+- `NaN` start time passed to `execution.start()` in `resumeExecutionStatus` when `cell.metadata.dateStarted` was undefined; now falls back to `Date.now()`.
+- Redundant nested condition check in `trackExecution` simplified (inner `if` was always true when reached).

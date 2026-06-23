@@ -312,7 +312,7 @@ export class ExecutionManager
 
         if (this.kernel.hasPendingParagraphUpdate(execution.cell))
         {
-            this.kernel.updatePollingParagraphsDirect();
+            await this.kernel.updatePollingParagraphsDirect();
         }
 
         if (execution.state === ZeppelinExecutionState.resolved)
@@ -353,12 +353,8 @@ export class ExecutionManager
         if (paragraph.status !== "PENDING"
             && execution.state === ZeppelinExecutionState.init)
         {
-            let startTime: number = Date.now();
-            if (execution.state === ZeppelinExecutionState.init)
-            {
-                execution.start(startTime);
-                this.registerTrackExecution(execution);
-            }
+            execution.start(Date.now());
+            this.registerTrackExecution(execution);
         }
 
         let pbText: string = '';
@@ -547,6 +543,15 @@ export class ExecutionManager
             return false;
         }
 
+        // Guard against creating a duplicate execution for a cell
+        // that already has an active one (e.g. triggered by syncNote
+        // while a previous run is still in flight).
+        if (this.getExecutionByParagraphId(cell.metadata.id))
+        {
+            logger.debug("_doExecutionSync: skipping, execution already exists for cell", cell);
+            return true;
+        }
+
         await this.kernel.updatePollingParagraphsDirect();
 
         if (cell.metadata.status === 404)
@@ -569,12 +574,19 @@ export class ExecutionManager
             return this._cancelToken(execution);
         });
 
+        execution.start(Date.now());
+        // Register immediately so syncNote/resumeExecutionStatus can
+        // find this execution during the await below, preventing a
+        // duplicate createNotebookCellExecution for the same cell.
+        this.registerTrackExecution(execution);
+
         try
         {
-            this.kernel.runParagraph(cell, true);
+            await this.kernel.runParagraph(cell, true);
         }
         catch (err)
         {
+            this.unregisterTrackExecution(execution);
             let cellOutput: vscode.NotebookCellOutput;
 
             if (err instanceof AxiosError && err.code === "ERR_CANCELED")
@@ -598,7 +610,6 @@ export class ExecutionManager
             }
             return false;
         }
-        this.registerTrackExecution(execution);
 
         return true;
     }
@@ -642,11 +653,15 @@ export class ExecutionManager
             {
                 logger.debug("_doExecutionAsync omit running/non-existent paragraph",
                     paragraph);
+                // Properly dispose the VS Code execution to avoid
+                // a leaked pending spinner and blocking future runs.
+                execution.start(Date.now());
+                execution.end(undefined, Date.now());
                 return
             }
             else 
             {
-                this.kernel.runParagraph(cell, false);
+                await this.kernel.runParagraph(cell, false);
             }
         }
         catch (err)
@@ -688,17 +703,25 @@ export class ExecutionManager
         let execution: ZeppelinExecution | undefined =
             this.getExecutionByParagraphId(cell.metadata.id);
 
-        let startTime: number | undefined = this.
-            getExecutionStartTimeByParagraphId(cell.metadata.id);
-
-        if (execution !== undefined)
+        // If an active (non-resolved) execution already exists for this
+        // cell, keep tracking it — but still sync remote outputs so the
+        // cell reflects the latest server state.
+        if (execution !== undefined
+            && execution.state !== ZeppelinExecutionState.resolved)
         {
-            this.unregisterTrackExecution(execution);
-            if (execution.state === ZeppelinExecutionState.started)
+            logger.debug(
+                "resumeExecutionStatus: keep existing execution",
+                execution
+            );
+            if (serverCell?.outputs)
             {
-                execution.end(undefined);
+                execution.replaceOutput(serverCell.outputs);
             }
+            this.registerTrackExecution(execution);
+            return;
         }
+
+        let startTime: number | undefined = execution?.startTime;
 
         let newExecution = new ZeppelinExecution(this.kernel, cell);
         newExecution.token.onCancellationRequested(_ =>
@@ -715,7 +738,7 @@ export class ExecutionManager
         }
         else if (serverCell?.metadata?.status !== "PENDING")
         {
-            startTime = Date.parse(cell.metadata.dateStarted);
+            startTime = Date.parse(cell.metadata.dateStarted) || Date.now();
             newExecution.start(startTime);
             this.registerTrackExecution(newExecution);
         }
@@ -739,6 +762,11 @@ export class ExecutionManager
         }
         else
         {
+            // Still sync remote outputs for RUNNING/PENDING cells
+            if (serverCell?.outputs)
+            {
+                newExecution.replaceOutput(serverCell.outputs);
+            }
             this.registerTrackExecution(newExecution);
         }
     }
