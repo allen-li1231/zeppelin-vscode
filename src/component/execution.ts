@@ -563,14 +563,15 @@ export class ExecutionManager
             return true;
         }
 
-        await this.kernel.updatePollingParagraphsDirect();
-
         if (cell.metadata.status === 404)
         {
             promptCreateParagraph(this.kernel, cell);
             return;
         }
 
+        // Synchronous block: check → construct → start → register with
+        // no awaits in between, eliminating the TOCTOU window where a
+        // concurrent trigger could also create an execution for this cell.
         let execution: ZeppelinExecution;
         try {
             execution = new ZeppelinExecution(this.kernel, cell);
@@ -586,10 +587,11 @@ export class ExecutionManager
         });
 
         execution.start(Date.now());
-        // Register immediately so syncNote/resumeExecutionStatus can
-        // find this execution during the await below, preventing a
-        // duplicate createNotebookCellExecution for the same cell.
         this.registerTrackExecution(execution);
+
+        // Awaits happen only after registration — any concurrent path
+        // will see the execution in the map and bail out.
+        await this.kernel.updatePollingParagraphsDirect();
 
         try
         {
@@ -641,42 +643,34 @@ export class ExecutionManager
             return;
         }
 
-        await this.kernel.updatePollingParagraphsDirect();
-
         if (cell.metadata.status === 404)
         {
             promptCreateParagraph(this.kernel, cell);
             return;
         }
 
-        const execution = new ZeppelinExecution(this.kernel, cell);
-        execution.token.onCancellationRequested(_ =>
+        // Perform all awaits that could cause early returns BEFORE
+        // constructing the ZeppelinExecution.  This avoids creating
+        // (and having to immediately dispose) a VS Code execution
+        // object we never intend to use.
+        await this.kernel.updatePollingParagraphsDirect();
+
+        // Re-check after the await — another trigger may have
+        // registered an execution while we were waiting.
+        if (this.getExecutionByParagraphId(cell.metadata.id))
         {
-            return this._cancelToken(execution);
-        });
+            return;
+        }
 
+        let paragraph;
         try {
-            let paragraph = await this.kernel.getParagraphInfo(cell);
-
-            if (paragraph === undefined
-                || (paragraph.status === "RUNNING")
-                || (cell.metadata.status === "PENDING"))
-            {
-                logger.debug("_doExecutionAsync omit running/non-existent paragraph",
-                    paragraph);
-                // Properly dispose the VS Code execution to avoid
-                // a leaked pending spinner and blocking future runs.
-                execution.start(Date.now());
-                execution.end(undefined, Date.now());
-                return
-            }
-            else 
-            {
-                await this.kernel.runParagraph(cell, false);
-            }
+            paragraph = await this.kernel.getParagraphInfo(cell);
         }
         catch (err)
         {
+            // Cannot even query paragraph status — create a transient
+            // execution just to surface the error, then dispose it.
+            const execution = new ZeppelinExecution(this.kernel, cell);
             execution.start(Date.now());
             let cellOutput: vscode.NotebookCellOutput;
 
@@ -702,9 +696,54 @@ export class ExecutionManager
             return;
         }
 
+        if (paragraph === undefined
+            || (paragraph.status === "RUNNING")
+            || (cell.metadata.status === "PENDING"))
+        {
+            logger.debug("_doExecutionAsync omit running/non-existent paragraph",
+                paragraph);
+            return;
+        }
+
+        // Synchronous block: construct → start → register with no
+        // awaits in between, closing the TOCTOU window.
+        const execution = new ZeppelinExecution(this.kernel, cell);
+        execution.token.onCancellationRequested(_ =>
+        {
+            return this._cancelToken(execution);
+        });
         execution.start(Date.now());
-        // execution.setProgress(10);
         this.registerTrackExecution(execution);
+
+        try
+        {
+            await this.kernel.runParagraph(cell, false);
+        }
+        catch (err)
+        {
+            this.unregisterTrackExecution(execution);
+            let cellOutput: vscode.NotebookCellOutput;
+
+            if (err instanceof AxiosError && err.code === "ERR_CANCELED")
+            {
+                execution.end(false, Date.now());
+            }
+            else
+            {
+                cellOutput = new vscode.NotebookCellOutput([
+                    vscode.NotebookCellOutputItem.error({ 
+                        name: err instanceof Error
+                            && err.name
+                            || 'error', 
+                        message: err instanceof Error
+                            && err.message
+                            || JSON.stringify(err, undefined, 4)
+                    })
+                ]);
+                execution.replaceOutput(cellOutput);
+                execution.end(false, Date.now());
+            }
+        }
     }
 
     public async resumeExecutionStatus(
