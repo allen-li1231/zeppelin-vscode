@@ -350,9 +350,10 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 ## [0.2.25] - 2026-06-22
 
 ### Fixed
-- Missing `await` on `runParagraph` calls causing no output on remote connections (all concurrency modes).
-- Missing `execution.start()` in the sync execution path.
-- Leaked `NotebookCellExecution` in `_doExecutionAsync`: when a paragraph was already running or undefined, the early return abandoned the VS Code execution object without calling `start()`/`end()`, causing a perpetual pending spinner and blocking future runs on that cell.
-- Missing `await` on `updatePollingParagraphsDirect()` in `trackExecution`, causing `getParagraphInfo()` to read stale server state before pending local edits were pushed.
-- `NaN` start time passed to `execution.start()` in `resumeExecutionStatus` when `cell.metadata.dateStarted` was undefined; now falls back to `Date.now()`.
-- Redundant nested condition check in `trackExecution` simplified (inner `if` was always true when reached).
+- [Missing `await` on `runParagraph` calls causing no output on remote connections](https://github.com/allen-li1231/zeppelin-vscode/commit/f83a33ca93cfcbee5f3520efc1e0727fd6318bcd), in response to [#38](https://github.com/allen-li1231/zeppelin-vscode/issues/38).
+- [False "Remote Changed" sync conflict triggered after switching away from a notebook with a running cell and back](https://github.com/allen-li1231/zeppelin-vscode/commit/2b011c39b7486e77d833ca2e05757d635f6c42c5), caused by stale `cell.metadata.results` compared against updated server results during active execution.
+- [Duplicated `createNotebookCellExecution` for the same cell in a quick switch between two notebooks that have running cells](https://github.com/allen-li1231/zeppelin-vscode/commit/19eaf1c8009649bc61cc3b52be863ceef78b4f21).
+- [Missing `execution.start()` in the sync execution path](https://github.com/allen-li1231/zeppelin-vscode/commit/67401170ed3a3618e849d5e5613ce84d0ced67ea).
+- [Leaked `NotebookCellExecution` in `_doExecutionAsync`: when a paragraph was already running or undefined](https://github.com/allen-li1231/zeppelin-vscode/commit/67401170ed3a3618e849d5e5613ce84d0ced67ea), the early return abandoned the VS Code execution object without calling `start()`/`end()`, causing a perpetual pending spinner and blocking future runs on that cell.
+- [Missing `await` on `updatePollingParagraphsDirect()` in `trackExecution`](https://github.com/allen-li1231/zeppelin-vscode/commit/f83a33ca93cfcbee5f3520efc1e0727fd6318bcd), causing `getParagraphInfo()` to read stale server state before pending local edits were pushed.
+- [`NaN` start time passed to `execution.start()` in `resumeExecutionStatus` when `cell.metadata.dateStarted` was undefined; now falls back to `Date.now()`](https://github.com/allen-li1231/zeppelin-vscode/commit/67401170ed3a3618e849d5e5613ce84d0ced67ea).
