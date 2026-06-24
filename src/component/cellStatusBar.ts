@@ -232,8 +232,8 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
                 }
                 let execution = this.kernel.getExecutionByParagraphId(cell.metadata.id);
                 if (execution !== undefined
-                    || i < visibleRanges[0].start
-                    || i >= visibleRanges[0].end)
+                    || i < range.start
+                    || i >= range.end)
                 {
                     continue;
                 }
@@ -265,7 +265,8 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
                             // Re-check guards inside the mutex to close TOCTOU
                             // windows opened while getParagraphInfo() was in-flight
                             if (this.kernel.hasPendingParagraphUpdate(cell)
-                                || this.kernel.isNoteSyncing(notebook))
+                                || this.kernel.isNoteSyncing(notebook)
+                                || this.kernel.getExecutionByParagraphId(cell.metadata.id) !== undefined)
                             {
                                 return;
                             }
