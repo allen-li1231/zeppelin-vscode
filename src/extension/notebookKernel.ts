@@ -484,7 +484,7 @@ export class ZeppelinKernel
         }
 
         logger.debug(`getParagraphInfo: got paragraph ${cell.metadata.id}, status=${paragraph.status}`);
-        this.pollUpdateCellMetadata(cell, paragraph);
+        await this.pollUpdateCellMetadata(cell, paragraph);
         return paragraph;
     }
 

@@ -610,6 +610,77 @@ describe('CellStatusProvider Test Suite', () => {
                 'Should skip cells without a paragraph ID');
         });
 
+        it('skips conflict detection when execution starts during HTTP (Bug fix: TOCTOU execution re-check)', async () => {
+            let conflictSet = false;
+            // getParagraphInfo returns server text that differs from local
+            kernel.getParagraphInfo = async (_cell: any) => {
+                // Simulate: user presses Run while getParagraphInfo HTTP
+                // is in-flight, causing getExecutionByParagraphId to return
+                // a truthy value by the time the mutex callback runs.
+                kernel.getExecutionByParagraphId = (_id: string) => ({ state: 1 });
+                return { id: 'para_001', status: 'READY', text: 'DIFFERENT server text' };
+            };
+            kernel.updateCellMetadata = async (_cell: any, metadata: any) => {
+                if (metadata.syncConflict !== undefined) {
+                    conflictSet = true;
+                }
+                return true;
+            };
+
+            const cell = createMockCell({ status: 'READY', text: '%python\\nlocal text\\n' });
+            (vscode.window as any).activeNotebookEditor = {
+                notebook: {
+                    cellCount: 1,
+                    cellAt: (_i: number) => cell,
+                    metadata: { id: 'note_001' },
+                    uri: vscode.Uri.parse('untitled:notebook_1'),
+                    isClosed: false,
+                },
+                visibleRanges: [{ start: 0, end: 1, isEmpty: false }],
+            };
+
+            await provider.doUpdateVisibleCells();
+            assert.strictEqual(conflictSet, false,
+                'Should NOT set syncConflict when an execution started during HTTP');
+        });
+
+        it('processes cells in secondary visible ranges (Bug fix: visibleRanges[0])', async () => {
+            let processedIds: string[] = [];
+            kernel.getParagraphInfo = async (cell: any) => {
+                processedIds.push(cell.metadata.id);
+                return { id: cell.metadata.id, status: 'READY', text: cell.document.getText() };
+            };
+
+            const cells = [
+                createMockCell({ id: 'para_0', status: 'READY', index: 0 }),
+                createMockCell({ id: 'para_1', status: 'READY', index: 1 }),
+                createMockCell({ id: 'para_2', status: 'READY', index: 2 }),
+                createMockCell({ id: 'para_3', status: 'READY', index: 3 }),
+            ];
+
+            (vscode.window as any).activeNotebookEditor = {
+                notebook: {
+                    cellCount: 4,
+                    cellAt: (i: number) => cells[i],
+                    metadata: { id: 'note_001' },
+                    uri: vscode.Uri.parse('untitled:notebook_1'),
+                    isClosed: false,
+                },
+                // Two split visible ranges: cells 0-1 and cells 2-3
+                visibleRanges: [
+                    { start: 0, end: 2, isEmpty: false },
+                    { start: 2, end: 4, isEmpty: false },
+                ],
+            };
+
+            await provider.doUpdateVisibleCells();
+            // All 4 cells should be processed (both ranges)
+            assert.ok(processedIds.includes('para_0'), 'Should process cell in first range');
+            assert.ok(processedIds.includes('para_1'), 'Should process cell in first range');
+            assert.ok(processedIds.includes('para_2'), 'Should process cell in second range');
+            assert.ok(processedIds.includes('para_3'), 'Should process cell in second range');
+        });
+
         it('skips conflict detection when hasPendingParagraphUpdate becomes true during HTTP (Bug 1)', async () => {
             let conflictSet = false;
             // getParagraphInfo returns server text that differs from local
