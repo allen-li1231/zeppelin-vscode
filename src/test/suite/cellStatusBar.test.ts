@@ -21,10 +21,10 @@ describe('CellStatusProvider Test Suite', () => {
 
     describe('provideCellStatusBarItems', () => {
 
-        it('returns empty array when kernel is not active', () => {
+        it('returns empty array when kernel is not active', async () => {
             kernel._active = false;
             const cell = createMockCell({ status: 'READY' });
-            const items = provider.provideCellStatusBarItems(cell as any);
+            const items = await provider.provideCellStatusBarItems(cell as any);
             assert.deepStrictEqual(items, []);
         });
 
@@ -608,6 +608,102 @@ describe('CellStatusProvider Test Suite', () => {
             await provider.doUpdateVisibleCells();
             assert.strictEqual(paragraphInfoCalled, false,
                 'Should skip cells without a paragraph ID');
+        });
+
+        it('skips conflict detection when hasPendingParagraphUpdate becomes true during HTTP (Bug 1)', async () => {
+            let conflictSet = false;
+            // getParagraphInfo returns server text that differs from local
+            kernel.getParagraphInfo = async (_cell: any) => {
+                // Simulate: user types in the cell while HTTP is in-flight,
+                // causing hasPendingParagraphUpdate to return true by the
+                // time the mutex callback runs.
+                kernel.hasPendingParagraphUpdate = (_c: any) => true;
+                return { id: 'para_001', status: 'READY', text: 'DIFFERENT server text' };
+            };
+            kernel.updateCellMetadata = async (_cell: any, metadata: any) => {
+                if (metadata.syncConflict !== undefined) {
+                    conflictSet = true;
+                }
+                return true;
+            };
+
+            const cell = createMockCell({ status: 'READY', text: '%python\\nlocal text\\n' });
+            (vscode.window as any).activeNotebookEditor = {
+                notebook: {
+                    cellCount: 1,
+                    cellAt: (_i: number) => cell,
+                    metadata: { id: 'note_001' },
+                    uri: vscode.Uri.parse('untitled:notebook_1'),
+                    isClosed: false,
+                },
+                visibleRanges: [{ start: 0, end: 1, isEmpty: false }],
+            };
+
+            await provider.doUpdateVisibleCells();
+            assert.strictEqual(conflictSet, false,
+                'Should NOT set syncConflict when a pending paragraph update appeared during HTTP');
+        });
+
+        it('skips conflict detection when isNoteSyncing becomes true during HTTP (Bug 2)', async () => {
+            let conflictSet = false;
+            // getParagraphInfo returns server text that differs from local
+            kernel.getParagraphInfo = async (_cell: any) => {
+                // Simulate: syncNote() starts on another async path while
+                // getParagraphInfo HTTP is in-flight.
+                kernel.isNoteSyncing = (_note: any) => true;
+                return { id: 'para_001', status: 'READY', text: 'DIFFERENT server text' };
+            };
+            kernel.updateCellMetadata = async (_cell: any, metadata: any) => {
+                if (metadata.syncConflict !== undefined) {
+                    conflictSet = true;
+                }
+                return true;
+            };
+
+            const cell = createMockCell({ status: 'READY', text: '%python\\nlocal text\\n' });
+            (vscode.window as any).activeNotebookEditor = {
+                notebook: {
+                    cellCount: 1,
+                    cellAt: (_i: number) => cell,
+                    metadata: { id: 'note_001' },
+                    uri: vscode.Uri.parse('untitled:notebook_1'),
+                    isClosed: false,
+                },
+                visibleRanges: [{ start: 0, end: 1, isEmpty: false }],
+            };
+
+            await provider.doUpdateVisibleCells();
+            assert.strictEqual(conflictSet, false,
+                'Should NOT set syncConflict when notebook started syncing during HTTP');
+        });
+
+        it('sets syncConflict when no TOCTOU guard fires (baseline)', async () => {
+            let conflictSet = false;
+            kernel.getParagraphInfo = async (_cell: any) => {
+                return { id: 'para_001', status: 'READY', text: 'DIFFERENT server text' };
+            };
+            kernel.updateCellMetadata = async (_cell: any, metadata: any) => {
+                if (metadata.syncConflict !== undefined) {
+                    conflictSet = true;
+                }
+                return true;
+            };
+
+            const cell = createMockCell({ status: 'READY', text: '%python\\nlocal text\\n' });
+            (vscode.window as any).activeNotebookEditor = {
+                notebook: {
+                    cellCount: 1,
+                    cellAt: (_i: number) => cell,
+                    metadata: { id: 'note_001' },
+                    uri: vscode.Uri.parse('untitled:notebook_1'),
+                    isClosed: false,
+                },
+                visibleRanges: [{ start: 0, end: 1, isEmpty: false }],
+            };
+
+            await provider.doUpdateVisibleCells();
+            assert.strictEqual(conflictSet, true,
+                'Should set syncConflict when server text differs and no guard fires');
         });
 
         it('handles stale visibleRanges when cells are removed during iteration', async () => {
