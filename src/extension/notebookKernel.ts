@@ -1160,7 +1160,7 @@ export class ZeppelinKernel
                 if (cell.metadata.resolvingDiff
                     || cell.metadata.syncConflict !== undefined)
                 {
-                    continue
+                    continue;
                 }
 
                 // Build the edit from the CURRENT cell.metadata merged
@@ -1173,8 +1173,10 @@ export class ZeppelinKernel
                 let editor = new vscode.WorkspaceEdit();
                 editor.set(cell.document.uri, [edit]);
                 await vscode.workspace.applyEdit(editor);
+
+                // Delete only entries that were successfully applied
+                this._mapNotebookMetadataPatch.delete(cell);
             }
-            this._mapNotebookMetadataPatch.clear();
         })
     }
 
