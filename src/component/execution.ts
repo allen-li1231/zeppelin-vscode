@@ -461,7 +461,7 @@ export class ExecutionManager
             );
         }
 
-        this._mapInterpreterQueue.get(interpreterId)?.runExclusive(
+        return this._mapInterpreterQueue.get(interpreterId)?.runExclusive(
             () =>
             {
                 return this._doExecutionSync(cell);
@@ -703,7 +703,7 @@ export class ExecutionManager
 
         if (paragraph === undefined
             || (paragraph.status === "RUNNING")
-            || (cell.metadata.status === "PENDING"))
+            || (paragraph.status === "PENDING"))
         {
             logger.debug("_doExecutionAsync omit running/non-existent paragraph",
                 paragraph);

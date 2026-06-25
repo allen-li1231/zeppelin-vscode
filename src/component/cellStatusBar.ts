@@ -232,8 +232,8 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
                 }
                 let execution = this.kernel.getExecutionByParagraphId(cell.metadata.id);
                 if (execution !== undefined
-                    || i < visibleRanges[0].start
-                    || i >= visibleRanges[0].end)
+                    || i < range.start
+                    || i >= range.end)
                 {
                     continue;
                 }
@@ -262,6 +262,15 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
                         // provideCellStatusBarItems(), preventing it from
                         // seeing half-updated syncConflict / status fields.
                         await this._cellStatusUpdateMutex.runExclusive(async () => {
+                            // Re-check guards inside the mutex to close TOCTOU
+                            // windows opened while getParagraphInfo() was in-flight
+                            if (this.kernel.hasPendingParagraphUpdate(cell)
+                                || this.kernel.isNoteSyncing(notebook)
+                                || this.kernel.getExecutionByParagraphId(cell.metadata.id) !== undefined)
+                            {
+                                return;
+                            }
+
                             let serverText = paragraph.text ?? '';
                             let localText = cell.document.getText();
                             if (serverText !== localText
@@ -290,13 +299,15 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
                     let status = err instanceof AxiosError
                         ? err.response?.status
                         : undefined;
-                    if (status === cell.metadata.status) {
-                        // ignore the same error
-                        continue;
-                    }
                     logger.error("error in doUpdateVisibleCells:" + err);
-                    // trigger cell status bar update
+                    // Move the status-equality check inside the mutex so
+                    // cell.metadata.status cannot change between the check
+                    // and the update.
                     await this._cellStatusUpdateMutex.runExclusive(async () => {
+                        if (status === cell.metadata.status) {
+                            // ignore the same error
+                            return;
+                        }
                         await this.kernel.updateCellMetadata(cell, { status });
                     });
                 }
