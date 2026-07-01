@@ -1157,6 +1157,15 @@ export class ZeppelinKernel
         return this.editWithoutParagraphUpdate(async () => {
             for (let [cell, patch] of this._mapNotebookMetadataPatch)
             {
+                // Cell was replaced or deleted (e.g. acceptRemoteCell) —
+                // the old object is orphaned with index === -1.  Drop the
+                // stale patch instead of creating an invalid edit.
+                if (cell.index < 0)
+                {
+                    this._mapNotebookMetadataPatch.delete(cell);
+                    continue;
+                }
+
                 if (cell.metadata.resolvingDiff
                     || cell.metadata.syncConflict !== undefined)
                 {

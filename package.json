@@ -2,7 +2,7 @@
   "name": "zeppelin-vscode",
   "displayName": "Zeppelin Notebook",
   "description": "Apache Zeppelin Notebook Extension for VS Code",
-  "version": "0.2.27",
+  "version": "0.2.28",
   "publisher": "AllenLi1231",
   "author": {
     "name": "Allen Li"
@@ -354,6 +354,6 @@
   "allowScripts": {
     "esbuild@0.25.12": true,
     "fsevents@2.3.3": true,
-    "node@26.3.1": true
+    "node@26.4.0": true
   }
 }

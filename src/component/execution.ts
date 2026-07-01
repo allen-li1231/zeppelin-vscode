@@ -778,7 +778,25 @@ export class ExecutionManager
 
         let startTime: number | undefined = execution?.startTime;
 
-        let newExecution = new ZeppelinExecution(this.kernel, cell);
+        // Race guard: a concurrent _doExecutionSync/_doExecutionAsync
+        // may have already claimed a NotebookCellExecution for this
+        // cell but not yet inserted itself in _mapTrackExecution
+        // (getExecutionByParagraphId returned undefined above).
+        // Constructing a second one throws — bail gracefully and let
+        // the other path handle end-of-execution.
+        let newExecution: ZeppelinExecution;
+        try
+        {
+            newExecution = new ZeppelinExecution(this.kernel, cell);
+        }
+        catch (error)
+        {
+            logger.debug(
+                "resumeExecutionStatus: cell already has an active execution, skipping",
+                cell, error
+            );
+            return;
+        }
         newExecution.token.onCancellationRequested(_ =>
         {
             return this._cancelToken(newExecution);
