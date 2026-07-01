@@ -384,3 +384,12 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 - TOCTOU race between `CellStatusProvider` and `ZeppelinKernel`: `hasPendingParagraphUpdate()` and `isNoteSyncing()` guards in `doUpdateVisibleCells` were only checked before the async `getParagraphInfo()` HTTP call but not re-checked inside the `_cellStatusUpdateMutex` callback. If a user edit registered or `syncNote()` started during the HTTP round-trip, the stale check allowed a false `syncConflict` marker to be set, causing spurious "Remote Changed" indicators.
 - `applyPolledNotebookEdits` silently dropping queued metadata patches for cells with an active `syncConflict` or `resolvingDiff`: the method skipped those entries in its loop but then called `_mapNotebookMetadataPatch.clear()`, permanently discarding the skipped patches. Replaced blanket `.clear()` with per-entry `.delete()` for successfully applied entries only.
 - Error handler in `doUpdateVisibleCells` comparing `cell.metadata.status` outside the `_cellStatusUpdateMutex`, allowing the status to change between the equality check and the `updateCellMetadata` call. Moved the guard inside the mutex callback.
+
+
+
+## [0.2.28] - 2026-07-01
+
+### Fixed
+- [Stale cell patches in `applyPolledNotebookEdits` when the cell was replaced (e.g. by `acceptRemoteCell` → `replaceNoteCells`)](https://github.com/allen-li1231/zeppelin-vscode/commit/92dedd43ba82ff1a96d52a4be80402eef3c43a55): the orphaned `NotebookCell` reference lingered in `_mapNotebookMetadataPatch` with `cell.index === -1`, producing a malformed `NotebookEdit.updateCellMetadata` call at flush time. Now such entries are detected and dropped from the patch map before building the edit.
+- [`resumeExecutionStatus` throwing when a concurrent `_doExecutionSync`/`_doExecutionAsync` had already claimed a `NotebookCellExecution` for the same cell](https://github.com/allen-li1231/zeppelin-vscode/commit/ef6f311d24cc7433cf19a925a7b5cfed7c98b20d): `getExecutionByParagraphId()` returned `undefined` because the concurrent path had not yet inserted into `_mapTrackExecution`, but `createNotebookCellExecution()` still threw. Wrapped the `new ZeppelinExecution(...)` call in try/catch so the resume path bails gracefully and lets the other path own end-of-execution.
+
