@@ -10,6 +10,8 @@ import { EXTENSION_NAME,
     mapVSCodeLanguage,
     getProxy,
     getVersion } from '../common/common';
+import { RELOAD_GENERATION } from '../common/notebookReload';
+import { classifyStructuralChange } from '../common/reconciliation';
 import { logger } from '../common/logger';
 import { CellStatusProvider } from '../component/cellStatusBar';
 import { NoteData,
@@ -53,6 +55,155 @@ export class ZeppelinKernel
     >();
     private _mapNotebookMetadataPatch = new Map<vscode.NotebookCell, { [key: string]: any }>();
     private _mapUpdateParagraph = new Map<vscode.NotebookCell, { requestTime: number, baseText: string }>();
+    // Session bases are independent of pending pushes and survive cell replacement.
+    private _revisionBases = new WeakMap<vscode.NotebookDocument, Map<string, string>>();
+    private _structureBases = new WeakMap<vscode.NotebookDocument, string[]>();
+
+    private _reloadGeneration = 0;
+    private _pendingReloads = new Map<number, vscode.Disposable | undefined>();
+    private _pendingDeletions = new WeakMap<vscode.NotebookDocument, Set<string>>();
+    private _deletionEpoch = new WeakMap<vscode.NotebookDocument, number>();
+
+    public markNotebookReload(token?: vscode.CancellationToken): number {
+        const generation = ++this._reloadGeneration;
+        this._pendingReloads.set(generation, undefined);
+        const subscription = token?.onCancellationRequested(() => this.settleNotebookReload(generation));
+        if (this._pendingReloads.has(generation)) {
+            this._pendingReloads.set(generation, subscription);
+        } else { subscription?.dispose(); }
+        if (token?.isCancellationRequested) { this.settleNotebookReload(generation); }
+        return generation;
+    }
+
+    public settleNotebookReload(generation: unknown): void {
+        if (typeof generation !== 'number') { return; }
+        this._pendingReloads.get(generation)?.dispose();
+        this._pendingReloads.delete(generation);
+    }
+
+    /** Called synchronously by the change listener, before any queued work. */
+    public handleNotebookRemovals(event: vscode.NotebookDocumentChangeEvent, allowDelete = true): Promise<void> {
+        const note = event.notebook;
+        const noteId = note.metadata.id;
+        const removedIds = new Set(event.contentChanges.flatMap(change =>
+            change.removedCells.map(cell => cell.metadata.id)));
+        // Metadata-bearing batches include resets. Pending signals are global:
+        // another document's edit cannot consume them or authorize a deletion.
+        const ambiguous = this._pendingReloads.size > 0 || event.metadata !== undefined
+            || this._editWithoutParagraphUpdateDepth > 0
+            || event.contentChanges.some(change => change.addedCells.length > 0);
+        this.settleNotebookReload(event.metadata?.[RELOAD_GENERATION]);
+        if (!allowDelete || ambiguous || note.isClosed || note.metadata.structureConflict) {
+            return Promise.resolve();
+        }
+        const deletions = [...removedIds].map(id => this.deleteParagraphById(note, noteId, id));
+        return Promise.all(deletions).then(() => undefined);
+    }
+
+    /** Only explicit removal intent calls this method; orphaned pushes never do. */
+    public async deleteParagraphById(note: vscode.NotebookDocument, noteId: string, paragraphId: string): Promise<void> {
+        const generation = this._reloadGeneration;
+        const service = this._service;
+        const safe = () => typeof noteId === 'string' && noteId.length > 0
+            && typeof paragraphId === 'string' && paragraphId.length > 0
+            && !note.isClosed && note.metadata.id === noteId && !note.metadata.structureConflict
+            && this._pendingReloads.size === 0 && this._reloadGeneration === generation
+            && this.isActive() && service !== undefined && service === this._service
+            && !note.getCells().some(cell => cell.metadata.id === paragraphId);
+        if (!safe()) { return; }
+        let pending = this._pendingDeletions.get(note);
+        if (!pending) { pending = new Set(); this._pendingDeletions.set(note, pending); }
+        if (pending.has(paragraphId)) { return; }
+        // Register before awaiting the lock so an already-in-flight sync cannot
+        // insert from an older server snapshot or flag a false structural conflict.
+        pending.add(paragraphId);
+        this._deletionEpoch.set(note, (this._deletionEpoch.get(note) ?? 0) + 1);
+        try {
+            await this._updateMutex.runExclusive(async () => {
+                if (!safe()) { return; }
+                const response = await service!.deleteParagraph(noteId, paragraphId);
+                if (!response || response instanceof AxiosError || typeof response.status !== 'number'
+                    || response.status < 200 || response.status >= 300) {
+                    throw new Error('Zeppelin did not confirm paragraph deletion');
+                }
+                await this.editWithoutParagraphUpdate(async () => {
+                    // Reload/undo may have happened during the HTTP request.
+                    if (!safe()) { return; }
+                    const base = this._structureBases.get(note)
+                        ?? note.metadata.paragraphs?.map((p: ParagraphData) => p.id);
+                    if (base) { this._structureBases.set(note, base.filter((id: string) => id !== paragraphId)); }
+                    this._revisionBases.get(note)?.delete(paragraphId);
+                    await this.updateNoteMetadata(note, {
+                        paragraphs: (note.metadata.paragraphs ?? []).filter((p: ParagraphData) => p.id !== paragraphId)
+                    });
+                });
+            });
+        } catch (err) {
+            logger.warn('deleteParagraphById failed', err);
+            vscode.window.showWarningMessage(`Could not delete paragraph ${paragraphId} on the server. Sync to reconcile.`);
+        } finally {
+            pending.delete(paragraphId);
+        }
+    }
+
+    private _isLiveCell(cell: vscode.NotebookCell): boolean {
+        return cell.index >= 0 && !cell.notebook.isClosed && !cell.document.isClosed
+            && (!cell.notebook.getCells || cell.notebook.getCells().includes(cell));
+    }
+
+    private _baseText(cell: vscode.NotebookCell): string | undefined {
+        let bases = this._revisionBases.get(cell.notebook);
+        if (!bases) {
+            bases = new Map();
+            this._revisionBases.set(cell.notebook, bases);
+        }
+        return bases.get(cell.metadata.id);
+    }
+
+    private _setBase(cell: vscode.NotebookCell, text: string) {
+        this._baseText(cell);
+        this._revisionBases.get(cell.notebook)!.set(cell.metadata.id, text);
+    }
+
+    // Caller holds updateMutex and editMutex. Never replace a live cell object.
+    private async _reconcileCell(cell: vscode.NotebookCell, paragraph: ParagraphData) {
+        if (!this._isLiveCell(cell) || cell.metadata.resolvingDiff) { return; }
+        const base = this._baseText(cell);
+        const local = cell.document.getText();
+        const remote = paragraph.text ?? '';
+        if (local !== remote && remote === base) {
+            if (!cell.metadata.syncConflict && !this._mapUpdateParagraph.has(cell)) {
+                this._mapUpdateParagraph.set(cell, { requestTime: Date.now(), baseText: base });
+            }
+            return;
+        }
+        if (local !== remote && (base === undefined || local !== base)) {
+            await this.updateCellMetadata(cell, { syncConflict: paragraph });
+            this._unregisterParagraphUpdateDirect(cell);
+            return;
+        }
+        if (local !== remote) {
+            const edit = new vscode.WorkspaceEdit();
+            edit.replace(cell.document.uri,
+                new vscode.Range(0, 0, Number.MAX_SAFE_INTEGER, 0), remote);
+            if (!await vscode.workspace.applyEdit(edit) || !this._isLiveCell(cell)) { return; }
+        }
+        if (cell.metadata.syncConflict !== undefined) {
+            await this.removeCellMetadata(cell, ['syncConflict']);
+        }
+        this._mapNotebookMetadataPatch.delete(cell);
+        await this.updateCellMetadata(cell, paragraph);
+        this._setBase(cell, remote);
+        this._unregisterParagraphUpdateDirect(cell);
+    }
+
+    public async reconcilePolledCell(cell: vscode.NotebookCell) {
+        if (!this._isLiveCell(cell) || cell.metadata.resolvingDiff) { return; }
+        // A note fetch also detects removals/reorders that a paragraph poll cannot.
+        // syncNote re-fetches and re-checks state under updateMutex.
+        await this.syncNote(cell.notebook);
+    }
+
     private _editWithoutParagraphUpdateDepth = 0;
     private _mapInterpreterCache: Map<string, string> | undefined;
     private _sessionExpiredPromptActive = false;
@@ -81,6 +232,7 @@ export class ZeppelinKernel
 
 	dispose(): void
     {
+        for (const generation of this._pendingReloads.keys()) { this.settleNotebookReload(generation); }
         this.deactivate();
 		this._controller.dispose();
 	}
@@ -355,7 +507,8 @@ export class ZeppelinKernel
     }
 
     public async importNote(note: any) {
-        let res = await this._service?.importNote(note);
+        const { [RELOAD_GENERATION]: _reloadGeneration, ...serverNote } = note;
+        let res = await this._service?.importNote(serverNote);
 
         logger.debug("importNote response", res);
         if (res instanceof AxiosError)
@@ -569,6 +722,12 @@ export class ZeppelinKernel
 
         return this._updateMutex.runExclusive(async () =>
         {
+            if (!this._isLiveCell(cell) || cell.metadata.resolvingDiff
+                || cell.metadata.syncConflict || cell.notebook.metadata.structureConflict) { return; }
+            if (this._baseText(cell) === undefined && typeof cell.metadata.text === 'string'
+                && cell.document.getText() !== cell.metadata.text) {
+                this._setBase(cell, cell.metadata.text);
+            }
             // Flush any deferred metadata updates inside the mutex so
             // cell.metadata.text is current and the snapshot is atomic
             // with respect to other _updateMutex holders.
@@ -580,7 +739,7 @@ export class ZeppelinKernel
                 // detect independent server-side changes before pushing.
                 this._mapUpdateParagraph.set(cell, {
                     requestTime: Date.now(),
-                    baseText: cell.metadata.text ?? ''
+                    baseText: this._baseText(cell) ?? ''
                 });
             }
         });
@@ -665,7 +824,7 @@ export class ZeppelinKernel
             let requestTime = entry.requestTime;
             if (!this.isNoteSyncing(cell.notebook)   // disregard syncing cells
                 && throttleTime * 1000 < Date.now() - requestTime) {
-                if (cell.index < 0)
+                if (!this._isLiveCell(cell))
                 {
                     logger.debug("_doUpdatePollingParagraphs: deleted cell", cell);
                 }
@@ -767,8 +926,9 @@ export class ZeppelinKernel
         cell: vscode.NotebookCell,
         metadata: { [key: string]: any }
     ) {
+        this._baseText(cell);
         return this.editWithoutParagraphUpdate(async () => {
-            if (cell.index === -1)
+            if (!this._isLiveCell(cell))
             {
                 this._mapNotebookMetadataPatch.delete(cell);
                 return;
@@ -866,56 +1026,10 @@ export class ZeppelinKernel
     }
 
     /**
-     * Detect whether a local cell differs from its server paragraph.
-     * Compares text, cell kind, language, and execution results.
-     */
-    private _hasSyncConflict(
-        cell: vscode.NotebookCell,
-        serverParagraph: ParagraphData,
-        // serverCellData: vscode.NotebookCellData
-    ): boolean
-    {
-        let localText = cell.document.getText();
-        let serverText = serverParagraph.text ?? '';
-        if (localText !== serverText) { return true; }
-
-        // For now, disregard differences except for text itself.
-        // if (cell.kind !== serverCellData.kind) { return true; }
-
-        // if (cell.document.languageId !== serverCellData.languageId) { return true; }
-
-        // Skip results comparison for cells with active executions —
-        // the execution manager handles output updates independently
-        // and cell.metadata.results may be stale until execution ends.
-        if (this._executionManager?.getExecutionByParagraphId(serverParagraph.id))
-        {
-            return false;
-        }
-
-        // Compare execution results stored in metadata
-        let localResults = cell.metadata.results;
-        let serverResults = serverParagraph.results;
-        if (JSON.stringify(localResults) !== JSON.stringify(serverResults))
-        {
-            return true;
-        }
-
-        return false;
-    }
-
-    /**
-     * Sync local notebook with the server using non-destructive in-place
-     * metadata updates — existing cells are never replaced or reordered.
-     *
-     * For each local cell whose id matches a server paragraph:
-     *  - Flags `metadata.syncConflict` when content differs.
-     *  - Clears stale conflict markers when content matches.
-     *  - Updates cell metadata (status, results, dates) from the server.
-     *  - Resumes execution status for running/pending paragraphs.
-     *
-     * Server-only paragraphs (not present locally) are inserted at the
-     *  correct position relative to matched cells.
-     * Local-only cells (no id or id not on server) are left untouched.
+     * Reconcile by stable paragraph id without replacing live cells. Content
+     * bases are text snapshots; ordered paragraph ids are the structural token.
+     * Safe local edits stay queued, clean remote edits fast-forward, and divergent
+     * edits use the existing diff UI. Ambiguous structure is preserved and blocked.
      */
     public async syncNote(note: vscode.NotebookDocument) {
         if (!!!note.metadata || !!!note.metadata.id)
@@ -924,9 +1038,16 @@ export class ZeppelinKernel
             return;
         }
 
+        // Polling lock order: _cellStatusUpdateMutex -> _updateMutex -> _editMutex.
+        // While holding this lock, never await the status mutex (including status-provider calls).
         return await this._updateMutex.runExclusive(async () => {
 
+        const deletionEpoch = this._deletionEpoch.get(note) ?? 0;
+        const deletionChanged = () => (this._deletionEpoch.get(note) ?? 0) !== deletionEpoch
+            || (this._pendingDeletions.get(note)?.size ?? 0) > 0;
+        if (note.isClosed || deletionChanged()) { return; }
         this._registerSyncNote(note);
+        try {
         logger.info("syncNote start");
 
         let serverNote = await this.getNoteInfo(note);
@@ -937,7 +1058,10 @@ export class ZeppelinKernel
             return;
         }
 
+        if (note.isClosed || deletionChanged()) { return; }
         let serverParagraphs = serverNote.paragraphs ?? [];
+        const serverIds = serverParagraphs.map(p => p.id);
+
 
         // Build lookup: server paragraph id → ParagraphData
         let serverParagraphMap = new Map<string, ParagraphData>();
@@ -946,25 +1070,33 @@ export class ZeppelinKernel
             serverParagraphMap.set(p.id, p);
         }
 
-        // Build lookup: local cell id → NotebookCell
-        let localCellMap = new Map<string, vscode.NotebookCell>();
-        for (let cell of note.getCells())
-        {
-            if (cell.metadata.id !== undefined)
-            {
-                localCellMap.set(cell.metadata.id, cell);
-            }
-        }
-
         await this.editWithoutParagraphUpdate(async () =>
         {
-            // Unregister pending updates for all current cells
-            // Note: already inside _updateMutex, use direct version
+            if (note.isClosed || deletionChanged()) { return; }
+            // Recognize the creation ID write-back window before classifying structure.
+            const localIds = note.getCells().map((c, index) => c.metadata.id
+                ?? (c.document.getText() === serverParagraphs[index]?.text
+                    ? serverParagraphs[index]?.id : undefined));
+            const baseIds = this._structureBases.get(note)
+                ?? note.metadata.paragraphs?.map((p: ParagraphData) => p.id);
+            if (baseIds && !this._structureBases.has(note)) { this._structureBases.set(note, [...baseIds]); }
+            const structuralConflict = classifyStructuralChange(baseIds, localIds, serverIds) === 'conflict';
+
+            // Build lookup: local cell id → NotebookCell
+            let localCellMap = new Map<string, vscode.NotebookCell>();
             for (let cell of note.getCells())
             {
-                this._unregisterParagraphUpdateDirect(cell);
+                if (cell.metadata.id !== undefined)
+                {
+                    localCellMap.set(cell.metadata.id, cell);
+                }
             }
 
+            const wasStructureConflict = note.metadata.structureConflict;
+            await this.updateNoteMetadata(note, { structureConflict: structuralConflict });
+            if (structuralConflict && !wasStructureConflict) {
+                vscode.window.showWarningMessage('Notebook structure changed remotely. Cells were preserved and automatic pushes paused. Reconcile paragraph order/removals, then sync again.');
+            }
             // --- Phase 1: In-place updates for matched cells ---
             let resumePromises: Promise<void>[] = [];
             for (let cell of note.getCells())
@@ -974,34 +1106,12 @@ export class ZeppelinKernel
 
                 let serverCellData = parseParagraphToCellData(serverParagraph);
 
-                if (cell.metadata.resolvingDiff)
-                {
-                    // Cell is in diff-resolution mode — leave conflict
-                    // and resolvingDiff flags untouched so the user can
-                    // finish resolving without the markers vanishing.
-                }
-                else if (this._hasSyncConflict(
-                    cell,
-                    serverParagraph,
-                    // serverCellData
-                ))
-                {
-                    await this.updateCellMetadata(cell, {
-                        syncConflict: serverParagraph
-                    });
-                }
-                else
-                {
-                    // No conflict — clear any stale conflict markers
-                    if (cell.metadata.syncConflict !== undefined
-                        || cell.metadata.resolvingDiff)
-                    {
-                        await this.removeCellMetadata(
-                            cell, ["syncConflict", "resolvingDiff"]
-                        );
+                if (structuralConflict) {
+                    if (!cell.metadata.resolvingDiff) {
+                        await this.updateCellMetadata(cell, { syncConflict: serverParagraph });
                     }
-                    // Update cell metadata from server (status, results, dates, etc.)
-                    await this.updateCellMetadata(cell, serverParagraph);
+                } else {
+                    await this._reconcileCell(cell, serverParagraph);
                 }
 
                 // Resume execution status for this cell
@@ -1022,7 +1132,8 @@ export class ZeppelinKernel
             }[] = [];
             let lastMatchedLocalIndex = -1;
 
-            for (let serverParagraph of serverParagraphs)
+            const claimed = new Set<vscode.NotebookCell>();
+            for (let serverParagraph of structuralConflict ? [] : serverParagraphs)
             {
                 let localCell = localCellMap.get(serverParagraph.id);
                 if (localCell !== undefined)
@@ -1031,6 +1142,13 @@ export class ZeppelinKernel
                 }
                 else
                 {
+                    const candidate = note.getCells()[serverParagraphs.indexOf(serverParagraph)];
+                    if (candidate && candidate.metadata.id === undefined && !claimed.has(candidate)
+                        && candidate.document.getText() === (serverParagraph.text ?? '')) {
+                        claimed.add(candidate);
+                        lastMatchedLocalIndex = candidate.index;
+                        continue;
+                    }
                     // Server-only paragraph — schedule insertion after
                     // the last matched local cell.
                     let serverCellData = parseParagraphToCellData(serverParagraph);
@@ -1045,6 +1163,7 @@ export class ZeppelinKernel
             // shift the indices of later ones.
             for (let i = pendingInsertions.length - 1; i >= 0; i--)
             {
+                if (deletionChanged()) { return; }
                 let { index, cellData } = pendingInsertions[i];
                 await this.insertNoteCells(note, index, [cellData]);
             }
@@ -1079,9 +1198,12 @@ export class ZeppelinKernel
 
             // Update note-level metadata with server info
             await this.updateNoteMetadata(note, serverNote);
+            if (!structuralConflict) { this._structureBases.set(note, serverIds); }
         });
-
+        } finally {
         this._unregisterSyncNote(note);
+        }
+
         logger.info("syncNote end");
     });
     }
@@ -1096,6 +1218,8 @@ export class ZeppelinKernel
      */
     public async acceptRemoteCell(cell: vscode.NotebookCell)
     {
+        return this._updateMutex.runExclusive(async () => {
+        if (!this._isLiveCell(cell)) { return; }
         let conflict: ParagraphData | undefined = cell.metadata.syncConflict;
         if (conflict === undefined)
         {
@@ -1114,7 +1238,11 @@ export class ZeppelinKernel
 
         await this.editWithoutParagraphUpdate(async () =>
         {
-            await this.replaceNoteCells(cell.notebook, replaceRange, [serverCellData]);
+            if (!this._isLiveCell(cell)) { return; }
+            if (await this.replaceNoteCells(cell.notebook, replaceRange, [serverCellData])) {
+                this._setBase(cell, conflict.text ?? "");
+            }
+        });
         });
     }
 
@@ -1124,8 +1252,19 @@ export class ZeppelinKernel
      */
     public async acceptLocalCell(cell: vscode.NotebookCell)
     {
+        return this._updateMutex.runExclusive(async () => {
+        if (!this._isLiveCell(cell) || cell.notebook.metadata.structureConflict) { return; }
         if (cell.metadata.syncConflict === undefined)
         {
+            return;
+        }
+        const fresh = await this.getService()?.getParagraphInfo(cell.notebook.metadata.id, cell.metadata.id);
+        if (!this._isLiveCell(cell) || !fresh || fresh instanceof AxiosError) { return; }
+        const remote: ParagraphData = fresh.data.body ?? fresh.data;
+        if (remote.text !== cell.metadata.syncConflict.text) {
+            await this.editWithoutParagraphUpdate(async () => {
+                if (this._isLiveCell(cell)) { await this.updateCellMetadata(cell, { syncConflict: remote }); }
+            });
             return;
         }
         logger.info(`local cell revision accepted`, cell);
@@ -1151,6 +1290,7 @@ export class ZeppelinKernel
                 `Failed to push local changes to server: ${err instanceof Error ? err.message : err}`
             );
         }
+        });
     }
 
     public async applyPolledNotebookEdits() {
@@ -1160,7 +1300,7 @@ export class ZeppelinKernel
                 // Cell was replaced or deleted (e.g. acceptRemoteCell) —
                 // the old object is orphaned with index === -1.  Drop the
                 // stale patch instead of creating an invalid edit.
-                if (cell.index < 0)
+                if (!this._isLiveCell(cell))
                 {
                     this._mapNotebookMetadataPatch.delete(cell);
                     continue;
@@ -1190,6 +1330,7 @@ export class ZeppelinKernel
     }
 
     public async createParagraph(cell: vscode.NotebookCell) {
+        if (!this._isLiveCell(cell)) { return; }
         let text = cell.document.getText();
         let lineNumbers = vscode.workspace.getConfiguration("editor")
             .get("lineNumbers", vscode.TextEditorLineNumbersStyle.Off);
@@ -1215,18 +1356,21 @@ export class ZeppelinKernel
         }
 
         await this.editWithoutParagraphUpdate(async () => {
+            if (!this._isLiveCell(cell)) { return; }
             await this.updateCellMetadata(
                 cell,
                 {
                     id: res?.data.body,
-                    config
+                    config, text
                 }
             );
         });
+        if (this._isLiveCell(cell)) { this._setBase(cell, text); }
         return <ParagraphData>{...cell.metadata};
     }
 
     public async updateParagraphText(cell: vscode.NotebookCell) {
+        if (!this._isLiveCell(cell)) { return; }
         let text = cell.document.getText();
         let res = await this._service?.updateParagraphText(
             cell.notebook.metadata.id, cell.metadata.id, text
@@ -1240,7 +1384,8 @@ export class ZeppelinKernel
             throw res;
         }
 
-        await this.pollUpdateCellMetadata(cell, res?.data.body);
+        if (res !== undefined && this._isLiveCell(cell)) { this._setBase(cell, text); }
+        await this.pollUpdateCellMetadata(cell, { ...res?.data.body, text });
     }
 
     public async updateParagraphConfig(cell: vscode.NotebookCell) {
@@ -1277,6 +1422,11 @@ export class ZeppelinKernel
 
     private async _updateParagraph(cell: vscode.NotebookCell) {
         try {
+            if (!this._isLiveCell(cell)) {
+                this._mapUpdateParagraph.delete(cell);
+                this._mapNotebookMetadataPatch.delete(cell);
+                return;
+            }
             // Skip cells with an unresolved sync conflict — don't push
             // local changes until the user resolves the conflict.
             if (cell.metadata.syncConflict !== undefined)
@@ -1286,23 +1436,28 @@ export class ZeppelinKernel
                 return;
             }
 
-            // index = -1: cell has been deleted from notebook
-            if (cell.index === -1)
-            {
-                logger.debug(`updateParagraph: cell to be deleted`, cell);
-                this.cellStatusBar?.untrackCell(cell);
-                this._service?.deleteParagraph(
-                    cell.notebook.metadata.id, cell.metadata.id
-                );
-
+            if (!this._isLiveCell(cell) || cell.metadata.resolvingDiff
+                || cell.notebook.metadata.structureConflict) {
                 this._mapUpdateParagraph.delete(cell);
-
-                logger.debug(`updateParagraph: sync cell metadata`, cell);
-                await this.updateNoteMetadata(
-                    cell.notebook,
-                    await this.getNoteInfo(cell.notebook) ?? {}
-                );
+                this._mapNotebookMetadataPatch.delete(cell);
                 return;
+            }
+
+            const structureBase = this._structureBases.get(cell.notebook)
+                ?? cell.notebook.metadata.paragraphs?.map((p: ParagraphData) => p.id);
+            if (structureBase) {
+                const freshNote = await this.getNoteInfo(cell.notebook);
+                if (!freshNote || !this._isLiveCell(cell)) { return; }
+                const ids = (freshNote.paragraphs ?? []).map(p => p.id);
+                if (JSON.stringify(ids) !== JSON.stringify(structureBase)) {
+                    await this.editWithoutParagraphUpdate(async () => {
+                        if (!this._isLiveCell(cell)) { return; }
+                        await this.updateNoteMetadata(cell.notebook, { structureConflict: true });
+                        const remote = freshNote.paragraphs?.find(p => p.id === cell.metadata.id);
+                        if (remote) { await this.updateCellMetadata(cell, { syncConflict: remote }); }
+                    });
+                    return;
+                }
             }
 
             // create corresponding paragraph when a cell is newly created
@@ -1315,10 +1470,13 @@ export class ZeppelinKernel
                     cell.notebook,
                     await this.getNoteInfo(cell.notebook) ?? {}
                 );
+                if (this._isLiveCell(cell) && cell.notebook.metadata.paragraphs) {
+                    this._structureBases.set(cell.notebook, cell.notebook.metadata.paragraphs.map((p: ParagraphData) => p.id));
+                }
             }
             // check if cell index has changed
             else if (cell.index !== 
-                cell.notebook.metadata.paragraphs.findIndex(
+                (cell.notebook.metadata.paragraphs ?? []).findIndex(
                     (paragraph: ParagraphData) => paragraph.id === cell.metadata.id))
             {
                 logger.debug(`updateParagraph: cell position to be changed`, cell);
@@ -1331,6 +1489,9 @@ export class ZeppelinKernel
                     cell.notebook,
                     await this.getNoteInfo(cell.notebook) ?? {}
                 );
+                if (this._isLiveCell(cell) && cell.notebook.metadata.paragraphs) {
+                    this._structureBases.set(cell.notebook, cell.notebook.metadata.paragraphs.map((p: ParagraphData) => p.id));
+                }
             }
             else
             {
@@ -1347,11 +1508,13 @@ export class ZeppelinKernel
                 // side locking or optimistic concurrency (e.g. ETags),
                 // which the Zeppelin REST API does not currently support.
                 let mapEntry = this._mapUpdateParagraph.get(cell);
-                let baseText = mapEntry?.baseText ?? '';
+                let baseText = this._baseText(cell) ?? mapEntry?.baseText ?? '';
 
                 let freshRes = await this.getService()?.getParagraphInfo(
                     cell.notebook.metadata.id, cell.metadata.id
                 );
+                if (!this._isLiveCell(cell) || cell.metadata.resolvingDiff || cell.metadata.syncConflict) { return; }
+                if (freshRes === undefined || freshRes instanceof AxiosError) { return; }
                 if (freshRes !== undefined && !(freshRes instanceof AxiosError))
                 {
                     let serverParagraph: ParagraphData = freshRes.data.body ?? freshRes.data;
@@ -1376,6 +1539,7 @@ export class ZeppelinKernel
 
                 logger.debug("updateParagraph: updateParagraphConfig");
                 let res = await this.updateParagraphConfig(cell);
+                if (!this._isLiveCell(cell)) { return; }
                 logger.debug("updateParagraph: updateParagraphText");
                 res = await this.updateParagraphText(cell);
             }

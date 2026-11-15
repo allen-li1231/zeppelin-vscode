@@ -399,6 +399,42 @@ describe('CellStatusProvider Test Suite', () => {
 
     describe('doUpdateVisibleCells', () => {
 
+        it('rechecks guards after waiting for the status lock without consuming the tick attempt', async () => {
+            const cells = [0, 1, 2].map(index => createMockCell({ id: `p${index}`, index }));
+            const note: any = {
+                cellCount: cells.length,
+                cellAt: (index: number) => cells[index],
+                getCells: () => cells,
+                metadata: { id: 'note_001' },
+                isClosed: false,
+            };
+            for (const cell of cells) { (cell as any).notebook = note; }
+            const previous = vscode.window.activeNotebookEditor;
+            (vscode.window as any).activeNotebookEditor = {
+                notebook: note, visibleRanges: [{ start: 0, end: 3 }]
+            };
+            let fetched!: () => void;
+            const firstFetch = new Promise<void>(resolve => { fetched = resolve; });
+            kernel.getParagraphInfo = async cell => {
+                if (cell === cells[0]) { fetched(); }
+                return { id: cell.metadata.id, text: 'remote', status: 'READY' };
+            };
+            const reconciled: any[] = [];
+            kernel.reconcilePolledCell = async cell => { reconciled.push(cell); };
+            const release = await (provider as any)._cellStatusUpdateMutex.acquire();
+            const polling = provider.doUpdateVisibleCells();
+            await firstFetch;
+            // A diff opens while polling is waiting for the status mutex.
+            cells[0].metadata.resolvingDiff = true;
+            release();
+            try {
+                await polling;
+                assert.deepStrictEqual(reconciled, [cells[1]]);
+            } finally {
+                (vscode.window as any).activeNotebookEditor = previous;
+            }
+        });
+
         it('returns early when no active notebook editor', async () => {
             // vscode.window.activeNotebookEditor is undefined by default in mock
             (vscode.window as any).activeNotebookEditor = undefined;
@@ -748,17 +784,9 @@ describe('CellStatusProvider Test Suite', () => {
                 'Should NOT set syncConflict when notebook started syncing during HTTP');
         });
 
-        it('sets syncConflict when no TOCTOU guard fires (baseline)', async () => {
+        it('delegates reconciliation when no TOCTOU guard fires', async () => {
             let conflictSet = false;
-            kernel.getParagraphInfo = async (_cell: any) => {
-                return { id: 'para_001', status: 'READY', text: 'DIFFERENT server text' };
-            };
-            kernel.updateCellMetadata = async (_cell: any, metadata: any) => {
-                if (metadata.syncConflict !== undefined) {
-                    conflictSet = true;
-                }
-                return true;
-            };
+            kernel.reconcilePolledCell = async () => { conflictSet = true; };
 
             const cell = createMockCell({ status: 'READY', text: '%python\\nlocal text\\n' });
             (vscode.window as any).activeNotebookEditor = {

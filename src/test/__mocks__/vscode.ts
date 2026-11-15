@@ -89,6 +89,11 @@ export class NotebookCellOutput {
     }
 }
 
+export class NotebookData {
+    metadata?: Record<string, any>;
+    constructor(public cells: NotebookCellData[]) {}
+}
+
 export class NotebookCellData {
     kind: NotebookCellKind;
     value: string;
@@ -155,7 +160,15 @@ export class Uri {
 
 // ── WorkspaceEdit / NotebookEdit / NotebookRange ──────────────────────────────
 
+export class Range {
+    constructor(public startLine: number, public startCharacter: number,
+        public endLine: number, public endCharacter: number) {}
+}
+
 export class WorkspaceEdit {
+    replace(uri: Uri, range: Range, newText: string): void {
+        this.set(uri, [{ range, newText }]);
+    }
     private _edits = new Map<string, unknown[]>();
 
     set(uri: Uri, edits: unknown[]): void {

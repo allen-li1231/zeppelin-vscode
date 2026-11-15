@@ -3,6 +3,7 @@
 import * as vscode from 'vscode';
 import * as interact from '../common/interaction';
 import { CellStatusProvider} from '../component/cellStatusBar';
+import { RELOAD_GENERATION } from '../common/notebookReload';
 import { ZeppelinSerializer } from './notebookSerializer';
 import { ZeppelinKernel } from './notebookKernel';
 import { logger, parseLogLevel } from '../common/logger';
@@ -102,7 +103,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
 
 	let disposable = vscode.workspace.registerNotebookSerializer(
-		EXTENSION_NAME, new ZeppelinSerializer()
+		EXTENSION_NAME, new ZeppelinSerializer(kernel),
+        { transientDocumentMetadata: { [RELOAD_GENERATION]: true } }
 	);
 	context.subscriptions.push(disposable);
 
@@ -236,6 +238,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
 
 	disposable = vscode.workspace.onDidOpenNotebookDocument(async note => {
+        // Initial open has no removals, but must settle its serializer signal.
+        kernel.settleNotebookReload(note.metadata[RELOAD_GENERATION]);
 		if (!isLocalNotebook(note.uri)) {
 			return;
 		}
@@ -289,6 +293,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
 
 	disposable = vscode.workspace.onDidChangeNotebookDocument(event => {
+        // Capture removal IDs and reload provenance synchronously, including
+        // inactive/diff documents so their matching load signal gets settled.
+        void kernel.handleNotebookRemovals(event, isLocalNotebook(event.notebook.uri) && kernel.isActive())
+            .catch(err => logger.warn('Notebook removal handling failed', err));
 		if (!isLocalNotebook(event.notebook.uri)
 			|| !kernel.isActive()) {
 			return;
@@ -324,10 +332,7 @@ export async function activate(context: vscode.ExtensionContext) {
 						// otherwise more added cell contaminate the indices
 						kernel.updateParagraph(cellAdded);
 					}
-					if (cellRemoved !== undefined) {
-						logger.debug("onDidChangeNotebookDocument: cellRemoved", cellRemoved);
-						kernel.updateParagraph(cellRemoved);
-					}
+
 				}
 			}
 		}

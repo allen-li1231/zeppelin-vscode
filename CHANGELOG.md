@@ -393,3 +393,25 @@ All notable changes to the "zeppelin-vscode" extension will be documented in thi
 - [Stale cell patches in `applyPolledNotebookEdits` when the cell was replaced (e.g. by `acceptRemoteCell` → `replaceNoteCells`)](https://github.com/allen-li1231/zeppelin-vscode/commit/92dedd43ba82ff1a96d52a4be80402eef3c43a55): the orphaned `NotebookCell` reference lingered in `_mapNotebookMetadataPatch` with `cell.index === -1`, producing a malformed `NotebookEdit.updateCellMetadata` call at flush time. Now such entries are detected and dropped from the patch map before building the edit.
 - [`resumeExecutionStatus` throwing when a concurrent `_doExecutionSync`/`_doExecutionAsync` had already claimed a `NotebookCellExecution` for the same cell](https://github.com/allen-li1231/zeppelin-vscode/commit/ef6f311d24cc7433cf19a925a7b5cfed7c98b20d): `getExecutionByParagraphId()` returned `undefined` because the concurrent path had not yet inserted into `_mapTrackExecution`, but `createNotebookCellExecution()` still threw. Wrapped the `new ZeppelinExecution(...)` call in try/catch so the resume path bails gracefully and lets the other path own end-of-execution.
 
+
+
+## [0.2.29] - 2026-11-14
+
+Addresses #44-style breakage when a Git repository is used as the Zeppelin server's notebook storage and the same notebook is edited through the extension: the extension and server could overwrite each other's changes, duplicate cells, or corrupt a notebook.
+
+### Changed
+- Reworked `syncNote` into non-destructive three-way reconciliation. Each cell now tracks a per-paragraph **base** snapshot (kept in a per-notebook `WeakMap` keyed by paragraph id, so it survives cell-object replacement on reload). On every sync/poll the base, local text, and server text are compared: a clean remote change fast-forwards the local cell in place; a safe local edit stays queued for push; a genuine divergence is surfaced as a conflict through the existing side-by-side **Remote Changed** diff UI instead of being auto-overwritten. Structural divergence (server-side add/remove/reorder) is classified by a pure `classifyStructuralChange` helper (`src/common/reconciliation.ts`); removals/reorders conservatively preserve local cells and pause automatic pushes with a warning.
+
+### Fixed
+- Cell **duplication** during the new-cell id write-back gap: a freshly created local cell (no server id yet) is now matched to its server paragraph by text/position in `syncNote` Phase 2, so it is no longer re-inserted as a duplicate.
+- Orphaned-cell **stale push** after an out-of-band (Git/on-disk) reload: pending push registrations and metadata patches tied to replaced cells are detected via a `_isLiveCell` liveness check and dropped instead of re-pushing stale content to the server.
+- `acceptLocalCell`/`acceptRemoteCell` now run under `_updateMutex` and re-fetch the server paragraph before acting, so resolving a conflict cannot clobber a remote revision that advanced while the diff was open.
+- Polling no longer issues one full `getNoteInfo` fetch per visible cell: `doUpdateVisibleCells` reconciles each notebook at most once per tick.
+
+### Added
+- Safe server-side **deletion propagation**. A genuine user cell-deletion deletes the paragraph on the server (`deleteParagraphById`), while a deletion caused by a Git/on-disk reload is suppressed. Reload-origin removals are distinguished by a transient correlation token attached during `deserializeNotebook` (`src/common/notebookReload.ts`, registered via `transientDocumentMetadata`); every ambiguous case conservatively preserves the server paragraph. See `docs/notebook-deletion.md`.
+- Regression tests for the above (reconciliation, duplication, reload correlation, structural classification, orphaned pushes, deletion safety).
+
+### Chore
+- Migrated ESLint to flat config (`eslint.config.js`) for ESLint v9+/`typescript-eslint` v8; `npm run lint` runs again.
+
