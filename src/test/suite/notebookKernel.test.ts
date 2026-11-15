@@ -1,8 +1,11 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 import { vi } from 'vitest';
+import { CellStatusProvider } from '../../component/cellStatusBar';
+import { ZeppelinSerializer } from '../../extension/notebookSerializer';
+import { RELOAD_GENERATION } from '../../common/notebookReload';
 import { ZeppelinKernel } from '../../extension/notebookKernel';
-import { createMockCell, createMockKernel } from './mocks';
+import { createMockCell, createMockKernel, createMockCancellationToken } from './mocks';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -509,6 +512,7 @@ describe('ZeppelinKernel Test Suite', () => {
         it('clears conflict and pushes text when syncConflict exists', async () => {
             let textPushed = false;
             const service = createMockService({
+                getParagraphInfo: async () => ({ data: { body: { text: "remote text" } } }),
                 updateParagraphText: async () => {
                     textPushed = true;
                     return { data: { body: {} } };
@@ -523,6 +527,21 @@ describe('ZeppelinKernel Test Suite', () => {
             assert.strictEqual(textPushed, true);
         });
 
+        it('keeps a conflict when remote advances again while the diff is open', async () => {
+            const push = vi.fn();
+            kernel = new ZeppelinKernel(context, createMockService({
+                getParagraphInfo: async () => ({ data: { body: { id: 'para_001', text: 'new remote' } } }),
+                updateParagraphText: push,
+            }));
+            const cell: any = createMockCell({ syncConflict: { text: 'old remote' } });
+            vi.spyOn(kernel, 'updateCellMetadata').mockImplementation(async (c, patch) => {
+                Object.assign(c.metadata, patch); return true;
+            });
+            await kernel.acceptLocalCell(cell);
+            assert.strictEqual(push.mock.calls.length, 0);
+            assert.strictEqual(cell.metadata.syncConflict.text, 'new remote');
+        });
+
         it('shows error message when pushing text fails', async () => {
             let errorShown = false;
             const origShowError = vscode.window.showErrorMessage;
@@ -532,6 +551,7 @@ describe('ZeppelinKernel Test Suite', () => {
             };
 
             const service = createMockService({
+                getParagraphInfo: async () => ({ data: { body: { text: "remote text" } } }),
                 updateParagraphText: async () => { throw new Error('Network fail'); },
             });
             kernel = new ZeppelinKernel(context, service);
@@ -807,6 +827,411 @@ describe('ZeppelinKernel Test Suite', () => {
             assert.strictEqual(kernel.isNoteSyncing(fakeNote as any), false);
 
             (vscode.window as any).showErrorMessage = origShowError;
+        });
+    });
+
+    describe('explicit paragraph deletion', () => {
+        function setupDeletion() {
+            let paragraphs = [{ id: 'deleted', text: 'base', status: 'READY' }];
+            const remove = vi.fn(async (_noteId: string, id: string) => {
+                paragraphs = paragraphs.filter(p => p.id !== id);
+                return { status: 200 };
+            });
+            kernel = new ZeppelinKernel(context, createMockService({
+                deleteParagraph: remove,
+                getInfo: async () => ({ data: { body: { paragraphs } } }),
+            }));
+            const note: any = {
+                metadata: { id: 'n1', paragraphs: [...paragraphs] },
+                isClosed: false,
+                getCells: () => [],
+            };
+            const cell: any = createMockCell({ id: 'deleted', index: -1 });
+            cell.notebook = note;
+            const event: any = {
+                notebook: note, metadata: undefined, cellChanges: [],
+                contentChanges: [{ removedCells: [cell], addedCells: [] }],
+            };
+            vi.spyOn(kernel, 'updateNoteMetadata').mockImplementation(async (_note, patch) => {
+                Object.assign(note.metadata, patch); return true;
+            });
+            vi.spyOn(kernel, 'insertNoteCells').mockResolvedValue(true);
+            return { note, cell, event, remove };
+        }
+
+        it('deletes by captured id once and advances the structural base before sync', async () => {
+            const { note, event, remove } = setupDeletion();
+            (kernel as any)._structureBases.set(note, ['deleted']);
+            await kernel.handleNotebookRemovals(event);
+            assert.deepStrictEqual(remove.mock.calls, [['n1', 'deleted']]);
+            assert.deepStrictEqual((kernel as any)._structureBases.get(note), []);
+            await kernel.syncNote(note);
+            assert.strictEqual(note.metadata.structureConflict, false);
+            assert.strictEqual(vi.mocked(kernel.insertNoteCells).mock.calls.length, 0);
+        });
+
+        it('correlates a serializer reload with its batch, then allows the next user deletion', async () => {
+            const { note, event, remove } = setupDeletion();
+            const serializer = new ZeppelinSerializer(kernel);
+            const data = await serializer.deserializeNotebook(
+                new TextEncoder().encode(JSON.stringify({ id: 'n1', paragraphs: [] })), createMockCancellationToken());
+            const reload = { ...event, metadata: data.metadata };
+            await kernel.handleNotebookRemovals(reload);
+            assert.strictEqual(remove.mock.calls.length, 0);
+            assert.strictEqual((await kernel.getNoteInfo(note))!.paragraphs!.length, 1);
+            await kernel.handleNotebookRemovals(event);
+            assert.strictEqual(remove.mock.calls.length, 1);
+            const saved = JSON.parse(new TextDecoder().decode(await serializer.serializeNotebook(data, {} as any)));
+            assert.strictEqual(saved[RELOAD_GENERATION], undefined);
+        });
+
+        it('settles an initial open without removals and does not suppress a later user delete', async () => {
+            const { event, remove } = setupDeletion();
+            const data = await new ZeppelinSerializer(kernel).deserializeNotebook(
+                new TextEncoder().encode('{"id":"n1","paragraphs":[]}'), createMockCancellationToken());
+            // The extension's onDidOpenNotebookDocument handler does exactly this.
+            kernel.settleNotebookReload(data.metadata?.[RELOAD_GENERATION]);
+            assert.strictEqual(remove.mock.calls.length, 0);
+            await kernel.handleNotebookRemovals(event);
+            assert.strictEqual(remove.mock.calls.length, 1);
+        });
+
+        it('does not leave a reload signal after deserialization fails', async () => {
+            const { event, remove } = setupDeletion();
+            await assert.rejects(new ZeppelinSerializer(kernel).deserializeNotebook(
+                new TextEncoder().encode('{broken json'), createMockCancellationToken()));
+            await kernel.handleNotebookRemovals(event);
+            assert.strictEqual(remove.mock.calls.length, 1);
+        });
+
+        it('settles cancelled loads but still suppresses a late metadata-bearing reload batch', async () => {
+            const { event, remove } = setupDeletion();
+            const cancellation = new vscode.EventEmitter<void>();
+            const generation = kernel.markNotebookReload({
+                isCancellationRequested: false, onCancellationRequested: cancellation.event
+            });
+            cancellation.fire();
+            await kernel.handleNotebookRemovals({ ...event, metadata: { [RELOAD_GENERATION]: generation } });
+            assert.strictEqual(remove.mock.calls.length, 0);
+            await kernel.handleNotebookRemovals(event);
+            assert.strictEqual(remove.mock.calls.length, 1);
+            cancellation.dispose();
+        });
+
+        it('strips the reload correlation token when importing a note', async () => {
+            setupDeletion();
+            const importer = vi.spyOn(kernel.getService()!, 'importNote');
+            await kernel.importNote({ id: 'n1', paragraphs: [], [RELOAD_GENERATION]: 42 });
+            assert.deepStrictEqual(importer.mock.calls[0][0], { id: 'n1', paragraphs: [] });
+        });
+
+        it('settles a metadata-only reload so the next deletion is not suppressed', async () => {
+            const { event, remove } = setupDeletion();
+            const generation = kernel.markNotebookReload();
+            await kernel.handleNotebookRemovals({
+                ...event, contentChanges: [], metadata: { [RELOAD_GENERATION]: generation }
+            });
+            await kernel.handleNotebookRemovals(event);
+            assert.strictEqual(remove.mock.calls.length, 1);
+        });
+
+        it('does not let unrelated or out-of-order batches consume another reload', async () => {
+            const { event, remove } = setupDeletion();
+            const first = kernel.markNotebookReload();
+            const second = kernel.markNotebookReload();
+            await kernel.handleNotebookRemovals(event); // unrelated removal: ambiguous
+            await kernel.handleNotebookRemovals({ ...event, metadata: { [RELOAD_GENERATION]: second } });
+            await kernel.handleNotebookRemovals(event); // first still pending
+            assert.strictEqual(remove.mock.calls.length, 0);
+            await kernel.handleNotebookRemovals({ ...event, metadata: { [RELOAD_GENERATION]: first } });
+            await kernel.handleNotebookRemovals(event);
+            assert.strictEqual(remove.mock.calls.length, 1);
+        });
+
+        for (const reason of ['missing paragraph id', 'missing note id', 'structure conflict',
+            'closed notebook', 'replacement', 'undo restored id', 'metadata batch']) {
+            it(`preserves the server paragraph for ${reason}`, async () => {
+                const { note, cell, event, remove } = setupDeletion();
+                if (reason === 'missing paragraph id') { delete cell.metadata.id; }
+                if (reason === 'missing note id') { delete note.metadata.id; }
+                if (reason === 'structure conflict') { note.metadata.structureConflict = true; }
+                if (reason === 'closed notebook') { note.isClosed = true; }
+                if (reason === 'replacement') { event.contentChanges[0].addedCells = [cell]; }
+                if (reason === 'undo restored id') { note.getCells = () => [cell]; }
+                if (reason === 'metadata batch') { event.metadata = {}; }
+                await kernel.handleNotebookRemovals(event);
+                assert.strictEqual(remove.mock.calls.length, 0);
+            });
+        }
+
+        it('suppresses programmatic removals under the edit guard', async () => {
+            const { event, remove } = setupDeletion();
+            await kernel.editWithoutParagraphUpdate(() => kernel.handleNotebookRemovals(event));
+            assert.strictEqual(remove.mock.calls.length, 0);
+        });
+
+        it('captures IDs synchronously and deduplicates queued deletion intent', async () => {
+            const { event, cell, remove } = setupDeletion();
+            const release = await (kernel as any)._updateMutex.acquire();
+            const first = kernel.handleNotebookRemovals(event);
+            const duplicate = kernel.handleNotebookRemovals(event);
+            cell.metadata.id = 'changed-after-event';
+            release();
+            await Promise.all([first, duplicate]);
+            assert.deepStrictEqual(remove.mock.calls, [['n1', 'deleted']]);
+        });
+
+        it('invalidates queued deletion if a reload occurs while waiting for the lock', async () => {
+            const { event, remove } = setupDeletion();
+            const release = await (kernel as any)._updateMutex.acquire();
+            const deleting = kernel.handleNotebookRemovals(event);
+            const generation = kernel.markNotebookReload();
+            kernel.settleNotebookReload(generation); // even a fully settled reload invalidates intent
+            release();
+            await deleting;
+            assert.strictEqual(remove.mock.calls.length, 0);
+        });
+
+        it('does not delete if the connection becomes inactive while waiting for the lock', async () => {
+            const { event, remove } = setupDeletion();
+            const release = await (kernel as any)._updateMutex.acquire();
+            const deleting = kernel.handleNotebookRemovals(event);
+            kernel.deactivate();
+            release();
+            await deleting;
+            assert.strictEqual(remove.mock.calls.length, 0);
+        });
+
+        it('rechecks structural conflict after acquiring the update lock', async () => {
+            const { note, event, remove } = setupDeletion();
+            const release = await (kernel as any)._updateMutex.acquire();
+            const deleting = kernel.handleNotebookRemovals(event);
+            note.metadata.structureConflict = true;
+            release();
+            await deleting;
+            assert.strictEqual(remove.mock.calls.length, 0);
+        });
+
+        it('abandons an in-flight sync snapshot when a user deletion is queued', async () => {
+            const { note, event, remove } = setupDeletion();
+            let fetched!: () => void;
+            let resume!: () => void;
+            const entered = new Promise<void>(resolve => { fetched = resolve; });
+            const paused = new Promise<void>(resolve => { resume = resolve; });
+            const fetch = vi.spyOn(kernel, 'getNoteInfo').mockImplementationOnce(async () => {
+                fetched(); await paused;
+                return { paragraphs: [{ id: 'deleted', text: 'base', status: 'READY' }] };
+            });
+            const syncing = kernel.syncNote(note);
+            await entered;
+            const deleting = kernel.handleNotebookRemovals(event);
+            resume();
+            await Promise.all([syncing, deleting]);
+            assert.strictEqual(remove.mock.calls.length, 1);
+            assert.strictEqual(vi.mocked(kernel.insertNoteCells).mock.calls.length, 0);
+            assert.strictEqual(note.metadata.structureConflict, undefined);
+            fetch.mockRestore();
+            await kernel.syncNote(note);
+            assert.strictEqual(note.metadata.structureConflict, false);
+            assert.strictEqual(vi.mocked(kernel.insertNoteCells).mock.calls.length, 0);
+        });
+
+        it('does not advance the structural base when deletion fails', async () => {
+            const { note, event, remove } = setupDeletion();
+            (kernel as any)._structureBases.set(note, ['deleted']);
+            remove.mockResolvedValueOnce({ status: 500 });
+            await kernel.handleNotebookRemovals(event);
+            assert.deepStrictEqual((kernel as any)._structureBases.get(note), ['deleted']);
+            assert.strictEqual(note.metadata.paragraphs.length, 1);
+        });
+
+        it('suppresses removal-only changes while a reload is pending', async () => {
+            const { event, remove } = setupDeletion();
+            kernel.markNotebookReload();
+            await kernel.handleNotebookRemovals(event);
+            assert.strictEqual(remove.mock.calls.length, 0);
+        });
+    });
+
+    describe('revision reconciliation', () => {
+        function setup(local: string, remote: string, id: string | undefined = 'p1') {
+            const paragraph = { id: 'p1', text: remote, status: 'READY' };
+            kernel = new ZeppelinKernel(context, createMockService({
+                getInfo: async () => ({ data: { body: { paragraphs: [paragraph] } } })
+            }));
+            const cell: any = createMockCell({ text: local });
+            cell.metadata = { id, text: 'base' };
+            const note: any = { metadata: { id: 'n1' }, getCells: () => [cell] };
+            cell.notebook = note;
+            vi.spyOn(kernel, 'updateCellMetadata').mockImplementation(async (c, patch) => {
+                Object.assign(c.metadata, patch); return true;
+            });
+            vi.spyOn(kernel, 'updateNoteMetadata').mockResolvedValue(true);
+            vi.spyOn(kernel, 'insertNoteCells').mockResolvedValue(true);
+            return { cell, note, paragraph };
+        }
+
+        it('does not insert a duplicate during the new-cell id write-back gap', async () => {
+            const { note } = setup('new', 'new');
+            note.getCells()[0].metadata.id = undefined;
+            await kernel.syncNote(note);
+            assert.strictEqual(vi.mocked(kernel.insertNoteCells).mock.calls.length, 0);
+        });
+
+        it('surfaces divergent edits without overwriting local text', async () => {
+            const { cell, note, paragraph } = setup('local', 'remote');
+            await kernel.syncNote(note);
+            assert.deepStrictEqual(cell.metadata.syncConflict, paragraph);
+            assert.strictEqual(cell.document.getText(), 'local');
+        });
+
+        it('fast-forwards untouched local text using a text edit', async () => {
+            const { cell, note, paragraph } = setup('base', 'base');
+            await kernel.syncNote(note);
+            paragraph.text = 'remote';
+            const apply = vi.spyOn(vscode.workspace, 'applyEdit');
+            await kernel.syncNote(note);
+            assert.strictEqual(cell.metadata.syncConflict, undefined);
+            const edits = apply.mock.calls.flatMap(([edit]) => edit.get(cell.document.uri));
+            assert.ok(edits.some((edit: any) => edit.newText === 'remote'));
+            assert.strictEqual(cell.metadata.text, 'remote');
+            apply.mockRestore();
+        });
+
+        it('does not assume an on-disk snapshot is a trusted server base on first sync', async () => {
+            const { cell, note, paragraph } = setup('base', 'remote');
+            await kernel.syncNote(note);
+            assert.deepStrictEqual(cell.metadata.syncConflict, paragraph);
+            assert.strictEqual(cell.document.getText(), 'base');
+        });
+
+        it('keeps a safe local edit queued when the server still equals the base', async () => {
+            const { cell, note } = setup('local', 'base');
+            await kernel.registerParagraphUpdate(cell);
+            await kernel.syncNote(note);
+            assert.strictEqual(cell.metadata.syncConflict, undefined);
+            assert.strictEqual(kernel.hasPendingParagraphUpdate(cell), true);
+        });
+
+        it('preserves the base across replacement of cell objects by reload', async () => {
+            const { cell, note, paragraph } = setup('base', 'base');
+            await kernel.syncNote(note);
+            const replacement: any = createMockCell({ id: 'p1', text: 'git edit' });
+            replacement.metadata.text = 'git edit';
+            replacement.notebook = note;
+            note.getCells = () => [replacement];
+            cell.index = -1;
+            paragraph.text = 'remote edit';
+            await kernel.syncNote(note);
+            assert.deepStrictEqual(replacement.metadata.syncConflict, paragraph);
+        });
+
+        it('fetches a note once per poll tick across multiple visible cells', async () => {
+            const { cell, note, paragraph } = setup('local', 'remote');
+            const cells = [cell, ...[1, 2].map(index => {
+                const c: any = createMockCell({ id: `p${index + 1}`, index, text: 'local' });
+                c.notebook = note;
+                return c;
+            })];
+            note.getCells = () => cells;
+            note.cellAt = (index: number) => cells[index];
+            note.cellCount = cells.length;
+            vi.spyOn(kernel, 'doesNotebookExist').mockResolvedValue(true);
+            vi.spyOn(kernel, 'getParagraphInfo').mockResolvedValue(paragraph);
+            const fetch = vi.spyOn(kernel, 'getNoteInfo').mockResolvedValue({
+                paragraphs: cells.map(c => ({ id: c.metadata.id, text: 'remote', status: 'READY' }))
+            });
+            const provider = new CellStatusProvider(kernel);
+            const previous = vscode.window.activeNotebookEditor;
+            (vscode.window as any).activeNotebookEditor = {
+                notebook: note,
+                // Overlap also must not cause another full fetch.
+                visibleRanges: [{ start: 0, end: 2 }, { start: 1, end: 2 }]
+            };
+            try {
+                await provider.doUpdateVisibleCells();
+                assert.strictEqual(fetch.mock.calls.length, 1);
+                // Reconciliation includes the non-visible cell too.
+                assert.strictEqual(cells[2].metadata.syncConflict.text, 'remote');
+                await provider.doUpdateVisibleCells();
+                assert.strictEqual(fetch.mock.calls.length, 2);
+            } finally {
+                (vscode.window as any).activeNotebookEditor = previous;
+                provider.dispose();
+            }
+        });
+
+        it('polling fast-forwards through the same note reconciliation', async () => {
+            const { cell, note, paragraph } = setup('base', 'base');
+            await kernel.syncNote(note);
+            paragraph.text = 'remote';
+            await kernel.reconcilePolledCell(cell);
+            assert.strictEqual(cell.metadata.text, 'remote');
+            assert.strictEqual(cell.metadata.syncConflict, undefined);
+        });
+
+        it('preserves cells and flags server paragraph removal', async () => {
+            const { cell, note } = setup('base', 'base');
+            note.metadata.paragraphs = [{ id: 'p1' }, { id: 'removed' }];
+            const removed: any = createMockCell({ id: 'removed', index: 1 });
+            removed.notebook = note;
+            note.getCells = () => [cell, removed];
+            vi.mocked(kernel.updateNoteMetadata).mockImplementation(async (_note, patch) => {
+                Object.assign(note.metadata, patch); return true;
+            });
+            await kernel.syncNote(note);
+            assert.strictEqual(note.metadata.structureConflict, true);
+            assert.ok(cell.metadata.syncConflict);
+            assert.strictEqual(vi.mocked(kernel.insertNoteCells).mock.calls.length, 0);
+        });
+
+        it('does not duplicate while createParagraph is awaiting id write-back', async () => {
+            const { cell, note, paragraph } = setup('new', 'new');
+            paragraph.id = 'para_new';
+            cell.metadata.id = undefined;
+            let release!: () => void;
+            let arrived!: () => void;
+            const paused = new Promise<void>(resolve => { release = resolve; });
+            const entered = new Promise<void>(resolve => { arrived = resolve; });
+            vi.mocked(kernel.updateCellMetadata).mockImplementation(async (c, patch) => {
+                if (patch.id === 'para_new') { arrived(); await paused; }
+                Object.assign(c.metadata, patch); return true;
+            });
+            const creating = kernel.createParagraph(cell);
+            await entered;
+            const syncing = kernel.syncNote(note);
+            // sync waits for the edit lock, then must rebuild its id-less match safely.
+            release();
+            await Promise.all([creating, syncing]);
+            assert.strictEqual(cell.metadata.id, 'para_new');
+            assert.strictEqual(vi.mocked(kernel.insertNoteCells).mock.calls.length, 0);
+        });
+
+        it('drops a cell replaced while the push preflight request is in flight', async () => {
+            const cell: any = createMockCell();
+            cell.metadata.text = 'base';
+            cell.notebook.metadata.paragraphs = [{ id: cell.metadata.id }];
+            const push = vi.fn();
+            const service = createMockService({
+                getInfo: async () => {
+                    cell.index = -1;
+                    return { data: { body: { paragraphs: [{ id: cell.metadata.id }] } } };
+                },
+                updateParagraphText: push,
+                updateParagraphConfig: push,
+                deleteParagraph: push,
+            });
+            kernel = new ZeppelinKernel(context, service);
+            await kernel.updateParagraph(cell);
+            assert.strictEqual(push.mock.calls.length, 0);
+        });
+
+        it('drops an orphaned push without deleting the server paragraph', async () => {
+            const service = createMockService({ deleteParagraph: vi.fn() });
+            kernel = new ZeppelinKernel(context, service);
+            const cell: any = createMockCell({ index: -1 });
+            await kernel.updateParagraph(cell);
+            assert.strictEqual(service.deleteParagraph.mock.calls.length, 0);
         });
     });
 

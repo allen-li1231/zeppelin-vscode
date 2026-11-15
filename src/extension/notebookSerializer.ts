@@ -4,11 +4,13 @@ import {
 	parseParagraphToCellData,
 	parseCellToParagraphData
 } from '../common/parser';
+import { NotebookReloadObserver, RELOAD_GENERATION } from '../common/notebookReload';
 import { NoteData } from '../common/types';
 // import { Mutex } from '../common/mutex';
 
 
 export class ZeppelinSerializer implements vscode.NotebookSerializer {
+	constructor(private readonly reloadObserver?: NotebookReloadObserver) {}
 
 	async deserializeNotebook(
 		content: Uint8Array,
@@ -39,7 +41,12 @@ export class ZeppelinSerializer implements vscode.NotebookSerializer {
 		logger.info(`deserializeNotebook: loaded ${cells.length} cells from note '${raw.name ?? '(unnamed)'}'`);
 
 		let note = new vscode.NotebookData(cells);
-		note.metadata = raw;
+        note.metadata = { ...raw };
+        // Signal only after successful parsing. The model reset happens after
+        // this promise resolves; its metadata carries this exact generation.
+        if (this.reloadObserver) {
+            note.metadata[RELOAD_GENERATION] = this.reloadObserver.markNotebookReload(_token);
+        }
 
 		return note;
 	}

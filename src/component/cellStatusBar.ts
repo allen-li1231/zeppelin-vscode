@@ -211,6 +211,8 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
         // async loop don't cause us to read a stale or shifted range list.
         const visibleRanges = [...activeNotebook.visibleRanges];
         const notebook = activeNotebook.notebook;
+        // Per invocation: a later tick must fetch again, including after failures.
+        const reconciledNotebooks = new Set<vscode.NotebookDocument>();
             logger.debug("doUpdateVisibleCells: updating", visibleRanges);
 
         for (let range of visibleRanges) {
@@ -261,37 +263,25 @@ export class CellStatusProvider implements vscode.NotebookCellStatusBarItemProvi
                         // reads and writes here are atomic with respect to
                         // provideCellStatusBarItems(), preventing it from
                         // seeing half-updated syncConflict / status fields.
+                        // Lock order: _cellStatusUpdateMutex -> _updateMutex -> _editMutex.
+                        // Never await this status mutex while holding the kernel update mutex.
                         await this._cellStatusUpdateMutex.runExclusive(async () => {
                             // Re-check guards inside the mutex to close TOCTOU
                             // windows opened while getParagraphInfo() was in-flight
-                            if (this.kernel.hasPendingParagraphUpdate(cell)
+                            if (notebook.isClosed || cell.index < 0 || cell.document.isClosed
+                                || cell.metadata.resolvingDiff
+                                || this.kernel.hasPendingParagraphUpdate(cell)
                                 || this.kernel.isNoteSyncing(notebook)
                                 || this.kernel.getExecutionByParagraphId(cell.metadata.id) !== undefined)
                             {
                                 return;
                             }
 
-                            let serverText = paragraph.text ?? '';
-                            let localText = cell.document.getText();
-                            if (serverText !== localText
-                                && cell.metadata.syncConflict?.text !== serverText)
-                            {
-                                await this.kernel.editWithoutParagraphUpdate(async () => {
-                                    await this.kernel.updateCellMetadata(cell, {
-                                        syncConflict: paragraph
-                                    });
-                                });
-                            }
-                            else if (serverText === localText
-                                && cell.metadata.syncConflict !== undefined)
-                            {
-                                // Server and local now match — clear the conflict marker
-                                await this.kernel.editWithoutParagraphUpdate(async () => {
-                                    await this.kernel.removeCellMetadata(
-                                        cell, ["syncConflict", "resolvingDiff"]
-                                    );
-                                });
-                            }
+                            if (reconciledNotebooks.has(notebook)) { return; }
+                            // Mark before awaiting: at most one attempt per notebook this tick.
+                            // Guarded-out cells above must not consume the notebook's attempt.
+                            reconciledNotebooks.add(notebook);
+                            await this.kernel.reconcilePolledCell(cell);
                         });
                     }
                 }

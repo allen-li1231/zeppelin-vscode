@@ -194,6 +194,7 @@ export interface MockKernel {
     updateCellMetadata: (cell: any, metadata: any) => Promise<boolean>;
     removeCellMetadata: (cell: any, keys: string[]) => Promise<boolean>;
     applyPolledNotebookEdits: () => Promise<void>;
+    reconcilePolledCell: (cell: any) => Promise<void>;
     isNoteSyncing: (note: any) => boolean;
     hasPendingParagraphUpdate: (cell: any) => boolean;
     isEditLocked: () => boolean;
@@ -205,6 +206,7 @@ export interface MockKernel {
 }
 
 export interface MockService {
+    cancelConnect: () => void;
     getInterpreterSetting: (id: string) => Promise<any>;
     stopAll: (noteId: string) => Promise<any>;
 }
@@ -230,6 +232,7 @@ export function createMockKernel(opts: MockKernelOptions = {}): MockKernel {
                         body: { status: interpreterStatus },
                     },
                 }),
+                cancelConnect: () => {},
                 stopAll: async (_noteId: string) => ({ data: {} }),
             };
         },
@@ -252,6 +255,7 @@ export function createMockKernel(opts: MockKernelOptions = {}): MockKernel {
         updateCellMetadata: async (_cell: any, _metadata: any) => true,
         removeCellMetadata: async (_cell: any, _keys: string[]) => true,
         applyPolledNotebookEdits: async () => {},
+        reconcilePolledCell: async () => {},
         isNoteSyncing: (_note: any) => false,
         hasPendingParagraphUpdate: (_cell: any) => false,
         isEditLocked: () => false,
