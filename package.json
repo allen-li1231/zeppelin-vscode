@@ -2,7 +2,7 @@
   "name": "zeppelin-vscode",
   "displayName": "Zeppelin Notebook",
   "description": "Apache Zeppelin Notebook Extension for VS Code",
-  "version": "0.2.29",
+  "version": "0.2.30",
   "publisher": "AllenLi1231",
   "author": {
     "name": "Allen Li"
@@ -285,6 +285,11 @@
         "title": "Zeppelin: restart a interpreter"
       },
       {
+        "command": "zeppelin-vscode.refreshNotebook",
+        "title": "Zeppelin: Refresh Notebook from Server",
+        "icon": "$(refresh)"
+      },
+      {
         "command": "zeppelin-vscode.showCellDiff",
         "title": "Zeppelin: Show Cell Diff (Local vs Remote)",
         "enablement": "resourceExtname == .zpln"
@@ -296,6 +301,13 @@
       }
     ],
     "menus": {
+      "notebook/toolbar": [
+        {
+          "command": "zeppelin-vscode.refreshNotebook",
+          "when": "notebookType == 'zeppelin-notebook'",
+          "group": "navigation"
+        }
+      ],
       "commandPalette": [
         {
           "command": "zeppelin-vscode.importCurrentNotebook",

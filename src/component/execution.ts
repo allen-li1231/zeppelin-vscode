@@ -12,6 +12,36 @@ import { ParagraphData } from '../common/types';
 import { ZeppelinKernel } from '../extension/notebookKernel';
 
 
+function parseZeppelinDate(dateStr: string | undefined): number | undefined
+{
+    if (!dateStr)
+    {
+        return undefined;
+    }
+
+    // Zeppelin dates are UTC but without a timezone suffix; append " UTC"
+    // so Date.parse does not interpret them as local time.
+    const dateStrWithTz = dateStr.includes("UTC") || dateStr.includes("GMT")
+        ? dateStr
+        : dateStr + " UTC";
+
+    const timestamp = Date.parse(dateStrWithTz);
+    if (isNaN(timestamp))
+    {
+        const fallbackTimestamp = Date.parse(dateStr);
+        if (!isNaN(fallbackTimestamp))
+        {
+            logger.debug("parseZeppelinDate: parsed as local time (fallback)", dateStr);
+            return fallbackTimestamp;
+        }
+        logger.debug("parseZeppelinDate: failed to parse", dateStr);
+        return undefined;
+    }
+
+    return timestamp;
+}
+
+
 enum ZeppelinExecutionState {
 	init,
 	started,
@@ -346,6 +376,20 @@ export class ExecutionManager
         catch (err)
         {
             logger.error("error in trackExecution:", err);
+            // Transient network / gateway errors: keep the execution
+            // registered and retry on the next poll instead of failing it.
+            if (err instanceof AxiosError)
+            {
+                const isNetworkError = !err.response
+                    || err.code === "ECONNABORTED"
+                    || err.response?.status === 504
+                    || err.response?.status === 408;
+                if (isNetworkError)
+                {
+                    logger.debug("trackExecution: network error, will retry on next poll", err);
+                    return;
+                }
+            }
             this.unregisterTrackExecution(execution);
             let cellOutput = new vscode.NotebookCellOutput([
                 vscode.NotebookCellOutputItem.error({
@@ -811,7 +855,7 @@ export class ExecutionManager
         }
         else if (serverCell?.metadata?.status !== "PENDING")
         {
-            startTime = Date.parse(cell.metadata.dateStarted) || Date.now();
+            startTime = parseZeppelinDate(cell.metadata.dateStarted) ?? Date.now();
             newExecution.start(startTime);
             this.registerTrackExecution(newExecution);
         }
@@ -831,7 +875,7 @@ export class ExecutionManager
 
             newExecution.end(
                 cell.metadata.status !== "ERROR",
-                Date.parse(cell.metadata.dateFinished) || Date.now()
+                parseZeppelinDate(cell.metadata.dateFinished) ?? Date.now()
             );
         }
         else

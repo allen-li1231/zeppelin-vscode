@@ -1,10 +1,10 @@
 import { AxiosError } from 'axios';
 import { NotebookService } from './api';
-import { reURL } from './common';
+import { getRestartInterpreterId, reURL } from './common';
 import { logger } from './logger';
 import * as vscode from 'vscode';
 import { ZeppelinKernel } from '../extension/notebookKernel';
-import { parseCellToParagraphData } from './parser';
+import { parseCellInterpreter, parseCellToParagraphData } from './parser';
 import { ParagraphData } from './types';
 import { Mutex } from '../component/mutex';
 
@@ -574,9 +574,32 @@ export async function promptRestartInterpreter(
 	}
 
 	if (interpreterId === undefined) {
-		interpreterId = await vscode.window.showInputBox({
-			title: 'Please specify a interpreter:'
-		});
+		const note = vscode.window.activeNotebookEditor?.notebook;
+		const interpreters = new Set<string>();
+		if (note) {
+			for (const cell of note.getCells()) {
+				if (cell.kind === vscode.NotebookCellKind.Code) {
+					const id = parseCellInterpreter(cell, false);
+					if (id !== undefined) {
+						interpreters.add(id);
+					}
+				}
+			}
+		}
+		if (interpreters.size === 1) {
+			interpreterId = Array.from(interpreters)[0];
+		}
+		else if (interpreters.size > 1) {
+			interpreterId = await vscode.window.showQuickPick(Array.from(interpreters), {
+				title: 'Select interpreter to restart',
+				placeHolder: 'Choose an interpreter'
+			});
+		}
+		else {
+			interpreterId = await vscode.window.showInputBox({
+				title: 'Please specify a interpreter:'
+			});
+		}
 	}
 	if (interpreterId === undefined || interpreterId.trim().length === 0) {
 		return;
@@ -593,7 +616,7 @@ export async function promptRestartInterpreter(
 	if (selection === undefined || selection === "No") {
 		return;
 	}
-	let res = await kernel.getService()?.restartInterpreter(interpreterId);
+	let res = await kernel.getService()?.restartInterpreter(getRestartInterpreterId(interpreterId));
 	if (res === undefined) {
 		return;
 	}
@@ -611,5 +634,46 @@ export async function promptRestartInterpreter(
 	}
 	else {
 		vscode.window.showInformationMessage(`Interpreter "${interpreterId}" restarted.`);
+	}
+}
+
+
+// Manual notebook refresh: re-sync the active notebook from the server.
+// 30s cooldown prevents accidental repeated full syncs.
+const REFRESH_COOLDOWN_MS = 30 * 1000;
+let _refreshCooldownEndTime = 0;
+
+export async function promptRefreshNotebook(kernel: ZeppelinKernel) {
+	const note = vscode.window.activeNotebookEditor?.notebook;
+	if (!note) {
+		vscode.window.showWarningMessage('No active notebook to refresh');
+		return;
+	}
+	if (!kernel.isActive()) {
+		vscode.window.showWarningMessage('Not connected to Zeppelin server');
+		return;
+	}
+	if (kernel.isNoteSyncing(note)) {
+		vscode.window.setStatusBarMessage('$(sync~spin) Refresh already in progress...', 2000);
+		return;
+	}
+
+	const now = Date.now();
+	if (now < _refreshCooldownEndTime) {
+		const secs = Math.ceil((_refreshCooldownEndTime - now) / 1000);
+		vscode.window.showWarningMessage(`Refresh available in ${secs} second(s).`);
+		return;
+	}
+	_refreshCooldownEndTime = now + REFRESH_COOLDOWN_MS;
+
+	try {
+		vscode.window.setStatusBarMessage('$(sync~spin) Refreshing notebook from server...', 3000);
+		await kernel.syncNote(note);
+		vscode.window.setStatusBarMessage('$(check) Notebook refreshed', 3000);
+	} catch (err) {
+		logger.error('promptRefreshNotebook: sync failed', err);
+		vscode.window.showErrorMessage(
+			'Failed to refresh notebook from server. Please check your connection.'
+		);
 	}
 }

@@ -415,3 +415,23 @@ Addresses #44-style breakage when a Git repository is used as the Zeppelin serve
 ### Chore
 - Migrated ESLint to flat config (`eslint.config.js`) for ESLint v9+/`typescript-eslint` v8; `npm run lint` runs again.
 
+
+
+## [0.2.30] - 2026-11-15
+
+Selectively salvages and re-implements the sound parts of #33 on top of the current reconciliation/hardening work (thanks @dhama-shashank-meesho). The WebSocket subsystem, the execution/sync rewrite, AI mode, and the destructive `recreateNote` command were intentionally **not** adopted — the first reverted shipped race-condition fixes and the others carried correctness/data-loss defects.
+
+### Added
+- **Refresh Notebook** command and notebook-toolbar button to re-sync the active notebook from the server on demand (30s cooldown, connection-error feedback). Reuses the existing mutex-guarded `syncNote()`; introduces no new server-mutation path.
+- **Smarter Restart Interpreter**: the command now auto-discovers interpreters from the active notebook's cells (single → use it, many → QuickPick, none → manual input) and maps interpreter ids to their restart group (`pyspark` → `spark`).
+- **Rich output rendering** via a new modular `src/common/formatters/` module: tab-separated tables, PySpark DataFrames/Rows, and DataFrame schemas now render as HTML tables/cards in cell output instead of raw text. Recognition is per-message with a safe fallback to plain text. HTML escaping is centralized (`escape.ts`) and shared CSS/JS is de-duplicated (`assets.ts`).
+- Vitest coverage for the formatters (detection heuristics, escaping) and the parser output wiring.
+
+### Fixed
+- UTC-aware Zeppelin timestamp parsing (`parseZeppelinDate`): server dates lack a timezone suffix and were read as local time, corrupting the "Started X ago" display for non-UTC users.
+- `trackExecution` no longer fails a running cell on a transient network/gateway error (no response / `ECONNABORTED` / 504 / 408); the execution stays registered and retries on the next poll.
+- **Inline-script HTML injection** in rendered table/CSV output (defect originating in #33): table/CSV data was embedded into inline `<script>` blocks via bare `JSON.stringify`, which does not escape `<`, so a cell containing `</script>` could terminate the script element early — breaking CSV export and allowing HTML injection. Added `jsonForInlineScript()` (escapes `<` and U+2028/U+2029) for all data embedded in inline scripts.
+
+### Changed
+- Substantial plain-text cell output (multi-line / long) now renders through the enhanced text formatter (HTML) instead of a plain `text/plain` item; output shown while a progress bar is live stays plain text. This only affects display — notebook serialization persists `metadata.results` (the original server data), not rendered output, so it cannot corrupt saved notebooks.
+

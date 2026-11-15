@@ -154,6 +154,13 @@ export async function activate(context: vscode.ExtensionContext) {
 
 
 	disposable = vscode.commands.registerCommand(
+		'zeppelin-vscode.refreshNotebook',
+		() => interact.promptRefreshNotebook(kernel)
+	);
+	context.subscriptions.push(disposable);
+
+
+	disposable = vscode.commands.registerCommand(
 		'zeppelin-vscode.createMissingParagraph',
 		_.partial(interact.promptCreateParagraph, kernel)
 	);
