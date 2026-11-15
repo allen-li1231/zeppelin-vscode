@@ -114,6 +114,15 @@ export const reURL = RegExp(/[-a-zA-Z0-9@:%._\+~#=]{1,256}\.?[a-zA-Z0-9()]{1,6}\
 export const reCookies = RegExp(/^(JSESSIONID=((?!deleteMe).)*?);/s);
 export const reBase64= /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
 
+/**
+ * Map a cell interpreter id to the id Zeppelin's restart API expects.
+ * Zeppelin restarts by interpreter *group*, e.g. the `pyspark` interpreter
+ * belongs to the `spark` group.
+ */
+export function getRestartInterpreterId(interpreterId: string): string {
+    return interpreterId === 'pyspark' ? 'spark' : interpreterId;
+}
+
 export function getVersion(context: ExtensionContext) {
     return context.extension.packageJSON.version;
 }

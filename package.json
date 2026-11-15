@@ -285,6 +285,11 @@
         "title": "Zeppelin: restart a interpreter"
       },
       {
+        "command": "zeppelin-vscode.refreshNotebook",
+        "title": "Zeppelin: Refresh Notebook from Server",
+        "icon": "$(refresh)"
+      },
+      {
         "command": "zeppelin-vscode.showCellDiff",
         "title": "Zeppelin: Show Cell Diff (Local vs Remote)",
         "enablement": "resourceExtname == .zpln"
@@ -296,6 +301,13 @@
       }
     ],
     "menus": {
+      "notebook/toolbar": [
+        {
+          "command": "zeppelin-vscode.refreshNotebook",
+          "when": "notebookType == 'zeppelin-notebook'",
+          "group": "navigation"
+        }
+      ],
       "commandPalette": [
         {
           "command": "zeppelin-vscode.importCurrentNotebook",
