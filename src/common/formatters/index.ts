@@ -11,3 +11,4 @@ export {
 } from './pyspark';
 export { formatTextOutput, shouldUseEnhancedTextFormat } from './text';
 export type { TextFormatOptions } from './text';
+export { renderStructuredResultAsHtml } from './resultRenderer';

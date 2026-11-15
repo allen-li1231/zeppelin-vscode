@@ -11,6 +11,11 @@ import {
 	ParagraphResult,
 	ParagraphResultMsg
 } from './types';
+import {
+    renderStructuredResultAsHtml,
+    formatTextOutput,
+    shouldUseEnhancedTextFormat,
+} from './formatters';
 
 
 export function parseCellInterpreter(
@@ -62,6 +67,7 @@ export function parseParagraphResultToCellOutput(
     let encoder = new TextEncoder();
     let textOutput = '', htmlOutput = '', errorOutput = '';
     let imageOutputs: Uint8Array[] = [];
+    let msgIndex = 0;
     for (let msg of results.msg ?? []) {
         if (msg.type === 'HTML') {
             htmlOutput += msg.data;
@@ -74,8 +80,20 @@ export function parseParagraphResultToCellOutput(
             errorOutput += msg.data;
         }
         else {
-            textOutput += msg.data;
+            // Upgrade recognized structured results (tab-separated tables,
+            // PySpark DataFrames/Rows, DataFrame schemas) to rendered HTML.
+            // Anything unrecognized falls back to plain text unchanged.
+            let structuredHtml = renderStructuredResultAsHtml(
+                msg.type, msg.data, `table-${msgIndex}`
+            );
+            if (structuredHtml) {
+                htmlOutput += structuredHtml;
+            }
+            else {
+                textOutput += msg.data;
+            }
         }
+        msgIndex++;
     }
 
     if (htmlOutput.length > 0) {
@@ -110,12 +128,20 @@ export function parseParagraphResultToCellOutput(
     }
 
     if (progressbarText || textOutput.length > 0) {
-        outputs.push(
-            new vscode.NotebookCellOutputItem(
-                encoder.encode((progressbarText ?? '') + textOutput),
-                'text/plain'
-            )
-        );
+        // Use the enhanced text formatter for substantial plain-text output
+        // (multi-line / long / tabular-looking), but keep the simple text/plain
+        // item while a progress bar is live so progress updates stay readable.
+        if (!progressbarText && shouldUseEnhancedTextFormat(textOutput)) {
+            outputs.push(formatTextOutput(textOutput));
+        }
+        else {
+            outputs.push(
+                new vscode.NotebookCellOutputItem(
+                    encoder.encode((progressbarText ?? '') + textOutput),
+                    'text/plain'
+                )
+            );
+        }
     }
 
     return outputs;
